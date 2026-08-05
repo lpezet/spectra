@@ -1,0 +1,32 @@
+{
+  "id": "q-003-use-rfc-5545-rrule",
+  "summary": "Type recurrenceRule as an RFC 5545 recurrence rule",
+  "ops": [
+    {
+      "op": "add_entity",
+      "term": "RecurrenceRule",
+      "termType": "attribute-type",
+      "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". The full RRULE grammar applies, including BYDAY, COUNT and UNTIL. Rules that do not parse as RRULE are rejected.",
+      "attributes": []
+    },
+    {
+      "op": "remove_attribute",
+      "term": "RecurringTask",
+      "attribute": "recurrenceRule"
+    },
+    {
+      "op": "add_attribute",
+      "term": "RecurringTask",
+      "attribute": {
+        "name": "recurrenceRule",
+        "valueType": "ref:RecurrenceRule"
+      }
+    }
+  ],
+  "tests": [
+    "\"FREQ=WEEKLY;INTERVAL=2\" advances 2026-08-04 to 2026-08-18",
+    "\"FREQ=MONTHLY;BYDAY=1MO\" advances 2026-08-04 to 2026-09-07",
+    "\"every 2 weeks\" is rejected — it is not RRULE"
+  ],
+  "fromQuestion": "q-003"
+}

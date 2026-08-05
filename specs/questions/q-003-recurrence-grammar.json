@@ -79,5 +79,10 @@
       }
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Use RFC 5545 RRULE",
+    "note": "",
+    "answeredAt": "2026-08-05T17:46:23.600Z",
+    "changesetId": "q-003-use-rfc-5545-rrule"
+  }
 }
