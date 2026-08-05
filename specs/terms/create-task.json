@@ -1,0 +1,13 @@
+{
+  "name": "createTask",
+  "type": "function",
+  "spec": "Creates a Task inside the given Project. The new Task is not done. Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it creates a plain Task.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "title", "valueType": "string" },
+    { "name": "project", "valueType": "ref:Project" },
+    { "name": "dueDate", "valueType": "date", "optional": true },
+    { "name": "recurrenceRule", "valueType": "string", "optional": true }
+  ]
+}

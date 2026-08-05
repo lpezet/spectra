@@ -1,0 +1,10 @@
+{
+  "name": "createProject",
+  "type": "function",
+  "spec": "Creates a Project with the given name. The new Project holds no Tasks. The name is not required to be unique — two Projects may share a name and remain distinct.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "name", "valueType": "string" }
+  ]
+}

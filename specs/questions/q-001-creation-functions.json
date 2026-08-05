@@ -71,5 +71,10 @@
       "proposal": null
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Spec them",
+    "note": "",
+    "answeredAt": "2026-08-05T12:23:18.611Z",
+    "changesetId": "q-001-spec-them"
+  }
 }

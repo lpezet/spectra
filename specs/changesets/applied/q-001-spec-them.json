@@ -1,0 +1,51 @@
+{
+  "id": "q-001-spec-them",
+  "summary": "Add createProject and createTask",
+  "ops": [
+    {
+      "op": "add_entity",
+      "term": "createProject",
+      "termType": "function",
+      "spec": "Creates a Project with the given name. The new Project holds no Tasks. The name is not required to be unique — two Projects may share a name and remain distinct.",
+      "attributes": [
+        {
+          "name": "name",
+          "valueType": "string"
+        }
+      ]
+    },
+    {
+      "op": "add_entity",
+      "term": "createTask",
+      "termType": "function",
+      "spec": "Creates a Task inside the given Project. The new Task is not done. Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it creates a plain Task.",
+      "attributes": [
+        {
+          "name": "title",
+          "valueType": "string"
+        },
+        {
+          "name": "project",
+          "valueType": "ref:Project"
+        },
+        {
+          "name": "dueDate",
+          "valueType": "date",
+          "optional": true
+        },
+        {
+          "name": "recurrenceRule",
+          "valueType": "string",
+          "optional": true
+        }
+      ]
+    }
+  ],
+  "tests": [
+    "a newly created Project holds no Tasks",
+    "a newly created Task is not done",
+    "creating two Projects with the same name yields two distinct Projects",
+    "createTask with a recurrenceRule yields a RecurringTask; without one it yields a plain Task"
+  ],
+  "fromQuestion": "q-001"
+}
