@@ -7,8 +7,9 @@
  * project is about, and it is more useful than referencing files: a term's meaning spans
  * its own file plus everything pointing at it.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatEvent, ChatSession, Entity } from '../chat.js'
+import { Markdown } from './Markdown.js'
 import {
   createSession,
   deleteSession,
@@ -37,6 +38,13 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   const [configured, setConfigured] = useState(true)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  // Only terms are linkable; an `@q-004` in prose stays plain rather than becoming a
+  // dead link to something the glossary has no page for.
+  const known = useMemo(
+    () => new Set(entities.filter((entity) => entity.kind === 'term').map((entity) => entity.name)),
+    [entities],
+  )
 
   const composer = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -197,7 +205,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
         )}
 
         {events.map((event) => (
-          <Bubble key={event.id} event={event} onSelectTerm={onSelectTerm} />
+          <Bubble key={event.id} event={event} known={known} onSelectTerm={onSelectTerm} />
         ))}
 
         {streaming && (
@@ -252,16 +260,29 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   )
 }
 
-function Bubble({ event, onSelectTerm }: { event: ChatEvent; onSelectTerm: (name: string) => void }) {
+function Bubble({
+  event,
+  known,
+  onSelectTerm,
+}: {
+  event: ChatEvent
+  known: Set<string>
+  onSelectTerm: (name: string) => void
+}) {
   if (event.kind === 'tool_call') return <ToolCall event={event} />
 
   if (event.kind === 'error') {
     return <div className="bubble bubble-error">{event.text}</div>
   }
 
+  // Your own message renders exactly as typed. Only the agent's prose is Markdown.
+  if (event.kind === 'user') {
+    return <div className="bubble bubble-user">{event.text}</div>
+  }
+
   return (
     <div className={`bubble bubble-${event.kind}`}>
-      {linkify(event.text ?? '', onSelectTerm)}
+      <Markdown text={event.text ?? ''} known={known} onSelectTerm={onSelectTerm} />
     </div>
   )
 }
@@ -294,18 +315,4 @@ function when(iso: string): string {
   const today = new Date().toDateString() === at.toDateString()
   const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
   return today ? time : `${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`
-}
-
-/** Renders `@Name` as a link into the glossary, leaving the rest of the text alone. */
-function linkify(text: string, onSelectTerm: (name: string) => void) {
-  const parts = text.split(/(@[A-Za-z][A-Za-z0-9_-]*)/g)
-  return parts.map((part, index) =>
-    part.startsWith('@') ? (
-      <button key={index} type="button" className="term-ref" onClick={() => onSelectTerm(part.slice(1))}>
-        {part.slice(1)}
-      </button>
-    ) : (
-      <span key={index}>{part}</span>
-    ),
-  )
 }

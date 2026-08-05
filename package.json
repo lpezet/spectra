@@ -13,7 +13,7 @@
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
     "dev:app": "npm run dev -w app",
-    "test": "npm run test -w shared && npm run test -w server && npm run test -w app",
+    "test": "npm run test -w shared && npm run test -w server && npm run test -w web && npm run test -w app",
     "typecheck": "tsc -p shared && tsc -p server && tsc -p web && tsc -p app"
   },
   "devDependencies": {
