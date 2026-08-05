@@ -2,20 +2,20 @@
  * implements: RecurrenceRule
  *
  * spec: "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as
- * `FREQ=WEEKLY;INTERVAL=2` or `FREQ=MONTHLY;BYDAY=1MO`. The full RRULE grammar applies,
- * including BYDAY, COUNT and UNTIL. Rules that do not parse as RRULE are rejected."
+ * `FREQ=WEEKLY;INTERVAL=2` or `FREQ=MONTHLY;BYDAY=1MO`. A defined subset of the grammar
+ * applies: FREQ (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL, BYDAY — plain weekdays, or
+ * ordinals such as 1MO and -1FR for monthly rules — and UNTIL. A weekly rule without BYDAY
+ * repeats on the weekday it started from. Anything else, including COUNT, BYSETPOS,
+ * BYMONTHDAY, BYMONTH, BYWEEKNO, BYYEARDAY, WKST and the sub-daily frequencies, is rejected
+ * rather than approximated."
  *
  * q-003 replaced the grammar this file used to invent (`every 2 weeks`) with the calendar
  * standard, so this is a rewrite rather than a rename.
  *
- * SUPPORTED: FREQ (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL, BYDAY — plain weekdays for
- * weekly and ordinals like `1MO` / `-1FR` for monthly — and UNTIL.
- *
- * NOT SUPPORTED, and rejected rather than approximated: COUNT, BYSETPOS, BYMONTHDAY,
- * BYMONTH, BYWEEKNO, BYYEARDAY, WKST, and the sub-daily frequencies. COUNT is the
- * interesting one — honouring it needs a tally of occurrences so far, and a Task carries
- * no such field. See q-006, raised about the gap between "the full RRULE grammar applies"
- * and what this implements.
+ * The subset above is the spec's, not this file's choice. q-006 asked whether to narrow the
+ * prose or grow the implementation to meet it, and narrowing won — so the constants below
+ * restate RecurrenceRule rather than deviating from it, and this is the one changeset so
+ * far that needed no behaviour change at all.
  *
  * Occurrences are found by scanning forward a day at a time and testing each date against
  * the rule. Slower than closed-form arithmetic and far easier to get right, which is the
@@ -70,7 +70,7 @@ export function parseRule(raw: string): { rule: Rule } | { problem: string } {
   const unsupported = UNSUPPORTED.filter((name) => parts.has(name))
   if (unsupported.length > 0) {
     return {
-      problem: `${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} valid RRULE but not supported here — see q-006`,
+      problem: `${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} valid RRULE but outside the subset RecurrenceRule defines`,
     }
   }
 

@@ -60,6 +60,9 @@ export function createTask(world: World, input: NewTask): { world: World; task: 
     done: false,
     dueDate: input.dueDate ?? null,
     project: input.project,
+    // Task.priority carries `"default": "normal"`. createTask takes no priority argument
+    // because its spec lists none, so every Task starts — and stays — normal. See q-007.
+    priority: 'normal' as const,
   }
   const task: AnyTask = input.recurrenceRule
     ? { ...base, recurrenceRule: input.recurrenceRule, ended: false }

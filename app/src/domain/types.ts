@@ -13,6 +13,26 @@
  *   rather than persisting them.
  */
 
+/**
+ * Priority: "How urgent a Task is. Exactly one of low, normal or high — there is no
+ * 'none', and priority is never absent."
+ *
+ * An attribute-type, so it is a value shape rather than a thing with its own file in
+ * app/. The closed set is stated here because the spec states it.
+ */
+export const PRIORITIES = ['low', 'normal', 'high'] as const
+export type Priority = (typeof PRIORITIES)[number]
+
+/**
+ * Nothing calls this yet, and that is the finding rather than an oversight: no function in
+ * the glossary sets a Task's priority, so there is no point at which a bad value could
+ * arrive. See q-007. Kept because it is the check the spec describes, ready for whichever
+ * entry point gains one.
+ */
+export function isPriority(value: unknown): value is Priority {
+  return typeof value === 'string' && (PRIORITIES as readonly string[]).includes(value)
+}
+
 /** Project: "A named container for Tasks." */
 export interface Project {
   id: string
@@ -31,6 +51,8 @@ export interface Task {
   dueDate: string | null
   /** Task.project — ref:Project */
   project: string
+  /** Task.priority — ref:Priority, default 'normal'. */
+  priority: Priority
 }
 
 /** RecurringTask: parent Task, adding its schedule. */

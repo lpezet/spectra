@@ -1,0 +1,122 @@
+{
+  "id": "q-007",
+  "asks": "Task.priority exists but nothing can set it. Should createTask accept one, should a function change it, or both?",
+  "because": "Task declares \"priority: ref:Priority\" with default \"normal\", and Priority says \"Exactly one of low, normal or high — there is no 'none', and priority is never absent.\" But createTask's attributes are title, project, dueDate and recurrenceRule, and the only other functions reaching a Task are completeTask, reopenTask and endRecurrence, none of which touch priority. So every Task is created normal and stays normal forever: the attribute is real, spec'd, and unreachable. cs-001 committed to the test \"setting a Task's priority to a value outside low/normal/high is rejected\", which cannot be written — there is no call that could do the rejecting.",
+  "raisedBy": {
+    "pass": "implementation",
+    "file": "app/src/domain/world.ts",
+    "terms": [
+      "Task",
+      "Priority",
+      "createTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "Set it at creation only",
+      "detail": "createTask takes an optional priority, defaulting to normal. Smallest change and it makes the attribute reachable, but a Task's urgency is exactly the kind of thing that changes after you write it down — this leaves you deleting and recreating to re-prioritise.",
+      "proposal": {
+        "summary": "Let createTask set a priority",
+        "ops": [
+          {
+            "op": "add_attribute",
+            "term": "createTask",
+            "attribute": {
+              "name": "priority",
+              "valueType": "ref:Priority",
+              "optional": true
+            }
+          },
+          {
+            "op": "modify_spec",
+            "term": "createTask",
+            "spec": "Creates a Task inside the given Project. The new Task is not done. Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it creates a plain Task. Supplying a priority sets it; omitting it leaves the Task at normal."
+          }
+        ],
+        "tests": [
+          "createTask with priority high yields a Task at high priority",
+          "createTask without a priority yields a Task at normal",
+          "createTask with a priority outside low/normal/high is rejected"
+        ]
+      }
+    },
+    {
+      "label": "Add a function that changes it",
+      "detail": "prioritiseTask sets the priority of an existing Task, leaving creation alone. Covers the case that actually happens — re-prioritising later — and gives the rejection rule somewhere to live. A Task still cannot be created as urgent, so an important Task is briefly normal.",
+      "proposal": {
+        "summary": "Add prioritiseTask",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "prioritiseTask",
+            "termType": "function",
+            "spec": "Sets the priority of a Task. The priority must be one of low, normal or high; anything else is refused and the Task is left unchanged. Setting the priority a Task already has is a no-op (idempotent) — it does not error.",
+            "attributes": [
+              { "name": "target", "valueType": "ref:Task" },
+              { "name": "priority", "valueType": "ref:Priority" }
+            ]
+          }
+        ],
+        "tests": [
+          "prioritiseTask sets a Task to high",
+          "prioritiseTask with a value outside low/normal/high is refused and changes nothing",
+          "setting the priority a Task already has changes nothing and does not error"
+        ]
+      }
+    },
+    {
+      "label": "Both",
+      "detail": "Set it at creation and change it later, which is how every real task tool works. Most vocabulary for the most coverage, and the two ops together settle where the low/normal/high rule is enforced.",
+      "proposal": {
+        "summary": "Let createTask set a priority, and add prioritiseTask to change it",
+        "ops": [
+          {
+            "op": "add_attribute",
+            "term": "createTask",
+            "attribute": {
+              "name": "priority",
+              "valueType": "ref:Priority",
+              "optional": true
+            }
+          },
+          {
+            "op": "modify_spec",
+            "term": "createTask",
+            "spec": "Creates a Task inside the given Project. The new Task is not done. Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it creates a plain Task. Supplying a priority sets it; omitting it leaves the Task at normal."
+          },
+          {
+            "op": "add_entity",
+            "term": "prioritiseTask",
+            "termType": "function",
+            "spec": "Sets the priority of a Task. The priority must be one of low, normal or high; anything else is refused and the Task is left unchanged. Setting the priority a Task already has is a no-op (idempotent) — it does not error.",
+            "attributes": [
+              { "name": "target", "valueType": "ref:Task" },
+              { "name": "priority", "valueType": "ref:Priority" }
+            ]
+          }
+        ],
+        "tests": [
+          "createTask with priority high yields a Task at high priority",
+          "prioritiseTask changes an existing Task's priority",
+          "both reject a value outside low/normal/high"
+        ]
+      }
+    },
+    {
+      "label": "Drop the attribute",
+      "detail": "If nothing sets priority and nothing reads it to any effect, it is decoration. Removing it is honest and costs nothing to maintain — but cs-001 was raised to add it, so this is really asking whether that change was wanted at all.",
+      "proposal": {
+        "summary": "Remove Task.priority and the Priority type",
+        "ops": [
+          { "op": "remove_attribute", "term": "Task", "attribute": "priority" },
+          { "op": "remove_entity", "term": "Priority" }
+        ],
+        "tests": [
+          "a Task has no priority attribute",
+          "the glossary has no Priority term"
+        ]
+      }
+    }
+  ],
+  "answer": null
+}

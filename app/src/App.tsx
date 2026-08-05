@@ -204,6 +204,10 @@ function TaskRow({
     <li className={`task ${task.done ? 'done' : ''}`}>
       <span className="title">{task.title}</span>
 
+      {/* Shown on every row because Task.priority is never absent — and because seeing
+          "normal" everywhere with no way to change it is the honest picture (q-007). */}
+      <span className={`priority priority-${task.priority}`}>{task.priority}</span>
+
       {recurring && (
         <span className={`badge ${task.ended ? 'badge-ended' : ''}`} title={task.recurrenceRule}>
           {task.ended ? '⊘ ended' : `↻ ${task.recurrenceRule}`}

@@ -7,7 +7,7 @@ import { completeTask } from './completeTask.js'
 import { deleteProject } from './deleteProject.js'
 import { reopenTask } from './reopenTask.js'
 import { endRecurrence } from './endRecurrence.js'
-import { isRecurring } from './types.js'
+import { PRIORITIES, isPriority, isRecurring } from './types.js'
 import type { World } from './types.js'
 import { createProject, createTask, emptyWorld, tasksOf } from './world.js'
 
@@ -56,6 +56,30 @@ describe('Project / Task', () => {
 
     expect(second.project.id).not.toBe(first.project.id)
     expect(second.world.projects).toHaveLength(2)
+  })
+
+  // The tests cs-001's changeset committed to. Its second — "setting a Task's priority to
+  // a value outside low/normal/high is rejected" — cannot be written yet: nothing in the
+  // glossary sets a priority, so there is no call that could reject one. q-007 asks about
+  // that. The predicate the clause describes is pinned below regardless.
+  it('defaults a new Task to normal priority', () => {
+    const { world } = scenario()
+    expect(world.tasks[0]!.priority).toBe('normal')
+  })
+
+  it('recognises exactly low, normal and high as priorities', () => {
+    expect([...PRIORITIES]).toEqual(['low', 'normal', 'high'])
+    expect(isPriority('urgent')).toBe(false)
+    expect(isPriority('normal')).toBe(true)
+  })
+
+  it('gives a RecurringTask a priority too, and keeps it across occurrences', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    expect(world.tasks[0]!.priority).toBe('normal')
+
+    const once = completeTask(world, taskId, TODAY)
+    const twice = completeTask(once.world, taskId, TODAY)
+    expect(twice.world.tasks[0]!.priority).toBe('normal')
   })
 
   it('treats a Task carrying recurrenceRule as a RecurringTask', () => {
