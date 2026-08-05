@@ -8,6 +8,9 @@ export interface Glossary {
 export interface ChangesetFeed {
   changesets: Changeset[]
   problems: SourceProblem[]
+  /** Counts only — the files themselves live in changesets/applied and changesets/rejected. */
+  applied: number
+  rejected: number
 }
 
 export interface QuestionFeed {

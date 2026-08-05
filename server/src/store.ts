@@ -25,6 +25,13 @@ export interface Glossary {
 export interface PendingChangesets {
   changesets: Changeset[]
   problems: SourceProblem[]
+  /**
+   * How many changesets have landed and how many were turned down. Counted as files, so
+   * a changeset applied in two partial passes counts twice — which is the honest number,
+   * since each file is a distinct set of ops that actually landed.
+   */
+  applied: number
+  rejected: number
 }
 
 async function listJsonFiles(dir: string): Promise<string[]> {
@@ -142,8 +149,18 @@ export async function readChangesetEntries(): Promise<{
 }
 
 export async function readChangesets(): Promise<PendingChangesets> {
-  const { entries, problems } = await readChangesetEntries()
-  return { changesets: entries.map((entry) => entry.changeset), problems }
+  const [{ entries, problems }, applied, rejected] = await Promise.all([
+    readChangesetEntries(),
+    listJsonFiles(APPLIED_DIR),
+    listJsonFiles(REJECTED_DIR),
+  ])
+
+  return {
+    changesets: entries.map((entry) => entry.changeset),
+    problems,
+    applied: applied.length,
+    rejected: rejected.length,
+  }
 }
 
 export async function findChangesetEntry(id: string): Promise<ChangesetEntry | null> {

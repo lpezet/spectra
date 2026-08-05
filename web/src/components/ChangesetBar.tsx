@@ -12,20 +12,37 @@ import type { Changeset } from '@tb/shared'
 
 interface ChangesetBarProps {
   changesets: Changeset[]
+  /** Counts of what has already landed or been turned down; the files live under changesets/. */
+  applied: number
+  rejected: number
   openId: string | null
   onToggle: (changeset: Changeset) => void
   /** The review surface, rendered inside whichever card is open. */
   renderReview: (changeset: Changeset) => ReactNode
 }
 
-export function ChangesetBar({ changesets, openId, onToggle, renderReview }: ChangesetBarProps) {
-  if (changesets.length === 0) return null
+export function ChangesetBar({
+  changesets,
+  applied,
+  rejected,
+  openId,
+  onToggle,
+  renderReview,
+}: ChangesetBarProps) {
+  // Still worth showing the header once everything has landed — "0 pending · 4 applied"
+  // says the queue is clear, where an absent section just looks like nothing happened.
+  if (changesets.length === 0 && applied === 0 && rejected === 0) return null
 
   return (
     <section className="proposals">
       <h2>
         Proposed changes
-        <span className="pill pill-pending">{changesets.length} pending</span>
+        {changesets.length > 0 && (
+          <span className="pill pill-pending">{changesets.length} pending</span>
+        )}
+        {applied > 0 && <span className="pill">{applied} applied</span>}
+        {rejected > 0 && <span className="pill">{rejected} rejected</span>}
+        {changesets.length === 0 && <span className="muted">nothing pending</span>}
       </h2>
 
       {changesets.map((changeset) => {

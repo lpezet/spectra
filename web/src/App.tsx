@@ -247,6 +247,8 @@ export function App() {
 
       <ChangesetBar
         changesets={changesets}
+        applied={feed.applied}
+        rejected={feed.rejected}
         openId={openId}
         onToggle={(changeset) => (changeset.id === openId ? closeReview() : openReview(changeset))}
         renderReview={(changeset) =>
