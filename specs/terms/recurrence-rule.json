@@ -1,7 +1,7 @@
 {
   "name": "RecurrenceRule",
   "type": "attribute-type",
-  "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". The full RRULE grammar applies, including BYDAY, COUNT and UNTIL. Rules that do not parse as RRULE are rejected.",
+  "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". A defined subset of the grammar applies: FREQ (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL, BYDAY — plain weekdays, or ordinals such as 1MO and -1FR for monthly rules — and UNTIL. A weekly rule without BYDAY repeats on the weekday it started from. Anything else, including COUNT, BYSETPOS, BYMONTHDAY, BYMONTH, BYWEEKNO, BYYEARDAY, WKST and the sub-daily frequencies, is rejected rather than approximated.",
   "parent": null,
   "tags": [],
   "attributes": []

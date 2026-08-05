@@ -1,0 +1,8 @@
+{
+  "name": "Priority",
+  "type": "attribute-type",
+  "spec": "How urgent a Task is. Exactly one of low, normal or high — there is no 'none', and priority is never absent.",
+  "parent": null,
+  "tags": ["triage"],
+  "attributes": []
+}

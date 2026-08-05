@@ -60,5 +60,10 @@
       }
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Narrow the spec to what is implemented",
+    "note": "",
+    "answeredAt": "2026-08-05T22:54:32.871Z",
+    "changesetId": "q-006-narrow-the-spec-to-what-is-implemented"
+  }
 }

@@ -8,6 +8,7 @@
     { "name": "title", "valueType": "string" },
     { "name": "done", "valueType": "boolean", "default": false },
     { "name": "dueDate", "valueType": "date", "optional": true },
-    { "name": "project", "valueType": "ref:Project" }
+    { "name": "project", "valueType": "ref:Project" },
+    { "name": "priority", "valueType": "ref:Priority", "default": "normal" }
   ]
 }
