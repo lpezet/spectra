@@ -47,5 +47,7 @@
     "creating two Projects with the same name yields two distinct Projects",
     "createTask with a recurrenceRule yields a RecurringTask; without one it yields a plain Task"
   ],
-  "fromQuestion": "q-001"
+  "fromQuestion": "q-001",
+  "appliedAt": "2026-08-05T12:23:52.438050Z",
+  "implementedAt": "2026-08-05T13:31:53.204Z"
 }

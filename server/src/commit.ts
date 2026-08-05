@@ -3,9 +3,9 @@
  * should become; this decides which files change to get there, and re-validates
  * server-side rather than trusting whatever the client selected.
  */
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { applyOps } from '@tb/shared'
+import { applyOps, parseChangeset } from '@tb/shared'
 import type { Attribute, Changeset, Diagnostic, Term } from '@tb/shared'
 import { uniquePath, writeAtomic } from './files.js'
 import {
@@ -16,6 +16,14 @@ import {
   findChangesetEntry,
   readTermEntries,
 } from './store.js'
+
+async function listResolvedFiles(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir)).filter((file) => file.endsWith('.json')).sort()
+  } catch {
+    return []
+  }
+}
 
 /** `RecurringTask` → `recurring-task.json`, matching the seed files. */
 export function termFileName(name: string): string {
@@ -173,6 +181,11 @@ export async function applyChangeset(
     serializeChangeset({
       ...changeset,
       ops: indices.map((index) => changeset.ops[index]!),
+      appliedAt: new Date().toISOString(),
+      // Applied is not implemented. Recording null here is what lets the UI show a change
+      // that landed in the glossary with no code written for it — the case the
+      // `implements:` markers cannot see, since a rewritten spec leaves them all correct.
+      implementedAt: null,
     }),
   )
 
@@ -192,6 +205,29 @@ export async function applyChangeset(
     resolvedTo: path.relative(CHANGESETS_DIR, appliedPath),
     diagnostics,
   }
+}
+
+/**
+ * Records that code has been written for an applied changeset.
+ *
+ * A stopgap: the human presses a button after re-running the implementation pass. The
+ * right owner is the coder agent, which knows exactly when a pass finished and which
+ * changesets it read — this is the first tool it should get.
+ */
+export async function markImplemented(
+  id: string,
+  at: string,
+): Promise<{ ok: boolean; status?: number; error?: string; file?: string }> {
+  for (const file of await listResolvedFiles(APPLIED_DIR)) {
+    const full = path.join(APPLIED_DIR, file)
+    const parsed = parseChangeset(JSON.parse(await readFile(full, 'utf8')))
+    if (!parsed.ok || parsed.value.id !== id) continue
+
+    await writeAtomic(full, serializeChangeset({ ...parsed.value, implementedAt: at }))
+    return { ok: true, file }
+  }
+
+  return { ok: false, status: 404, error: `No applied changeset with id "${id}".` }
 }
 
 export async function rejectChangeset(id: string): Promise<CommitOutcome> {

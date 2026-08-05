@@ -1,10 +1,11 @@
 /**
- * implements: Project, Task, RecurringTask (storage and derived relationships)
+ * implements: Project, Task, RecurringTask, createProject, createTask
  *
- * Note what is *not* here: the glossary defines `completeTask`, `reopenTask` and
- * `deleteProject`, but no creation function. `createProject` and `createTask` below are
- * therefore invented by this implementation, not derived from a spec — a real gap in the
- * glossary rather than something to paper over silently.
+ * Storage and derived relationships, plus the two creation functions.
+ *
+ * Those two used to be invented by this implementation, which is what q-001 was raised
+ * about. Answering it put them in the glossary, so they are now spec'd like anything else
+ * — see specs/terms/create-project.json and create-task.json.
  */
 import type { AnyTask, Project, World } from './types.js'
 
@@ -27,7 +28,12 @@ export function projectOf(world: World, task: AnyTask): Project | undefined {
   return world.projects.find((project) => project.id === task.project)
 }
 
-/** NOT spec-derived — see the file header. */
+/**
+ * createProject: "Creates a Project with the given name. The new Project holds no Tasks.
+ * The name is not required to be unique — two Projects may share a name and remain
+ * distinct." Identity comes from `id`, never the name, which is what makes that last
+ * clause hold without any extra work.
+ */
 export function createProject(world: World, name: string): { world: World; project: Project } {
   const project: Project = { id: nextId('project'), name }
   return { world: { ...world, projects: [...world.projects, project] }, project }
@@ -41,7 +47,11 @@ export interface NewTask {
   recurrenceRule?: string | null
 }
 
-/** NOT spec-derived — see the file header. */
+/**
+ * createTask: "Creates a Task inside the given Project. The new Task is not done.
+ * Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it
+ * creates a plain Task."
+ */
 export function createTask(world: World, input: NewTask): { world: World; task: AnyTask } {
   const base = {
     id: nextId('task'),

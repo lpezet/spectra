@@ -1,6 +1,6 @@
 import express from 'express'
 import { answerQuestion } from './answer.js'
-import { applyChangeset, rejectChangeset } from './commit.js'
+import { applyChangeset, markImplemented, rejectChangeset } from './commit.js'
 import { chatRoutes } from './agent/routes.js'
 import { AgentRunner } from './agent/runner.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
@@ -53,6 +53,15 @@ app.post('/api/changesets/:id/reject', async (req, res, next) => {
   try {
     const outcome = await rejectChangeset(req.params.id)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/changesets/:id/implemented', async (req, res, next) => {
+  try {
+    const outcome = await markImplemented(req.params.id, new Date().toISOString())
+    res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
   }

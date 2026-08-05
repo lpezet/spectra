@@ -42,6 +42,22 @@ describe('Project / Task', () => {
     expect(world.tasks[0]!.done).toBe(false)
   })
 
+  // The tests q-001's changeset committed to.
+  it('gives a newly created Project no Tasks', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    expect(tasksOf(project.world, project.project.id)).toEqual([])
+  })
+
+  it('keeps two Projects with the same name distinct', () => {
+    let world = emptyWorld()
+    const first = createProject(world, 'Home')
+    const second = createProject(first.world, 'Home')
+
+    expect(second.project.id).not.toBe(first.project.id)
+    expect(second.world.projects).toHaveLength(2)
+  })
+
   it('treats a Task carrying recurrenceRule as a RecurringTask', () => {
     const plain = scenario()
     const recurring = scenario({ recurrenceRule: 'weekly' })

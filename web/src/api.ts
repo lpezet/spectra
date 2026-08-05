@@ -8,9 +8,9 @@ export interface Glossary {
 export interface ChangesetFeed {
   changesets: Changeset[]
   problems: SourceProblem[]
-  /** Counts only — the files themselves live in changesets/applied and changesets/rejected. */
-  applied: number
-  rejected: number
+  /** Resolved changesets, newest first, from changesets/applied and changesets/rejected. */
+  applied: Changeset[]
+  rejected: Changeset[]
 }
 
 export interface QuestionFeed {
@@ -73,6 +73,11 @@ export function applyChangeset(
     opIndices,
     acknowledgeWarnings,
   })
+}
+
+/** Records that code has been written for an applied changeset. */
+export function markImplemented(id: string): Promise<CommitOutcome> {
+  return post(`/api/changesets/${encodeURIComponent(id)}/implemented`, {})
 }
 
 export function rejectChangeset(id: string): Promise<CommitOutcome> {

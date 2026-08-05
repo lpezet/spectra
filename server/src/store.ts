@@ -26,12 +26,12 @@ export interface PendingChangesets {
   changesets: Changeset[]
   problems: SourceProblem[]
   /**
-   * How many changesets have landed and how many were turned down. Counted as files, so
-   * a changeset applied in two partial passes counts twice — which is the honest number,
-   * since each file is a distinct set of ops that actually landed.
+   * What has landed and what was turned down, newest first. Each entry is a distinct set
+   * of ops, so a changeset applied in two partial passes appears twice — the honest count,
+   * since each file records ops that actually landed.
    */
-  applied: number
-  rejected: number
+  applied: Changeset[]
+  rejected: Changeset[]
 }
 
 async function listJsonFiles(dir: string): Promise<string[]> {
@@ -148,18 +148,40 @@ export async function readChangesetEntries(): Promise<{
   return { entries, problems }
 }
 
+/**
+ * Reads a resolved directory — `applied/` or `rejected/`. Unlike the pending read, a file
+ * that fails to parse is skipped silently rather than raised as a problem: these are
+ * history, and a malformed old record should not clutter the UI with something you cannot
+ * act on.
+ */
+async function readResolved(dir: string): Promise<Changeset[]> {
+  const changesets: Changeset[] = []
+
+  for (const file of await listJsonFiles(dir)) {
+    try {
+      const parsed = parseChangeset(JSON.parse(await readFile(path.join(dir, file), 'utf8')))
+      if (parsed.ok) changesets.push(parsed.value)
+    } catch {
+      // Unreadable history is not worth failing a request over.
+    }
+  }
+
+  // Newest first. Changesets applied before `appliedAt` existed sort last, which is right.
+  return changesets.sort((a, b) => (b.appliedAt ?? '').localeCompare(a.appliedAt ?? ''))
+}
+
 export async function readChangesets(): Promise<PendingChangesets> {
   const [{ entries, problems }, applied, rejected] = await Promise.all([
     readChangesetEntries(),
-    listJsonFiles(APPLIED_DIR),
-    listJsonFiles(REJECTED_DIR),
+    readResolved(APPLIED_DIR),
+    readResolved(REJECTED_DIR),
   ])
 
   return {
     changesets: entries.map((entry) => entry.changeset),
     problems,
-    applied: applied.length,
-    rejected: rejected.length,
+    applied,
+    rejected,
   }
 }
 

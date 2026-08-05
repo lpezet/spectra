@@ -65,6 +65,8 @@ export const changesetSchema = z
     ops: z.array(opSchema),
     tests: z.array(z.string()).default([]),
     fromQuestion: z.string().min(1).optional(),
+    appliedAt: z.string().optional(),
+    implementedAt: z.string().nullable().optional(),
   })
   .strict()
 

@@ -1,5 +1,7 @@
 /**
- * implements: RecurringTask (the `recurrenceRule` string it carries)
+ * implements: RecurringTask
+ *
+ * Specifically the `recurrenceRule` string it carries.
  *
  * The glossary types `recurrenceRule` as a plain `string` and says nothing about its
  * grammar, so the grammar below is the implementation's choice, not the spec's:

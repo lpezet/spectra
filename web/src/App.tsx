@@ -8,6 +8,7 @@ import {
   fetchChangesets,
   fetchGlossary,
   fetchQuestions,
+  markImplemented,
   rejectChangeset,
 } from './api.js'
 import type { Entity } from './chat.js'
@@ -250,6 +251,8 @@ export function App() {
         applied={feed.applied}
         rejected={feed.rejected}
         openId={openId}
+        busy={busy}
+        onImplemented={(id) => commit(() => markImplemented(id))}
         onToggle={(changeset) => (changeset.id === openId ? closeReview() : openReview(changeset))}
         renderReview={(changeset) =>
           review && (

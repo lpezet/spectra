@@ -60,6 +60,14 @@ export interface Changeset {
   tests: string[]
   /** Set when this changeset was minted by answering a Question — the id of that question. */
   fromQuestion?: string
+  /** ISO timestamp, written when the changeset lands. Absent while it is still pending. */
+  appliedAt?: string
+  /**
+   * When code was written for this change. `null` means applied but not yet implemented —
+   * the state the `implements:` markers cannot detect, because a rewritten spec leaves
+   * every marker looking correct. Absent on changesets applied before this was tracked.
+   */
+  implementedAt?: string | null
 }
 
 /**

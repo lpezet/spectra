@@ -1175,3 +1175,35 @@ button.option:hover {
   border-bottom: none;
   cursor: help;
 }
+
+/* ---- resolved changesets ---- */
+
+.pill-awaiting {
+  color: var(--modify);
+  border-color: currentColor;
+}
+
+.proposal.resolved {
+  border-left-color: var(--add);
+  opacity: 0.72;
+}
+
+/* Applied but unimplemented is outstanding work, not history — it keeps full weight and
+   the amber of something still waiting on you. */
+.proposal.resolved.awaiting {
+  border-left-color: var(--modify);
+  opacity: 1;
+}
+
+.resolved-head {
+  cursor: default;
+}
+
+.resolved-body {
+  padding: 0 14px 12px 14px;
+}
+
+.resolved-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+}

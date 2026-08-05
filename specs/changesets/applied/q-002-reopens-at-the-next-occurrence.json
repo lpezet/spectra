@@ -13,5 +13,7 @@
     "completing a RecurringTask due 2026-08-05 with rule 'every 3 days' sets dueDate to 2026-08-08",
     "a Project holding a RecurringTask can never satisfy deleteProject's all-Tasks-done rule"
   ],
-  "fromQuestion": "q-002"
+  "fromQuestion": "q-002",
+  "appliedAt": "2026-08-05T01:28:26.584896Z",
+  "implementedAt": "2026-08-05T13:31:53.236Z"
 }
