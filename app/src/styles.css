@@ -226,3 +226,8 @@ button.danger:hover {
   border-left-color: var(--bad);
   color: var(--bad);
 }
+
+/* An ended RecurringTask is finished for good — it reads as a plain Task from here on. */
+.badge-ended {
+  color: var(--muted);
+}

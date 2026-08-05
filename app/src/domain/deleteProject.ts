@@ -3,8 +3,13 @@
  *
  * spec: "Deletes a Project. Blocks rather than cascades: if the Project still holds any
  * Task that is not done, the deletion is refused and the caller is told how many
- * incomplete Tasks remain. A Project whose Tasks are all done is deleted together with
- * those Tasks."
+ * incomplete Tasks remain. A RecurringTask counts as done only once it has been ended and
+ * then completed. A Project whose Tasks are all done is deleted together with those Tasks."
+ *
+ * The RecurringTask clause needs no code of its own: since q-004, ending one and then
+ * completing it sets `done`, so the plain not-done check below already means exactly what
+ * the sentence says. Worth stating because the absence of a special case looks like an
+ * omission otherwise.
  */
 import type { Result, World } from './types.js'
 import { tasksOf } from './world.js'

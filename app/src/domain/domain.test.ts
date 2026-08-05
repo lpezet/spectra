@@ -5,8 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import { completeTask } from './completeTask.js'
 import { deleteProject } from './deleteProject.js'
-import { nextOccurrence } from './recurrence.js'
 import { reopenTask } from './reopenTask.js'
+import { endRecurrence } from './endRecurrence.js'
 import { isRecurring } from './types.js'
 import type { World } from './types.js'
 import { createProject, createTask, emptyWorld, tasksOf } from './world.js'
@@ -60,7 +60,7 @@ describe('Project / Task', () => {
 
   it('treats a Task carrying recurrenceRule as a RecurringTask', () => {
     const plain = scenario()
-    const recurring = scenario({ recurrenceRule: 'weekly' })
+    const recurring = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
     expect(isRecurring(plain.world.tasks[0]!)).toBe(false)
     expect(isRecurring(recurring.world.tasks[0]!)).toBe(true)
   })
@@ -92,17 +92,17 @@ describe('completeTask', () => {
 
   // The three below are the tests q-002's changeset committed to, verbatim.
   it('leaves a RecurringTask not done', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'every 3 days', dueDate: '2026-08-05' })
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' })
     expect(completeTask(world, taskId, TODAY).world.tasks[0]!.done).toBe(false)
   })
 
-  it('advances a RecurringTask due 2026-08-05 with rule "every 3 days" to 2026-08-08', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'every 3 days', dueDate: '2026-08-05' })
+  it('advances a RecurringTask due 2026-08-05 with FREQ=DAILY;INTERVAL=3 to 2026-08-08', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' })
     expect(completeTask(world, taskId, TODAY).world.tasks[0]!.dueDate).toBe('2026-08-08')
   })
 
   it('advances from today when a RecurringTask has no dueDate', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'weekly' })
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
     const result = completeTask(world, taskId, TODAY)
 
     expect(result.world.tasks[0]!.done).toBe(false)
@@ -110,7 +110,7 @@ describe('completeTask', () => {
   })
 
   it('can be completed repeatedly, advancing the schedule each time', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'weekly', dueDate: '2026-08-05' })
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
     const once = completeTask(world, taskId, TODAY)
     const twice = completeTask(once.world, taskId, TODAY)
 
@@ -119,7 +119,7 @@ describe('completeTask', () => {
   })
 
   it('refuses when the recurrenceRule cannot be parsed, leaving the Task untouched', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'whenever I feel like it', dueDate: TODAY })
+    const { world, taskId } = scenario({ recurrenceRule: 'every other Tuesday', dueDate: TODAY })
     const result = completeTask(world, taskId, TODAY)
 
     expect(result.ok).toBe(false)
@@ -152,19 +152,19 @@ describe('reopenTask', () => {
   })
 
   it('leaves the recurrence schedule untouched', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'every 3 days', dueDate: '2026-08-05' })
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' })
     const completed = completeTask(world, taskId, TODAY)
     const reopened = reopenTask(completed.world, taskId)
 
     expect(reopened.world.tasks[0]!.done).toBe(false)
     expect(reopened.world.tasks[0]!.dueDate).toBe('2026-08-08')
-    expect(isRecurring(reopened.world.tasks[0]!) && reopened.world.tasks[0]!.recurrenceRule).toBe('every 3 days')
+    expect(isRecurring(reopened.world.tasks[0]!) && reopened.world.tasks[0]!.recurrenceRule).toBe('FREQ=DAILY;INTERVAL=3')
   })
 
   // Since q-002, completing a RecurringTask already leaves it open, so this path is the
   // only one a RecurringTask can take through reopenTask.
   it('is always a no-op on a RecurringTask, because completing one never leaves it done', () => {
-    const { world, taskId } = scenario({ recurrenceRule: 'weekly', dueDate: '2026-08-05' })
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
     const completed = completeTask(world, taskId, TODAY)
     const reopened = reopenTask(completed.world, taskId)
 
@@ -200,15 +200,15 @@ describe('deleteProject', () => {
     expect(result.world.tasks).toEqual([])
   })
 
-  // The third test q-002's changeset committed to — and the consequence it warned about.
-  it('can never delete a Project holding a RecurringTask, because completing one never finishes it', () => {
+  // q-002 made this unsatisfiable; q-004 gave it a way out. Both halves are pinned here.
+  it('still refuses while a RecurringTask has not ended, however often it is completed', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
     const task = createTask(world, {
       title: 'Water the plants',
       project: project.project.id,
-      recurrenceRule: 'weekly',
+      recurrenceRule: 'FREQ=WEEKLY',
     })
     world = task.world
 
@@ -220,6 +220,26 @@ describe('deleteProject', () => {
     const result = deleteProject(world, project.project.id)
     expect(result.ok).toBe(false)
     expect(result.message).toMatch(/1 incomplete Task/)
+  })
+
+  // The test q-004's changeset committed to.
+  it('deletes a Project once its RecurringTasks are ended and completed', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    world = project.world
+    const task = createTask(world, {
+      title: 'Water the plants',
+      project: project.project.id,
+      recurrenceRule: 'FREQ=WEEKLY',
+    })
+    world = task.world
+
+    world = endRecurrence(world, task.task.id).world
+    world = completeTask(world, task.task.id, TODAY).world
+
+    const result = deleteProject(world, project.project.id)
+    expect(result.ok).toBe(true)
+    expect(result.world.projects).toEqual([])
   })
 
   it('deletes an empty Project', () => {
@@ -246,26 +266,47 @@ describe('deleteProject', () => {
   })
 })
 
-describe('nextOccurrence', () => {
-  it('understands the shorthand rules', () => {
-    expect(nextOccurrence('2026-08-04', 'daily').date).toBe('2026-08-05')
-    expect(nextOccurrence('2026-08-04', 'weekly').date).toBe('2026-08-11')
-    expect(nextOccurrence('2026-08-04', 'monthly').date).toBe('2026-09-04')
+describe('endRecurrence', () => {
+  // The tests q-004's changeset committed to.
+  it('makes an ended RecurringTask stay done when completed, rather than reopening', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const ended = endRecurrence(world, taskId)
+    const done = completeTask(ended.world, taskId, TODAY)
+
+    expect(done.world.tasks[0]!.done).toBe(true)
+    expect(done.world.tasks[0]!.dueDate).toBe('2026-08-05')
   })
 
-  it('understands "every N units"', () => {
-    expect(nextOccurrence('2026-08-04', 'every 3 days').date).toBe('2026-08-07')
-    expect(nextOccurrence('2026-08-04', 'every 2 weeks').date).toBe('2026-08-18')
-    expect(nextOccurrence('2026-08-04', 'EVERY 1 Month').date).toBe('2026-09-04')
+  it('is idempotent: ending an already-ended RecurringTask changes nothing and does not error', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const once = endRecurrence(world, taskId)
+    const twice = endRecurrence(once.world, taskId)
+
+    expect(twice.ok).toBe(true)
+    expect(twice.world).toBe(once.world)
+    expect(twice.message).toMatch(/had already ended/)
   })
 
-  it('clamps a month step to the end of a shorter month', () => {
-    expect(nextOccurrence('2026-01-31', 'monthly').date).toBe('2026-02-28')
+  it('refuses on a plain Task, which has no recurrence to end', () => {
+    const { world, taskId } = scenario()
+    const result = endRecurrence(world, taskId)
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/is not a RecurringTask/)
   })
 
-  it('reports rules it cannot parse instead of guessing', () => {
-    const result = nextOccurrence('2026-08-04', 'every other Tuesday')
-    expect(result.date).toBeNull()
-    expect(result.problem).toMatch(/not a recurrence rule/)
+  it('leaves the rule and dueDate alone — it stops repetition, it does not reschedule', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const ended = endRecurrence(world, taskId)
+    const task = ended.world.tasks[0]!
+
+    expect(task.dueDate).toBe('2026-08-05')
+    expect(isRecurring(task) && task.recurrenceRule).toBe('FREQ=WEEKLY')
+  })
+
+  it('starts a new RecurringTask un-ended', () => {
+    const { world } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const task = world.tasks[0]!
+    expect(isRecurring(task) && task.ended).toBe(false)
   })
 })

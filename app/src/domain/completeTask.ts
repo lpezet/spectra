@@ -8,6 +8,9 @@
  *
  * This clause used to be ambiguous and this file took the opposite reading. q-002 settled
  * it — see specs/questions/q-002-recurring-completion.json for the reasoning.
+ *
+ * q-004 then added `ended`: an ended RecurringTask completes like a plain Task rather than
+ * rescheduling, which is how a Project holding one becomes deletable again.
  */
 import { nextOccurrence } from './recurrence.js'
 import type { AnyTask, Result, World } from './types.js'
@@ -27,7 +30,10 @@ export function completeTask(world: World, taskId: string, today: string): Resul
   let updated: AnyTask
   let message: string
 
-  if (isRecurring(task)) {
+  // endRecurrence's spec: "completing an ended RecurringTask marks it done like any plain
+  // Task." So an ended one deliberately falls through to the plain branch below — that is
+  // what makes a Project holding one deletable again.
+  if (isRecurring(task) && !task.ended) {
     // No dueDate to advance from means the schedule starts counting from now.
     const next = nextOccurrence(task.dueDate ?? today, task.recurrenceRule)
 

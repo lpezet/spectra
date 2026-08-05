@@ -62,7 +62,7 @@ export function createTask(world: World, input: NewTask): { world: World; task: 
     project: input.project,
   }
   const task: AnyTask = input.recurrenceRule
-    ? { ...base, recurrenceRule: input.recurrenceRule }
+    ? { ...base, recurrenceRule: input.recurrenceRule, ended: false }
     : base
 
   return { world: { ...world, tasks: [...world.tasks, task] }, task }
@@ -85,7 +85,7 @@ export function seedWorld(): World {
   const work = createProject(world, 'Work')
   world = work.world
 
-  world = createTask(world, { title: 'Water the plants', project: home.project.id, recurrenceRule: 'every 3 days', dueDate: '2026-08-05' }).world
+  world = createTask(world, { title: 'Water the plants', project: home.project.id, recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' }).world
   world = createTask(world, { title: 'Replace the smoke alarm battery', project: home.project.id, dueDate: '2026-08-20' }).world
   world = createTask(world, { title: 'Write the Phase 2 brief', project: work.project.id }).world
 

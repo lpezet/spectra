@@ -1,5 +1,5 @@
 /**
- * implements: Project, Task, RecurringTask, completeTask, reopenTask, deleteProject
+ * implements: Project, Task, RecurringTask, completeTask, reopenTask, deleteProject, endRecurrence
  *
  * Intentionally bare. The point is to exercise the spec'd behaviour, not to be a good
  * ToDo app — so every spec'd function reports what it did into the log at the bottom,
@@ -8,6 +8,7 @@
 import { useMemo, useState } from 'react'
 import { completeTask } from './domain/completeTask.js'
 import { deleteProject } from './domain/deleteProject.js'
+import { endRecurrence } from './domain/endRecurrence.js'
 import { reopenTask } from './domain/reopenTask.js'
 import type { AnyTask, Result, World } from './domain/types.js'
 import { isRecurring } from './domain/types.js'
@@ -140,7 +141,7 @@ export function App() {
                 <input
                   value={rule}
                   onChange={(event) => setRule(event.target.value)}
-                  placeholder="recurrence (e.g. weekly)"
+                  placeholder="RRULE, e.g. FREQ=WEEKLY"
                   aria-label="Recurrence rule — leave blank for a plain Task"
                 />
                 <button type="submit">Add</button>
@@ -156,6 +157,7 @@ export function App() {
                       task={task}
                       onComplete={() => run(completeTask(world, task.id, today()))}
                       onReopen={() => run(reopenTask(world, task.id))}
+                      onEnd={() => run(endRecurrence(world, task.id))}
                     />
                   ))}
                 </ul>
@@ -189,16 +191,24 @@ function TaskRow({
   task,
   onComplete,
   onReopen,
+  onEnd,
 }: {
   task: AnyTask
   onComplete: () => void
   onReopen: () => void
+  onEnd: () => void
 }) {
+  const recurring = isRecurring(task)
+
   return (
     <li className={`task ${task.done ? 'done' : ''}`}>
       <span className="title">{task.title}</span>
 
-      {isRecurring(task) && <span className="badge">↻ {task.recurrenceRule}</span>}
+      {recurring && (
+        <span className={`badge ${task.ended ? 'badge-ended' : ''}`} title={task.recurrenceRule}>
+          {task.ended ? '⊘ ended' : `↻ ${task.recurrenceRule}`}
+        </span>
+      )}
       {task.dueDate && <span className="muted due">due {task.dueDate}</span>}
 
       <span className="actions">
@@ -208,6 +218,12 @@ function TaskRow({
         <button type="button" onClick={onReopen}>
           Reopen
         </button>
+        {/* Only a RecurringTask has recurrence to end, and ending twice is a no-op anyway. */}
+        {recurring && !task.ended && (
+          <button type="button" onClick={onEnd} title="Stop it repeating — completing it then finishes it">
+            End
+          </button>
+        )}
       </span>
     </li>
   )

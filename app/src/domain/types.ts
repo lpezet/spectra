@@ -33,10 +33,12 @@ export interface Task {
   project: string
 }
 
-/** RecurringTask: parent Task, adding one attribute. */
+/** RecurringTask: parent Task, adding its schedule. */
 export interface RecurringTask extends Task {
-  /** RecurringTask.recurrenceRule — string */
+  /** RecurringTask.recurrenceRule — ref:RecurrenceRule, an RFC 5545 RRULE. */
   recurrenceRule: string
+  /** RecurringTask.ended — boolean, default false. Stops it repeating (q-004). */
+  ended: boolean
 }
 
 export type AnyTask = Task | RecurringTask

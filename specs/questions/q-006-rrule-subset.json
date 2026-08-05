@@ -1,0 +1,64 @@
+{
+  "id": "q-006",
+  "asks": "RecurrenceRule claims the full RRULE grammar, but the app implements a subset and rejects the rest. Narrow the spec, take a dependency, or leave the gap standing?",
+  "because": "RecurrenceRule says \"The full RRULE grammar applies, including BYDAY, COUNT and UNTIL.\" app/src/domain/recurrence.ts supports FREQ (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL, BYDAY and UNTIL, and rejects COUNT, BYSETPOS, BYMONTHDAY, BYMONTH, BYWEEKNO, BYYEARDAY, WKST and the sub-daily frequencies. So the spec asserts something no implementation behind it delivers. COUNT is the sharpest case and the spec names it explicitly: honouring \"repeat 5 times\" needs a tally of occurrences so far, and Task carries no such attribute — it is not a parsing gap but a missing piece of the data model.",
+  "raisedBy": {
+    "pass": "implementation",
+    "file": "app/src/domain/recurrence.ts",
+    "terms": [
+      "RecurrenceRule",
+      "RecurringTask",
+      "Task"
+    ]
+  },
+  "options": [
+    {
+      "label": "Narrow the spec to what is implemented",
+      "detail": "Say exactly which RRULE parts are in scope, so the spec stops promising more than anything delivers. Cheapest, and honest — but it means a rule copied from a real calendar may be rejected, which is a surprising thing for a standard-shaped string to do.",
+      "proposal": {
+        "summary": "State the RRULE subset RecurrenceRule actually covers",
+        "ops": [
+          {
+            "op": "modify_spec",
+            "term": "RecurrenceRule",
+            "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". A defined subset of the grammar applies: FREQ (DAILY, WEEKLY, MONTHLY, YEARLY), INTERVAL, BYDAY — plain weekdays, or ordinals such as 1MO and -1FR for monthly rules — and UNTIL. A weekly rule without BYDAY repeats on the weekday it started from. Anything else, including COUNT, BYSETPOS, BYMONTHDAY, BYMONTH, BYWEEKNO, BYYEARDAY, WKST and the sub-daily frequencies, is rejected rather than approximated."
+          }
+        ],
+        "tests": [
+          "\"FREQ=WEEKLY;INTERVAL=2\" is accepted",
+          "\"FREQ=DAILY;COUNT=5\" is rejected, naming COUNT as unsupported",
+          "a weekly rule with no BYDAY repeats on the weekday it started from"
+        ]
+      }
+    },
+    {
+      "label": "Keep the full grammar and support it properly",
+      "detail": "Leaves the spec as the standard says and makes the implementation meet it — in practice by taking an RRULE library rather than hand-rolling RFC 5545, which is large and subtle. Note this does not resolve COUNT on its own: bounded series still need somewhere to record how many occurrences have happened, so it likely pulls a second change behind it.",
+      "proposal": null
+    },
+    {
+      "label": "Add what COUNT needs, then decide the rest",
+      "detail": "Treats the data-model gap as the real finding. A RecurringTask gains a count of completed occurrences, which is what makes COUNT expressible at all — and is arguably worth having anyway, since nothing currently records how many times a repeating Task has been done.",
+      "proposal": {
+        "summary": "Record how many occurrences of a RecurringTask have completed",
+        "ops": [
+          {
+            "op": "add_attribute",
+            "term": "RecurringTask",
+            "attribute": {
+              "name": "occurrencesCompleted",
+              "valueType": "number",
+              "default": 0
+            }
+          }
+        ],
+        "tests": [
+          "a new RecurringTask has completed no occurrences",
+          "completing a RecurringTask increments its occurrence count",
+          "reopening a RecurringTask does not decrement it"
+        ]
+      }
+    }
+  ],
+  "answer": null
+}
