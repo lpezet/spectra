@@ -11,9 +11,11 @@
  * only you can make; a changeset is a proposal already formed and waiting to be checked.
  * Same shape, different job.
  */
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Changeset } from '@tb/shared'
 import { summarizeOp } from '@tb/shared'
+import { FilterPills, toggled } from './FilterPills.js'
 
 interface ChangesetBarProps {
   changesets: Changeset[]
@@ -33,6 +35,13 @@ function awaitingImplementation(changeset: Changeset): boolean {
   return changeset.implementedAt === null
 }
 
+/**
+ * `awaiting` is on by default even though it is technically history — a change sitting in
+ * the glossary with no code behind it is the one piece of resolved work that still wants
+ * doing, and defaulting it off would undo the reason for tracking it.
+ */
+const DEFAULT_FILTERS = new Set(['pending', 'awaiting'])
+
 export function ChangesetBar({
   changesets,
   applied,
@@ -43,29 +52,49 @@ export function ChangesetBar({
   busy,
   renderReview,
 }: ChangesetBarProps) {
-  const resolved = [...applied, ...rejected]
-  if (changesets.length === 0 && resolved.length === 0) return null
+  const [filters, setFilters] = useState<ReadonlySet<string>>(DEFAULT_FILTERS)
 
-  const awaiting = applied.filter(awaitingImplementation).length
+  const awaiting = applied.filter(awaitingImplementation)
+  const done = applied.filter((changeset) => !awaitingImplementation(changeset))
+
+  if (changesets.length === 0 && applied.length === 0 && rejected.length === 0) return null
+
+  const shown = [
+    ...(filters.has('awaiting') ? awaiting.map((changeset) => ({ changeset, rejected: false })) : []),
+    ...(filters.has('applied') ? done.map((changeset) => ({ changeset, rejected: false })) : []),
+    ...(filters.has('rejected') ? rejected.map((changeset) => ({ changeset, rejected: true })) : []),
+  ]
+  const pending = filters.has('pending') ? changesets : []
 
   return (
     <section className="proposals">
       <h2>
         Proposed changes
-        {changesets.length > 0 && (
-          <span className="pill pill-pending">{changesets.length} pending</span>
-        )}
-        {applied.length > 0 && <span className="pill">{applied.length} applied</span>}
-        {rejected.length > 0 && <span className="pill">{rejected.length} rejected</span>}
-        {awaiting > 0 && (
-          <span className="pill pill-awaiting" title="Applied to the glossary, but no code written for it yet">
-            {awaiting} awaiting implementation
-          </span>
-        )}
-        {changesets.length === 0 && <span className="muted">nothing pending</span>}
+        <FilterPills
+          active={filters}
+          onToggle={(key) => setFilters((current) => toggled(current, key))}
+          options={[
+            { key: 'pending', label: 'pending', count: changesets.length, tone: 'pending' },
+            {
+              key: 'awaiting',
+              label: 'awaiting implementation',
+              count: awaiting.length,
+              tone: 'awaiting',
+              title: 'Applied to the glossary, but no code written for it yet',
+            },
+            { key: 'applied', label: 'applied', count: done.length },
+            { key: 'rejected', label: 'rejected', count: rejected.length },
+          ]}
+        />
       </h2>
 
-      {changesets.map((changeset) => (
+      {pending.length === 0 && shown.length === 0 && (
+        <p className="muted empty-filter">
+          {changesets.length === 0 ? 'Nothing pending.' : 'Everything is filtered out.'}
+        </p>
+      )}
+
+      {pending.map((changeset) => (
         <article key={changeset.id} className="proposal">
           <button type="button" className="question-head" onClick={() => onToggle(changeset)}>
             <Head changeset={changeset} />
@@ -78,11 +107,11 @@ export function ChangesetBar({
         </article>
       ))}
 
-      {resolved.map((changeset, index) => (
+      {shown.map((entry, index) => (
         <ResolvedCard
-          key={`${changeset.id}-${changeset.appliedAt ?? index}`}
-          changeset={changeset}
-          rejected={rejected.includes(changeset)}
+          key={`${entry.changeset.id}-${entry.changeset.appliedAt ?? index}`}
+          changeset={entry.changeset}
+          rejected={entry.rejected}
           onImplemented={onImplemented}
           busy={busy}
         />

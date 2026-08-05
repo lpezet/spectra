@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Question, QuestionOption } from '@tb/shared'
 import { summarizeOp } from '@tb/shared'
+import { FilterPills, toggled } from './FilterPills.js'
 import { TermRef } from './TermRef.js'
 
 interface QuestionPanelProps {
@@ -12,27 +13,52 @@ interface QuestionPanelProps {
 }
 
 /**
+ * Decided questions stay available but not on screen. They are the record of why the
+ * glossary says what it says, and worth keeping forever — which is exactly why they should
+ * not compete for space with the ones still waiting on you.
+ */
+const DEFAULT_FILTERS = new Set(['unanswered'])
+
+/**
  * The questions an implementation pass raised against the glossary. Open ones sit at the
- * top because an unanswered question is a decision nobody has made yet; answered ones stay
- * below as the record of what was decided and why — the reasoning outlives the changeset.
+ * top because an unanswered question is a decision nobody has made yet; answered ones are
+ * a click away behind the "decided" pill.
  */
 export function QuestionPanel({ questions, known, onSelectTerm, onAnswer, busy }: QuestionPanelProps) {
   const [openId, setOpenId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<ReadonlySet<string>>(DEFAULT_FILTERS)
 
   if (questions.length === 0) return null
 
   const open = questions.filter((question) => !question.answer)
   const answered = questions.filter((question) => question.answer)
 
+  const shown = [
+    ...(filters.has('unanswered') ? open : []),
+    ...(filters.has('decided') ? answered : []),
+  ]
+
   return (
     <section className="questions">
       <h2>
         Questions
-        {open.length > 0 && <span className="pill pill-open">{open.length} unanswered</span>}
-        {answered.length > 0 && <span className="pill">{answered.length} decided</span>}
+        <FilterPills
+          active={filters}
+          onToggle={(key) => setFilters((current) => toggled(current, key))}
+          options={[
+            { key: 'unanswered', label: 'unanswered', count: open.length, tone: 'open' },
+            { key: 'decided', label: 'decided', count: answered.length },
+          ]}
+        />
       </h2>
 
-      {[...open, ...answered].map((question) => (
+      {shown.length === 0 && (
+        <p className="muted empty-filter">
+          {open.length === 0 ? 'Nothing unanswered.' : 'Everything is filtered out.'}
+        </p>
+      )}
+
+      {shown.map((question) => (
         <QuestionCard
           key={question.id}
           question={question}
