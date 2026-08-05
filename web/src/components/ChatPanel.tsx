@@ -150,7 +150,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
           {sessions.length === 0 && <option value="">no conversations</option>}
           {sessions.map((session) => (
             <option key={session.id} value={session.id}>
-              {session.title}
+              {when(session.updatedAt)} · {session.title}
             </option>
           ))}
         </select>
@@ -282,6 +282,18 @@ function ToolCall({ event }: { event: ChatEvent }) {
       )}
     </div>
   )
+}
+
+/**
+ * Conversations are titled from their first message, which collides constantly — ask
+ * "where should I start?" three times and you get three identical entries. The timestamp
+ * is what actually distinguishes them.
+ */
+function when(iso: string): string {
+  const at = new Date(iso)
+  const today = new Date().toDateString() === at.toDateString()
+  const time = at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return today ? time : `${at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`
 }
 
 /** Renders `@Name` as a link into the glossary, leaving the rest of the text alone. */
