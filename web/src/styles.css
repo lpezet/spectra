@@ -493,14 +493,6 @@ button {
 
 /* ---- changesets ---- */
 
-.changeset-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
 .changeset {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -732,17 +724,19 @@ button {
 
 /* ---- questions ---- */
 
-.questions {
+.questions,
+.proposals {
   margin-bottom: 18px;
 }
 
-.questions h2 {
+/* Sentence case, not uppercase — these read as labels for the cards beneath them, and
+   "Proposed changes" shouted in caps looks like a warning. */
+.questions h2,
+.proposals h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
   color: var(--muted);
   margin: 0 0 8px;
   font-weight: 600;
@@ -764,12 +758,41 @@ button {
   border-color: currentColor;
 }
 
-.question {
+.pill-pending {
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.question,
+.proposal {
   border: 1px solid var(--line);
   border-left: 3px solid var(--line);
   background: var(--panel);
   border-radius: 6px;
   margin-bottom: 6px;
+}
+
+/* Blue, where an open question is amber: a proposal is already formed and waiting to be
+   checked, not waiting for a decision only you can make. */
+.proposal {
+  border-left-color: var(--accent);
+}
+
+.proposal-body {
+  border-top: 1px solid var(--line);
+}
+
+/* The review used to be its own panel; inside a card it should not repeat the frame. */
+.proposal-body .changeset {
+  border: none;
+  border-radius: 0;
+  margin-bottom: 0;
+  padding-top: 4px;
+  background: none;
+}
+
+.proposal-body .changeset-header {
+  display: none;
 }
 
 .question.open {

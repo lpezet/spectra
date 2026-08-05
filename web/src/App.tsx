@@ -12,6 +12,7 @@ import {
 } from './api.js'
 import type { Entity } from './chat.js'
 import { HighlightLegend } from './components/BacklinkHighlight.js'
+import { ChangesetBar } from './components/ChangesetBar.js'
 import { ChangesetReview } from './components/ChangesetReview.js'
 import { ChatPanel } from './components/ChatPanel.js'
 import { QuestionPanel } from './components/QuestionPanel.js'
@@ -244,40 +245,29 @@ export function App() {
         busy={busy}
       />
 
-      {changesets.length > 0 && (
-        <div className="changeset-bar">
-          <span className="muted">Proposed changes</span>
-          {changesets.map((changeset) => (
-            <button
-              key={changeset.id}
-              type="button"
-              className={`chip ${changeset.id === openId ? 'chip-on chip-entity' : ''}`}
-              onClick={() => (changeset.id === openId ? closeReview() : openReview(changeset))}
-            >
-              {changeset.id} · {changeset.summary}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {openChangeset && review && (
-        <ChangesetReview
-          changeset={openChangeset}
-          review={review}
-          selectedOps={selectedOps}
-          onToggleOp={toggleOp}
-          onSetAllOps={setAllOps}
-          onSelectTerm={setSelected}
-          onClose={closeReview}
-          acknowledged={acknowledged}
-          onAcknowledge={setAcknowledged}
-          onApply={() =>
-            commit(() => applyChangeset(openChangeset.id, [...selectedOps], acknowledged))
-          }
-          onReject={() => commit(() => rejectChangeset(openChangeset.id))}
-          busy={busy}
-        />
-      )}
+      <ChangesetBar
+        changesets={changesets}
+        openId={openId}
+        onToggle={(changeset) => (changeset.id === openId ? closeReview() : openReview(changeset))}
+        renderReview={(changeset) =>
+          review && (
+            <ChangesetReview
+              changeset={changeset}
+              review={review}
+              selectedOps={selectedOps}
+              onToggleOp={toggleOp}
+              onSetAllOps={setAllOps}
+              onSelectTerm={setSelected}
+              onClose={closeReview}
+              acknowledged={acknowledged}
+              onAcknowledge={setAcknowledged}
+              onApply={() => commit(() => applyChangeset(changeset.id, [...selectedOps], acknowledged))}
+              onReject={() => commit(() => rejectChangeset(changeset.id))}
+              busy={busy}
+            />
+          )
+        }
+      />
 
       <div className="panes">
         <div className="pane pane-list">
