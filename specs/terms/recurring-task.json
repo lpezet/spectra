@@ -1,0 +1,10 @@
+{
+  "name": "RecurringTask",
+  "type": "entity",
+  "spec": "A Task that regenerates on a schedule. Completing a RecurringTask marks the current occurrence done and schedules the next one; it never deletes the Task itself.",
+  "parent": "Task",
+  "tags": [],
+  "attributes": [
+    { "name": "recurrenceRule", "valueType": "string" }
+  ]
+}

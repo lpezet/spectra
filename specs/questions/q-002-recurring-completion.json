@@ -1,0 +1,64 @@
+{
+  "id": "q-002",
+  "asks": "After completing a RecurringTask, is it done with its dueDate advanced, or open again at the next occurrence?",
+  "because": "completeTask says it \"marks the current occurrence done and schedules the next occurrence from its recurrenceRule\", while RecurringTask says it is \"A Task that regenerates on a schedule\". A RecurringTask is one stored thing with one done flag, so both cannot hold: either it ends up done (and the scheduled next occurrence is already marked done), or it ends up open (and \"marks the current occurrence done\" is never observable). The app currently takes the first reading, which leaves a recurring Task permanently done with a future due date until someone reopens it by hand.",
+  "raisedBy": {
+    "pass": "implementation",
+    "file": "app/src/domain/completeTask.ts",
+    "terms": [
+      "completeTask",
+      "RecurringTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "Stays done, dueDate advances",
+      "detail": "What the app does today. A completed RecurringTask reads like any other completed Task; something outside this vocabulary has to reopen it when the next occurrence comes due — and nothing in the glossary does that, so answering this way probably raises a follow-up question about what does.",
+      "proposal": {
+        "summary": "completeTask leaves a RecurringTask done, with dueDate advanced",
+        "ops": [
+          {
+            "op": "modify_spec",
+            "term": "completeTask",
+            "spec": "Marks a Task as done. If the Task is already done, this is a no-op (idempotent) — it does not error and does not un-complete it. For a RecurringTask, it also advances dueDate to the next occurrence computed from recurrenceRule; the Task itself stays done until something reopens it."
+          },
+          {
+            "op": "modify_spec",
+            "term": "RecurringTask",
+            "spec": "A Task that carries a repeating schedule. Completing it marks it done and moves its dueDate to the next occurrence; it is not automatically reopened, and completing it never deletes the Task itself."
+          }
+        ],
+        "tests": [
+          "completing a RecurringTask leaves done true",
+          "completing a RecurringTask due 2026-08-05 with rule 'every 3 days' sets dueDate to 2026-08-08",
+          "completing a RecurringTask twice in a row changes nothing the second time"
+        ]
+      }
+    },
+    {
+      "label": "Reopens at the next occurrence",
+      "detail": "Matches RecurringTask's \"regenerates on a schedule\" — the Task is immediately open again, dated forward. Self-contained: nothing external needs to reopen it. The cost is that a RecurringTask is never observably done, so 'all Tasks are done' is unreachable for a Project holding one — which changes deleteProject's blocking rule from strict to impossible-to-satisfy, and that needs settling too.",
+      "proposal": {
+        "summary": "completeTask reopens a RecurringTask at its next occurrence",
+        "ops": [
+          {
+            "op": "modify_spec",
+            "term": "completeTask",
+            "spec": "Marks a Task as done. If the Task is already done, this is a no-op (idempotent) — it does not error and does not un-complete it. For a RecurringTask, completing the current occurrence advances dueDate to the next occurrence computed from recurrenceRule and leaves the Task not done, so it is immediately open again for that next occurrence."
+          }
+        ],
+        "tests": [
+          "completing a RecurringTask leaves done false",
+          "completing a RecurringTask due 2026-08-05 with rule 'every 3 days' sets dueDate to 2026-08-08",
+          "a Project holding a RecurringTask can never satisfy deleteProject's all-Tasks-done rule"
+        ]
+      }
+    }
+  ],
+  "answer": {
+    "chose": "Reopens at the next occurrence",
+    "note": "",
+    "answeredAt": "2026-08-05T01:27:56.901Z",
+    "changesetId": "q-002-reopens-at-the-next-occurrence"
+  }
+}

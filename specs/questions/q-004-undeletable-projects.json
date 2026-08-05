@@ -1,0 +1,81 @@
+{
+  "id": "q-004",
+  "asks": "A Project holding a RecurringTask can now never be deleted. Is that intended, or does one of the two specs need to give?",
+  "because": "deleteProject says \"if the Project still holds any Task that is not done, the deletion is refused\", and since q-002 completeTask \"leaves the Task not done, so it is immediately open again\". A RecurringTask therefore never reaches done, the all-Tasks-done condition is unsatisfiable, and the Project is permanently undeletable — app/src/domain/domain.test.ts completes one five times and deleteProject still refuses. The seed data hits this: the \"Home\" Project holds a weekly Task and cannot be deleted through the UI at all.",
+  "raisedBy": {
+    "pass": "implementation",
+    "file": "app/src/domain/deleteProject.ts",
+    "terms": [
+      "deleteProject",
+      "RecurringTask",
+      "Project"
+    ]
+  },
+  "options": [
+    {
+      "label": "Recurring Tasks do not block deletion",
+      "detail": "Smallest change — the blocking rule counts only plain Tasks, on the grounds that a repeating chore is never \"finished\" and so cannot be what the rule was protecting. Deleting the Project takes its recurring Tasks with it.",
+      "proposal": {
+        "summary": "Only non-recurring incomplete Tasks block deleteProject",
+        "ops": [
+          {
+            "op": "modify_spec",
+            "term": "deleteProject",
+            "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any plain Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. RecurringTasks never count as incomplete for this purpose — they repeat indefinitely and would otherwise make the Project undeletable. A Project whose plain Tasks are all done is deleted together with every Task it holds, recurring or not."
+          }
+        ],
+        "tests": [
+          "a Project holding only a RecurringTask can be deleted",
+          "a Project holding one incomplete plain Task still refuses deletion",
+          "deleting a Project removes its RecurringTasks along with it"
+        ]
+      }
+    },
+    {
+      "label": "Give recurrence an end",
+      "detail": "Keeps deleteProject's rule intact and fixes the real gap instead: there is currently no way to stop a repeating Task, which is a hole regardless of deletion. Costs a new function and a new attribute, and every RecurringTask must be ended before its Project can go.",
+      "proposal": {
+        "summary": "Add endRecurrence so a RecurringTask can be finished for good",
+        "ops": [
+          {
+            "op": "add_attribute",
+            "term": "RecurringTask",
+            "attribute": {
+              "name": "ended",
+              "valueType": "boolean",
+              "default": false
+            }
+          },
+          {
+            "op": "add_entity",
+            "term": "endRecurrence",
+            "termType": "function",
+            "spec": "Stops a RecurringTask from repeating. The Task is marked ended and is not scheduled again; completing an ended RecurringTask marks it done like any plain Task. Ending an already-ended RecurringTask is a no-op (idempotent) — it does not error.",
+            "attributes": [
+              {
+                "name": "target",
+                "valueType": "ref:RecurringTask"
+              }
+            ]
+          },
+          {
+            "op": "modify_spec",
+            "term": "deleteProject",
+            "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A RecurringTask counts as done only once it has been ended and then completed. A Project whose Tasks are all done is deleted together with those Tasks."
+          }
+        ],
+        "tests": [
+          "an ended RecurringTask stays done when completed, rather than reopening",
+          "endRecurrence on an already-ended RecurringTask changes nothing and does not error",
+          "a Project can be deleted once its RecurringTasks are ended and completed"
+        ]
+      }
+    },
+    {
+      "label": "Intended — leave both specs alone",
+      "detail": "A Project carrying a live repeating commitment genuinely should not be deletable, and the way to remove it is to move or delete the recurring Task first. Costs nothing to adopt, but note nothing in the glossary currently deletes a Task or moves it between Projects, so as it stands the Project is unreachable rather than merely protected.",
+      "proposal": null
+    }
+  ],
+  "answer": null
+}

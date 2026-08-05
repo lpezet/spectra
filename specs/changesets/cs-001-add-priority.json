@@ -1,0 +1,23 @@
+{
+  "id": "cs-001",
+  "summary": "Add a priority level to Task",
+  "ops": [
+    {
+      "op": "add_entity",
+      "term": "Priority",
+      "termType": "attribute-type",
+      "spec": "How urgent a Task is. Exactly one of low, normal or high — there is no 'none', and priority is never absent.",
+      "tags": ["triage"]
+    },
+    {
+      "op": "add_attribute",
+      "term": "Task",
+      "attribute": { "name": "priority", "valueType": "ref:Priority", "default": "normal" }
+    }
+  ],
+  "tests": [
+    "creating a Task without specifying priority defaults it to 'normal'",
+    "setting a Task's priority to a value outside low/normal/high is rejected",
+    "a RecurringTask inherits priority from Task and keeps it across occurrences"
+  ]
+}

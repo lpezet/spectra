@@ -1,0 +1,83 @@
+{
+  "id": "q-003",
+  "asks": "recurrenceRule is typed as a bare string with no grammar. The app invented one to run at all — ratify it, or specify a different one?",
+  "because": "RecurringTask declares \"recurrenceRule\" as valueType \"string\" and the spec text says nothing about its form, so the implementation had to choose: it accepts \"daily | weekly | monthly\" and \"every N day(s)|week(s)|month(s)\", and reports anything else as unschedulable. That grammar is already load-bearing in app/src/domain/recurrence.ts, so this is not a suggestion — it is a decision that has already been made under duress and needs either blessing or replacing.",
+  "raisedBy": {
+    "pass": "implementation",
+    "file": "app/src/domain/recurrence.ts",
+    "terms": [
+      "RecurringTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "Ratify the invented grammar",
+      "detail": "Promotes the rule format to a named attribute-type so the grammar lives in the glossary rather than in one implementation file. Readable, matches what already runs, and covers only fixed intervals — no \"first Monday of the month\", no end dates.",
+      "proposal": {
+        "summary": "Give recurrenceRule a named type with a stated grammar",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "RecurrenceRule",
+            "termType": "attribute-type",
+            "spec": "A repeating interval, written as \"daily\", \"weekly\", \"monthly\", or \"every N days\" / \"every N weeks\" / \"every N months\" where N is a positive whole number. Case-insensitive. A month step lands on the same day of the following month, clamped to that month's last day. Anything outside this grammar is rejected rather than guessed at.",
+            "attributes": []
+          },
+          {
+            "op": "remove_attribute",
+            "term": "RecurringTask",
+            "attribute": "recurrenceRule"
+          },
+          {
+            "op": "add_attribute",
+            "term": "RecurringTask",
+            "attribute": {
+              "name": "recurrenceRule",
+              "valueType": "ref:RecurrenceRule"
+            }
+          }
+        ],
+        "tests": [
+          "\"every 2 weeks\" advances 2026-08-04 to 2026-08-18",
+          "\"monthly\" advances 2026-01-31 to 2026-02-28, clamped to the shorter month",
+          "\"every other Tuesday\" is rejected rather than interpreted"
+        ]
+      }
+    },
+    {
+      "label": "Use RFC 5545 RRULE",
+      "detail": "The calendar standard — complete, interoperable with anything that speaks iCalendar, and covers cases the invented grammar cannot express. The cost is that an end-user writing specs cannot read or write \"FREQ=WEEKLY;INTERVAL=2\" without help, which cuts against the point of a human-readable shared vocabulary. It also means rewriting the app's recurrence code rather than blessing it.",
+      "proposal": {
+        "summary": "Type recurrenceRule as an RFC 5545 recurrence rule",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "RecurrenceRule",
+            "termType": "attribute-type",
+            "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". The full RRULE grammar applies, including BYDAY, COUNT and UNTIL. Rules that do not parse as RRULE are rejected.",
+            "attributes": []
+          },
+          {
+            "op": "remove_attribute",
+            "term": "RecurringTask",
+            "attribute": "recurrenceRule"
+          },
+          {
+            "op": "add_attribute",
+            "term": "RecurringTask",
+            "attribute": {
+              "name": "recurrenceRule",
+              "valueType": "ref:RecurrenceRule"
+            }
+          }
+        ],
+        "tests": [
+          "\"FREQ=WEEKLY;INTERVAL=2\" advances 2026-08-04 to 2026-08-18",
+          "\"FREQ=MONTHLY;BYDAY=1MO\" advances 2026-08-04 to 2026-09-07",
+          "\"every 2 weeks\" is rejected — it is not RRULE"
+        ]
+      }
+    }
+  ],
+  "answer": null
+}

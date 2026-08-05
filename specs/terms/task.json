@@ -1,0 +1,13 @@
+{
+  "name": "Task",
+  "type": "entity",
+  "spec": "A single actionable item within a Project. A Task is either done or not done — there is no in-progress state.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "title", "valueType": "string" },
+    { "name": "done", "valueType": "boolean", "default": false },
+    { "name": "dueDate", "valueType": "date", "optional": true },
+    { "name": "project", "valueType": "ref:Project" }
+  ]
+}

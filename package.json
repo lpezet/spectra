@@ -1,0 +1,23 @@
+{
+  "name": "todo-blueprints",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web",
+    "app"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "dev:app": "npm run dev -w app",
+    "test": "npm run test -w shared && npm run test -w server && npm run test -w app",
+    "typecheck": "tsc -p shared && tsc -p server && tsc -p web && tsc -p app"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

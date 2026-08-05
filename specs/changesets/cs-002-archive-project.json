@@ -1,0 +1,21 @@
+{
+  "id": "cs-002",
+  "summary": "Let a Project be archived instead of deleted",
+  "ops": [
+    {
+      "op": "add_attribute",
+      "term": "Project",
+      "attribute": { "name": "archived", "valueType": "boolean", "default": false }
+    },
+    {
+      "op": "modify_spec",
+      "term": "deleteProject",
+      "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain, along with the suggestion to archive it instead. A Project whose Tasks are all done is deleted together with those Tasks. Archiving is the non-destructive alternative — an archived Project keeps every Task and is hidden from default listings."
+    }
+  ],
+  "tests": [
+    "deleting a Project with incomplete Tasks is refused and reports the incomplete count",
+    "archiving a Project hides it from default listings but keeps its Tasks intact",
+    "an archived Project with all Tasks done can still be deleted"
+  ]
+}

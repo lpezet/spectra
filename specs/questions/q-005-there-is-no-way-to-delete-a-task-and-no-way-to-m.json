@@ -1,0 +1,115 @@
+{
+  "id": "q-005",
+  "asks": "There is no way to delete a Task, and no way to move a Task from one Project to another. Should the glossary specify these operations, and if so, which?",
+  "because": "Task belongs to exactly one Project (\"A Task belongs to exactly one Project; a Project may hold any number of Tasks, including none\" — Project) and the only function that reaches Task is completeTask and reopenTask, neither of which removes it or reassigns its project attribute. The gap is already visible in q-004's third option, which notes that \"nothing in the glossary currently deletes a Task or moves it between Projects, so as it stands the Project is unreachable rather than merely protected\" — a Project blocked by an undeletable RecurringTask has no spec'd way out short of deleting the whole Project.",
+  "raisedBy": {
+    "pass": "review",
+    "terms": [
+      "Task",
+      "Project",
+      "deleteProject",
+      "RecurringTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "Spec both deleteTask and moveTask",
+      "detail": "Closes both gaps. Gives a caller a way to remove a single Task without deleting its Project, and a way to reassign a Task's Project without deleting and recreating it. Also gives q-004's blocked-Project scenario an actual escape route.",
+      "proposal": {
+        "summary": "Add deleteTask and moveTask functions.",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "deleteTask",
+            "termType": "function",
+            "spec": "Deletes a single Task, removing it from its Project.",
+            "attributes": [
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              }
+            ]
+          },
+          {
+            "op": "add_entity",
+            "term": "moveTask",
+            "termType": "function",
+            "spec": "Reassigns a Task from its current Project to a different Project.",
+            "attributes": [
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              },
+              {
+                "name": "destination",
+                "valueType": "ref:Project"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          "deleteTask removes the target Task from its Project's tasks list",
+          "moveTask changes target.project to destination and updates both Projects' tasks lists"
+        ]
+      }
+    },
+    {
+      "label": "Spec deleteTask only",
+      "detail": "A Task can be removed outright, but reassigning it to another Project remains outside the vocabulary — the only way to change a Task's Project stays delete-and-recreate.",
+      "proposal": {
+        "summary": "Add deleteTask function only.",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "deleteTask",
+            "termType": "function",
+            "spec": "Deletes a single Task, removing it from its Project.",
+            "attributes": [
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          "deleteTask removes the target Task from its Project's tasks list"
+        ]
+      }
+    },
+    {
+      "label": "Spec moveTask only",
+      "detail": "A Task can be reassigned to another Project, but there is still no way to remove one — Tasks can only disappear as a side effect of deleteProject.",
+      "proposal": {
+        "summary": "Add moveTask function only.",
+        "ops": [
+          {
+            "op": "add_entity",
+            "term": "moveTask",
+            "termType": "function",
+            "spec": "Reassigns a Task from its current Project to a different Project.",
+            "attributes": [
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              },
+              {
+                "name": "destination",
+                "valueType": "ref:Project"
+              }
+            ]
+          }
+        ],
+        "tests": [
+          "moveTask changes target.project to destination and updates both Projects' tasks lists"
+        ]
+      }
+    },
+    {
+      "label": "Leave both out",
+      "detail": "Both stay implementation concerns outside the shared vocabulary. Cheaper, but it leaves the scenario q-004 flags unresolved: a Project blocked by a Task that can neither be finished nor removed has no spec'd way to become deletable.",
+      "proposal": null
+    }
+  ],
+  "answer": null
+}

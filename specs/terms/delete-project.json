@@ -1,0 +1,10 @@
+{
+  "name": "deleteProject",
+  "type": "function",
+  "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A Project whose Tasks are all done is deleted together with those Tasks.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Project" }
+  ]
+}

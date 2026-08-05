@@ -1,0 +1,17 @@
+{
+  "id": "q-002-reopens-at-the-next-occurrence",
+  "summary": "completeTask reopens a RecurringTask at its next occurrence",
+  "ops": [
+    {
+      "op": "modify_spec",
+      "term": "completeTask",
+      "spec": "Marks a Task as done. If the Task is already done, this is a no-op (idempotent) — it does not error and does not un-complete it. For a RecurringTask, completing the current occurrence advances dueDate to the next occurrence computed from recurrenceRule and leaves the Task not done, so it is immediately open again for that next occurrence."
+    }
+  ],
+  "tests": [
+    "completing a RecurringTask leaves done false",
+    "completing a RecurringTask due 2026-08-05 with rule 'every 3 days' sets dueDate to 2026-08-08",
+    "a Project holding a RecurringTask can never satisfy deleteProject's all-Tasks-done rule"
+  ],
+  "fromQuestion": "q-002"
+}

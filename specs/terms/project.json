@@ -1,0 +1,11 @@
+{
+  "name": "Project",
+  "type": "entity",
+  "spec": "A named container for Tasks. A Task belongs to exactly one Project; a Project may hold any number of Tasks, including none.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "name", "valueType": "string" },
+    { "name": "tasks", "valueType": "ref:Task[]" }
+  ]
+}

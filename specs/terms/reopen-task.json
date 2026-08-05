@@ -1,0 +1,10 @@
+{
+  "name": "reopenTask",
+  "type": "function",
+  "spec": "Clears the done flag on a Task. If the Task was never completed, this is a no-op (idempotent) — it does not error. Reopening a RecurringTask affects only the current occurrence and leaves the recurrence schedule untouched.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Task" }
+  ]
+}
