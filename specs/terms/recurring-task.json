@@ -5,6 +5,7 @@
   "parent": "Task",
   "tags": [],
   "attributes": [
-    { "name": "recurrenceRule", "valueType": "string" }
+    { "name": "recurrenceRule", "valueType": "ref:RecurrenceRule" },
+    { "name": "ended", "valueType": "boolean", "default": false }
   ]
 }

@@ -77,5 +77,10 @@
       "proposal": null
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Give recurrence an end",
+    "note": "",
+    "answeredAt": "2026-08-05T20:24:51.423Z",
+    "changesetId": "q-004-give-recurrence-an-end"
+  }
 }

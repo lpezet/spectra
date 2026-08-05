@@ -1,0 +1,10 @@
+{
+  "name": "endRecurrence",
+  "type": "function",
+  "spec": "Stops a RecurringTask from repeating. The Task is marked ended and is not scheduled again; completing an ended RecurringTask marks it done like any plain Task. Ending an already-ended RecurringTask is a no-op (idempotent) — it does not error.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:RecurringTask" }
+  ]
+}

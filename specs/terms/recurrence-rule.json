@@ -1,0 +1,8 @@
+{
+  "name": "RecurrenceRule",
+  "type": "attribute-type",
+  "spec": "A recurrence rule in RFC 5545 (iCalendar) RRULE form, such as \"FREQ=WEEKLY;INTERVAL=2\" or \"FREQ=MONTHLY;BYDAY=1MO\". The full RRULE grammar applies, including BYDAY, COUNT and UNTIL. Rules that do not parse as RRULE are rejected.",
+  "parent": null,
+  "tags": [],
+  "attributes": []
+}

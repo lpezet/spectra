@@ -1,0 +1,40 @@
+{
+  "id": "q-004-give-recurrence-an-end",
+  "summary": "Add endRecurrence so a RecurringTask can be finished for good",
+  "ops": [
+    {
+      "op": "add_attribute",
+      "term": "RecurringTask",
+      "attribute": {
+        "name": "ended",
+        "valueType": "boolean",
+        "default": false
+      }
+    },
+    {
+      "op": "add_entity",
+      "term": "endRecurrence",
+      "termType": "function",
+      "spec": "Stops a RecurringTask from repeating. The Task is marked ended and is not scheduled again; completing an ended RecurringTask marks it done like any plain Task. Ending an already-ended RecurringTask is a no-op (idempotent) — it does not error.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:RecurringTask"
+        }
+      ]
+    },
+    {
+      "op": "modify_spec",
+      "term": "deleteProject",
+      "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A RecurringTask counts as done only once it has been ended and then completed. A Project whose Tasks are all done is deleted together with those Tasks."
+    }
+  ],
+  "tests": [
+    "an ended RecurringTask stays done when completed, rather than reopening",
+    "endRecurrence on an already-ended RecurringTask changes nothing and does not error",
+    "a Project can be deleted once its RecurringTasks are ended and completed"
+  ],
+  "fromQuestion": "q-004",
+  "appliedAt": "2026-08-05T20:25:16.822Z",
+  "implementedAt": "2026-08-05T20:36:13.728Z"
+}

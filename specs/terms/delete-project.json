@@ -1,7 +1,7 @@
 {
   "name": "deleteProject",
   "type": "function",
-  "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A Project whose Tasks are all done is deleted together with those Tasks.",
+  "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A RecurringTask counts as done only once it has been ended and then completed. A Project whose Tasks are all done is deleted together with those Tasks.",
   "parent": null,
   "tags": [],
   "attributes": [

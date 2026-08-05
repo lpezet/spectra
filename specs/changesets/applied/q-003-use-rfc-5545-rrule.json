@@ -28,5 +28,7 @@
     "\"FREQ=MONTHLY;BYDAY=1MO\" advances 2026-08-04 to 2026-09-07",
     "\"every 2 weeks\" is rejected — it is not RRULE"
   ],
-  "fromQuestion": "q-003"
+  "fromQuestion": "q-003",
+  "appliedAt": "2026-08-05T20:25:04.325Z",
+  "implementedAt": "2026-08-05T20:36:13.713Z"
 }
