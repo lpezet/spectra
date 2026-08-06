@@ -1,0 +1,52 @@
+# The sandbox for @coder.
+#
+# Only @coder is here. @spec has no filesystem and no shell — its whole reach is six
+# in-process tools — so a container around it would add a build step and a network hop and
+# remove no capability. The spec tool keeps running under `npm run dev`, unchanged.
+#
+#   docker compose up --build coder
+#
+# Without it, @coder still runs in-process and unsandboxed, which is the current behaviour
+# and fine on your own machine. The compose file is what makes it safe to stop watching.
+
+services:
+  coder:
+    build:
+      context: .
+      dockerfile: Dockerfile.coder
+    container_name: tb-coder
+
+    volumes:
+      # The only writable thing in the container. Everything @coder does lands here, so the
+      # worst a mistaken `rm -rf` costs is a directory you can rebuild.
+      - ./app:/work/app
+      # Read-only at the kernel, which is a stronger guarantee than the disallowedTools
+      # path rules it replaces — those never constrained a shell. Present only so the
+      # implements: drift check can compare markers against the glossary; when that check
+      # moves to the spec tool, delete this line.
+      - ./specs:/work/specs:ro
+
+    # No network. @coder reads the glossary through tools, not the internet, and a shell
+    # with no egress cannot exfiltrate a repo or install something unreviewed.
+    # This is what gets revisited when the tool talks to the spec API over HTTP — at which
+    # point it becomes an internal-only network, never the default bridge.
+    network_mode: none
+
+    environment:
+      - NODE_ENV=production
+      # The credential is passed through rather than baked: an image containing a token is
+      # a token you cannot rotate.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+
+    # A runaway loop should hit a wall rather than the machine's limits.
+    mem_limit: 2g
+    pids_limit: 512
+
+    # Nothing in here should ever need to gain privileges.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    restart: unless-stopped

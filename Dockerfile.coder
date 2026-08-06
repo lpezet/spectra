@@ -1,0 +1,40 @@
+# The box @coder works in.
+#
+# It holds a toolchain and nothing else — no source. `app/` arrives as a mount, so the
+# image does not go stale every time the app changes, and rebuilding is only needed when
+# the toolchain or the agent's own dependencies move.
+#
+# What this is for: @coder has a shell, and a shell escapes every path rule the SDK can
+# express. `cd` goes anywhere and redirection writes anywhere, so the approval card has
+# been the only real boundary. This is the boundary that does not depend on someone
+# reading a command carefully at 6pm.
+
+FROM node:22-slim
+
+# git is absent on purpose as well as by default: @coder must not touch history, and the
+# surest way to enforce that is for the binary not to exist.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# The agent's own dependencies live in the image, separate from the app's. Installing them
+# here rather than in the mount means the app's node_modules stays entirely the app's.
+WORKDIR /agent
+COPY coder/package.json coder/package-lock.json* ./
+RUN npm install --omit=dev
+
+COPY coder/ ./
+
+# Never root. A container that runs as root and mounts your source is a smaller
+# improvement over no container than it looks.
+RUN chown -R node:node /agent
+USER node
+
+# /work/app  read-write — the only thing @coder may change
+# /work/specs read-only — so the implements: drift check can run. Temporary: that check is
+#             moving to the spec tool, and this mount goes with it.
+WORKDIR /work/app
+
+ENV NODE_ENV=production
+EXPOSE 5177
+CMD ["node", "/agent/src/main.js"]
