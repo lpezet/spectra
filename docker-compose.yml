@@ -26,11 +26,19 @@ services:
       # moves to the spec tool, delete this line.
       - ./specs:/work/specs:ro
 
-    # No network. @coder reads the glossary through tools, not the internet, and a shell
-    # with no egress cannot exfiltrate a repo or install something unreviewed.
-    # This is what gets revisited when the tool talks to the spec API over HTTP — at which
-    # point it becomes an internal-only network, never the default bridge.
-    network_mode: none
+    # An internal network, not `network_mode: none`. None would also cut the spec tool off
+    # from the container, and express has to reach :5177 to send a turn — the isolation has
+    # to stop egress, not all traffic.
+    #
+    # `internal: true` below is what does the work: the container can be reached from the
+    # host side of this network and can reach nothing outward. A shell with no egress cannot
+    # exfiltrate the repo or install something unreviewed. It also cannot reach the Anthropic
+    # API, which is why the agent loop runs *here* only once that is resolved — see the note
+    # at the bottom.
+    networks:
+      - sandbox
+    ports:
+      - '127.0.0.1:5177:5177'
 
     environment:
       - NODE_ENV=production
@@ -50,3 +58,16 @@ services:
       - ALL
 
     restart: unless-stopped
+
+networks:
+  sandbox:
+    internal: true
+
+# KNOWN, UNRESOLVED: `internal: true` blocks egress, and the Agent SDK needs to reach
+# api.anthropic.com. Both cannot hold. The options, none of them free:
+#   - allow egress and lose the strongest property this file has;
+#   - proxy API calls through the spec tool, so the container talks only to it;
+#   - run the model loop in express and ship only tool *execution* into the container.
+# The third is probably right and is the biggest change. Until it is decided, bring the
+# container up without `internal: true` to see it work, and know that you have traded away
+# the containment while you do.

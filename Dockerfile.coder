@@ -20,7 +20,7 @@ RUN apt-get update \
 # The agent's own dependencies live in the image, separate from the app's. Installing them
 # here rather than in the mount means the app's node_modules stays entirely the app's.
 WORKDIR /agent
-COPY coder/package.json coder/package-lock.json* ./
+COPY coder/package.json ./
 RUN npm install --omit=dev
 
 COPY coder/ ./
@@ -37,4 +37,4 @@ WORKDIR /work/app
 
 ENV NODE_ENV=production
 EXPOSE 5177
-CMD ["node", "/agent/src/main.js"]
+CMD ["node", "/agent/node_modules/.bin/tsx", "/agent/src/main.ts"]

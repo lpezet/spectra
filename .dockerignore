@@ -1,0 +1,8 @@
+# Never ship installed dependencies into the image — it has its own, and a stale copy from
+# the host would silently win.
+**/node_modules
+data
+.env
+.git
+app/dist
+web/dist
