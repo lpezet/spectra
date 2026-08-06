@@ -9,6 +9,7 @@
  * still names the term and still looks correct, so the code silently drifts from the
  * prose. That case needs the `implementedAt` flag on the applied changeset, not this.
  */
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { implementersOf, readGlossary, readMarkers } from './implements.js'
@@ -16,14 +17,28 @@ import { implementersOf, readGlossary, readMarkers } from './implements.js'
 const APP_SRC = path.resolve(import.meta.dirname)
 const TERMS = path.resolve(import.meta.dirname, '../../specs/terms')
 
+/**
+ * app/ is standalone and the glossary lives outside it, so this is the one check that
+ * cannot run from a copy of app/ alone — a sandboxed @coder with only app/ mounted, for
+ * instance. It skips loudly rather than passing quietly, because a green run that silently
+ * checked nothing is worse than a visible gap.
+ */
+const reachable = existsSync(TERMS)
+
 const markers = readMarkers(APP_SRC)
-const glossary = readGlossary(TERMS)
+const glossary = reachable ? readGlossary(TERMS) : []
 const implementers = implementersOf(markers)
 
 /** attribute-types are value shapes carried by other terms; they need no file of their own. */
 const NEEDS_IMPLEMENTING = new Set(['entity', 'function', 'event'])
 
 describe('implements markers', () => {
+  it('can see the glossary — the two checks below are meaningless without it', () => {
+    // Not an assertion that it exists: a note in the output saying which mode this ran in.
+    expect(reachable || glossary.length === 0).toBe(true)
+    if (!reachable) console.warn(`glossary not found at ${TERMS} — drift checks skipped`)
+  })
+
   it('finds markers at all', () => {
     expect(markers.length).toBeGreaterThan(0)
   })
@@ -36,7 +51,7 @@ describe('implements markers', () => {
     expect(bad, 'a marker must be comma-separated bare term names; put prose on the next line').toEqual([])
   })
 
-  it('only name terms that exist', () => {
+  it.skipIf(!reachable)('only name terms that exist', () => {
     const known = new Set(glossary.map((term) => term.name))
     const unknown = markers.flatMap((marker) =>
       marker.terms.filter((term) => !known.has(term)).map((term) => `${marker.file}:${marker.line} — ${term}`),
@@ -45,7 +60,7 @@ describe('implements markers', () => {
     expect(unknown, 'a marker names a term the glossary does not have — renamed or removed?').toEqual([])
   })
 
-  it('cover every entity, function and event in the glossary', () => {
+  it.skipIf(!reachable)('cover every entity, function and event in the glossary', () => {
     const missing = glossary
       .filter((term) => NEEDS_IMPLEMENTING.has(term.type))
       .filter((term) => !implementers.has(term.name))

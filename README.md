@@ -57,7 +57,17 @@ Two independent things run here. They share a repo and nothing else.
 
 `npm run dev` starts the **spec tool** — both halves of it, express and vite, under one
 `concurrently`. `npm run dev:app` starts the **ToDo app**, separately and on purpose: it is
-the *output* of this tool, not part of it. Stopping the spec tool does not affect it, and
+the *output* of this tool, not part of it.
+
+`app/` is a standalone npm project, not a workspace: its own `node_modules`, its own
+`tsconfig`, its own copy of TypeScript. Copy the directory anywhere and `npm install &&
+npm test && npm run build` works with no repo around it. That is what lets a sandbox mount
+`app/` and nothing else — a workspace whose dependencies are hoisted to a parent cannot be
+isolated, because half of it lives somewhere the sandbox will not have.
+
+The one thing it cannot do alone is the `implements:` drift check, which compares its
+markers against `specs/terms`. That test skips with a warning when the glossary is not
+reachable rather than passing quietly. Stopping the spec tool does not affect it, and
 the app has never heard of `specs/` at runtime — it was written from those files, and the
 files are not present at runtime in any form.
 
