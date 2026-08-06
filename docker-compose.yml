@@ -82,14 +82,17 @@ services:
     container_name: tb-coder
 
     volumes:
-      # The only writable thing in the container. Everything @coder does lands here, so the
-      # worst a mistaken `rm -rf` costs is a directory you can rebuild.
+      # The only mount, and the only writable thing in the container. Everything @coder does
+      # lands here, so the worst a mistaken `rm -rf` costs is a directory you can rebuild.
+      #
+      # `./specs:/work/specs:ro` used to be here too. It is gone: the glossary now arrives as
+      # tool calls to the spec tool over the internal network. A read-only mount could offer
+      # reading and nothing else — raising a question and marking a changeset implemented are
+      # writes, and granting them by mount would have meant granting the ability to rewrite
+      # any term. As tools they are two capabilities, executed by the process that owns the
+      # files. What this costs: the implements: drift check in app/ can no longer see the
+      # glossary and now skips, loudly, which is the check that has to move to the spec tool.
       - ./app:/work/app
-      # Read-only at the kernel, which is a stronger guarantee than the disallowedTools
-      # path rules it replaces — those never constrained a shell. Present only so the
-      # implements: drift check can compare markers against the glossary; when that check
-      # moves to the spec tool, delete this line.
-      - ./specs:/work/specs:ro
 
     # One network, and it has no route out. A shell with no egress cannot exfiltrate the
     # repo or install something unreviewed.
@@ -105,11 +108,18 @@ services:
 
     environment:
       - NODE_ENV=production
-      # Still passed through today, and the plan below is to stop: once express proxies the
-      # API, the container holds no credential at all and a compromised one cannot spend
-      # your quota anywhere but through your own process.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Where the glossary comes from now. Reachable only across the internal network, and
+      # the endpoint decides which tools @coder gets rather than this container asking.
+      - SPEC_URL=http://spec:5174
+      # The model API, reached through express because there is no other way out. The SDK
+      # honours this — measured, not assumed: pointed at a local server, its first outbound
+      # call landed there.
+      - ANTHROPIC_BASE_URL=http://spec:5174/anthropic
+      # A placeholder, and deliberately not a secret. The SDK refuses to start without a
+      # credential in the environment; express drops whatever arrives and substitutes the
+      # real one. So this container cannot read the token it spends, and a compromised one
+      # cannot spend it anywhere but through your own process.
+      - ANTHROPIC_API_KEY=proxied-by-the-spec-tool
 
     # A runaway loop should hit a wall rather than the machine's limits.
     mem_limit: 2g
@@ -131,21 +141,23 @@ networks:
   # Only `spec` is on this one.
   egress: {}
 
-# WHAT IS LEFT. The container still carries a credential and still calls the API directly,
-# which is why `internal: true` currently stops it working rather than merely containing it.
-# The fix is a proxy in express, and it is real rather than hopeful: ANTHROPIC_BASE_URL was
-# tested against a local server and the SDK's first outbound call landed on it. Two steps
-# remain —
-#   1. express serves the glossary tools over MCP and proxies the model API, and the coder
-#      container gets ANTHROPIC_BASE_URL pointing at it. coder/src/glossary.ts and the
-#      ./specs mount both go away then.
-#   2. express routes @coder turns to CODER_URL instead of running the agent in-process.
+# VERIFIED, with `internal: true` exactly as it stands above: @coder runs a full turn with
+# no route out. The model call goes through express's /anthropic proxy, the glossary comes
+# from express's /mcp/coder endpoint, the container holds a placeholder instead of a
+# credential, an Edit raised an approval card and a decline left the file byte-identical.
 #
-# Until step 1, a real turn inside the sandbox needs egress, which means:
+# One thing the testing corrected, worth knowing before trusting the card: for Bash the SDK
+# classifies the command and lets ones it judges read-only through without asking. `pwd &&
+# ls` ran unprompted; `touch /work/app/probe-file` raised a card and was blocked. The card
+# covers commands that change things, not every command.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.open.yml up -d
+# WHAT IS LEFT. Express still runs @coder in-process for the chat panel; nothing routes a
+# turn to CODER_URL yet. So the containers are proven, and the UI does not use them.
 #
-# That mode has been exercised end to end — tools, streaming, and the approval card all
-# behave as they do in-process, and a declined Edit left the file byte-identical. It is also
-# the mode with no containment left worth the name, so turn it on deliberately and turn it
-# back off.
+# docker-compose.open.yml drops `internal` and is no longer needed for a turn to work. It
+# stays for debugging from the host, where the sandbox is otherwise unreachable.
+#
+# Switching between the two modes recreates the network, and a container that is merely
+# restarted onto a recreated network comes back WITHOUT its DNS aliases — `spec` then fails
+# to resolve from `coder`, which looks exactly like the service being down. Use
+# `docker compose down` before switching, not `restart`.

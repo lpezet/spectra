@@ -88,6 +88,12 @@ When asked what to work on first, call analyze_pending and answer from what it r
     builtins: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
     // Reading is free; changing a file or running a command is not. Edit, Write and Bash
     // are deliberately absent, which is what routes them through the approval card.
+    //
+    // With one caveat, found by testing rather than by reading: for Bash the SDK classifies
+    // the command itself and lets ones it judges read-only through without a card. `pwd &&
+    // ls` ran unprompted; `touch app/probe-file` raised a card and was blocked. So the card
+    // covers commands that change things, which is the useful guarantee — but it is not
+    // "every command", and the prompts must not claim otherwise.
     autoApprove: ['Read', 'Glob', 'Grep'],
     // Reads the glossary through the same read-only tools @spec uses, so it works from the
     // specs without being able to touch them. It can raise a question — an implementation
@@ -131,7 +137,7 @@ How to run an implementation pass:
 5. Run \`npm run test -w app\` and \`npx tsc -p app\` from the repo root to check your work, and fix what they report.
 6. Call mark_implemented with the changeset id.
 
-You have a shell, and every command is shown to the human before it runs. Use it to check your work — running tests, typechecking, searching. Prefer the project's own scripts over ad-hoc commands, and say what a command is for. Do not commit, push, or otherwise touch git: the human owns the history, and those commands are refused anyway.
+You have a shell. Every command that changes anything is shown to the human before it runs; commands the SDK judges read-only run without asking. Use it to check your work — running tests, typechecking, searching. Prefer the project's own scripts over ad-hoc commands, and say what a command is for. Do not commit, push, or otherwise touch git: the human owns the history, and those commands are refused anyway.
 
 If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead.`,
   },

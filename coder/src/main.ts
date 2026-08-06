@@ -12,23 +12,38 @@
 import express from 'express'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { z } from 'zod'
-import { createSdkMcpServer, query, tool } from '@anthropic-ai/claude-agent-sdk'
-import { SPECS_DIR, readChangesets, readQuestions, readTerms, reachable } from './glossary.js'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 
 const PORT = Number(process.env.PORT ?? 5177)
 const APP_DIR = process.env.APP_DIR ?? '/work/app'
 const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
 
+/**
+ * Where the glossary lives — a URL now, not a mount.
+ *
+ * This service used to read `/work/specs` from a read-only bind mount through its own copy
+ * of the reader. Two problems with that, and the second is the real one. The copy had
+ * already drifted from the spec tool's. And a mount can only ever offer *reading*: writes
+ * to the glossary directory — raising a question, marking a changeset implemented — were
+ * impossible from here, because the only way to grant them would have been a read-write
+ * mount that also granted rewriting any term.
+ *
+ * Over a tool call they are two capabilities, granted individually, executed by the process
+ * that owns `specs/` and can refuse. Which tools those are is decided there, not here: this
+ * service asks for the `coder` endpoint and gets whatever agents.ts says `@coder` may have.
+ */
+const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
+const MCP_URL = `${SPEC_URL}/mcp/coder`
+
 const SYSTEM_PROMPT = `You are @coder, working inside a sandbox on todo-blueprints. You own app/ — a ToDo app implemented from a glossary of Terms that lives in specs/.
 
 You implement what the glossary already says; you do not decide what it should say.
 
-Your working directory is app/, and it is the only thing you can write. The glossary is mounted read-only: you can read every term, changeset and question, and you cannot change any of them. You also have no network.
+Your working directory is app/, and it is the only thing you can write. The glossary is not on your filesystem at all — you reach it through tools served by the spec tool, which owns those files. You can read every term, changeset and question through them, and there is no tool here that edits a term. That is not a rule you are being asked to follow; it is the whole surface you have.
 
-Two things follow from that, and you must not pretend otherwise:
-- You cannot raise a question or mark a changeset implemented from here. When the specs are wrong, incomplete, or say two contradictory things, say so clearly in your reply and stop — the human will raise it with @spec. Do not work around it, and do not change the code to something the specs do not describe.
-- When you finish implementing a changeset, name it in your reply so the human can mark it implemented.
+Two of those tools do write, and they are the way work comes back:
+- raise_question, when the specs are wrong, incomplete, or say two contradictory things. Raise it rather than working around it, and do not change the code to something the specs do not describe. A question is for a decision a human must make — if it cannot be phrased as something someone answers, do not raise it.
+- mark_implemented, when you have finished a changeset and its tests pass.
 
 How to run an implementation pass:
 1. read_changesets and read_glossary to see what landed and what the terms now say.
@@ -36,51 +51,38 @@ How to run an implementation pass:
 3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do.
 4. Update the tests, including any the changeset committed to under "tests".
 5. Run \`npm test\` and \`npm run typecheck\` and fix what they report.
+6. Call mark_implemented with the changeset id.
 
-Every edit and every command is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
+Every edit, and every command that changes anything, is shown to the human for approval before it happens. Commands the SDK judges read-only run without asking. So make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
 
 If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and say so rather than guessing.
 
 Be concise and concrete. Cite term names, changeset ids and file paths.`
 
-function say(value: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] }
+/**
+ * Which glossary tools this agent may call — asked, not assumed.
+ *
+ * The obvious thing is a hardcoded list here. But then two places would decide what @coder
+ * can do, and the one in this container is the one an attacker who got in would edit. So
+ * ask the spec tool, and let the answer be whatever agents.ts says. Naming a tool the
+ * server does not serve gets "tool not found" from the server regardless, so this list is
+ * a convenience for the model, not the boundary.
+ *
+ * Cached for the life of the process: it changes when agents.ts changes, which means a
+ * restart of the other container anyway.
+ */
+let cachedToolNames: string[] | null = null
+
+async function glossaryToolNames(): Promise<string[]> {
+  if (cachedToolNames) return cachedToolNames
+
+  const response = await fetch(`${MCP_URL}/tools`, { signal: AbortSignal.timeout(5_000) })
+  if (!response.ok) throw new Error(`The spec tool answered ${response.status} for the tool list.`)
+
+  const body = (await response.json()) as { tools: Array<{ name: string }> }
+  cachedToolNames = body.tools.map((entry) => `mcp__blueprints__${entry.name}`)
+  return cachedToolNames
 }
-
-const tools = [
-  tool(
-    'read_glossary',
-    'Read the spec glossary. Omit `term` for all of them in summary form; supply one for its full spec and attributes.',
-    { term: z.string().optional() },
-    async (args) => {
-      const terms = readTerms()
-      if (!args.term) {
-        return say(terms.map((term) => ({ name: term.name, type: term.type, spec: term.spec })))
-      }
-      const found = terms.find((term) => term.name === args.term)
-      return say(found ?? { error: `No term named "${args.term}".`, known: terms.map((t) => t.name) })
-    },
-    { annotations: { readOnlyHint: true } },
-  ),
-  tool(
-    'read_changesets',
-    'Read changesets — what is pending review, and what has been applied to the glossary.',
-    {},
-    async () => say(readChangesets()),
-    { annotations: { readOnlyHint: true } },
-  ),
-  tool(
-    'read_questions',
-    'Read questions raised against the glossary, answered and open. Answered ones record why the specs say what they say.',
-    {},
-    async () => say(readQuestions()),
-    { annotations: { readOnlyHint: true } },
-  ),
-]
-
-const TOOL_NAMES = ['read_glossary', 'read_changesets', 'read_questions'].map(
-  (name) => `mcp__glossary__${name}`,
-)
 
 interface Pending {
   resolve: (allow: { allow: boolean; note: string | null }) => void
@@ -132,18 +134,32 @@ function askPermission(sessionId: string) {
 }
 
 async function run(sessionId: string, prompt: string): Promise<void> {
-  const server = createSdkMcpServer({ name: 'glossary', version: '1.0.0', tools })
   const resume = sdkSessions.get(sessionId)
+
+  let toolNames: string[]
+  try {
+    toolNames = await glossaryToolNames()
+  } catch (cause) {
+    // Worth failing loudly rather than running blind: an agent that silently lost the
+    // glossary will implement something plausible and wrong.
+    emit(sessionId, {
+      kind: 'error',
+      text: `Cannot reach the glossary at ${MCP_URL} (${(cause as Error).message}). Not starting a run without it.`,
+    })
+    return
+  }
 
   try {
     for await (const message of query({
       prompt,
       options: {
-        mcpServers: { glossary: server },
+        // Over HTTP to the spec tool, not in-process. One definition of these tools exists
+        // and it lives with the files they touch.
+        mcpServers: { blueprints: { type: 'http', url: MCP_URL } },
         tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
         // Reads run freely; anything that changes a file or runs a command is not here,
         // which is what routes it through canUseTool and out to the approval card.
-        allowedTools: [...TOOL_NAMES, 'Read', 'Glob', 'Grep'],
+        allowedTools: [...toolNames, 'Read', 'Glob', 'Grep'],
         canUseTool: askPermission(sessionId),
         settingSources: [],
         systemPrompt: SYSTEM_PROMPT,
@@ -183,14 +199,23 @@ async function run(sessionId: string, prompt: string): Promise<void> {
 const app = express()
 app.use(express.json({ limit: '4mb' }))
 
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
+  let tools: string[] | null = null
+  let glossaryError: string | null = null
+  try {
+    tools = (await glossaryToolNames()).map((name) => name.replace('mcp__blueprints__', ''))
+  } catch (cause) {
+    glossaryError = (cause as Error).message
+  }
+
   res.json({
     ok: true,
     appDir: APP_DIR,
-    specsDir: SPECS_DIR,
-    glossaryReachable: reachable(),
-    // Says plainly what this box cannot do, so the caller need not infer it.
-    canWriteSpecs: false,
+    glossary: MCP_URL,
+    // The honest answer to "what can this box do to the glossary?", and it comes from the
+    // spec tool rather than from here — so it cannot be flattering.
+    tools,
+    glossaryError,
     // `||`, not `??` — compose passes an unset variable through as "", which `??` accepts
     // as a value and which would then hide the credential in the other slot.
     configured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN),
@@ -256,6 +281,6 @@ app.get('/sessions/:id/stream', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[coder] app: ${APP_DIR}`)
-  console.log(`[coder] specs: ${SPECS_DIR} (read-only, ${reachable() ? 'reachable' : 'NOT MOUNTED'})`)
+  console.log(`[coder] glossary: ${MCP_URL} (tools, not a mount)`)
   console.log(`[coder] listening on http://0.0.0.0:${PORT}`)
 })

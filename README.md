@@ -111,16 +111,36 @@ boundary that does not.
       │  your browser    │───────────────────────▶│  spec   :5174    │
       └──────────────────┘                        │  owns specs/,    │
                                                   │  data/, the key  │
+                                                  │                  │
+                                                  │  /mcp/coder      │◀── tools
+                                                  │  /anthropic      │◀── model API
                                                   └────────┬─────────┘
                                                            │ sandbox network
                                                            │ (internal: true)
                                                   ┌────────┴─────────┐
                                                   │  coder  :5177    │
-                                                  │  app/ rw         │
-                                                  │  specs/ ro       │
+                                                  │  app/ rw — the   │
+                                                  │  only mount      │
+                                                  │  no credential   │
                                                   │  no route out    │
                                                   └──────────────────┘
 ```
+
+The container reaches the glossary and the model **only through express**. Two consequences
+that are the point of the arrangement:
+
+**The glossary is tools, not a mount.** `./specs:/work/specs:ro` used to be there. A mount
+can offer reading and nothing else — `raise_question` and `mark_implemented` are writes to
+`specs/`, and granting them by mount would have meant granting the ability to rewrite any
+term. As tool calls they are exactly two capabilities, executed by the process that owns the
+files and can refuse. And *which* tools `@coder` gets is decided by `agents.ts` on the server
+side, so asking for `propose_changeset` gets "tool not found", not a refusal it can argue
+with.
+
+**The credential never enters the sandbox.** The container holds the literal string
+`proxied-by-the-spec-tool`, because the SDK needs *something* present to start. Express drops
+whatever arrives and substitutes the real token. A compromised container cannot read the
+credential it spends, or spend it anywhere but through your process.
 
 `spec` is on both networks and `coder` is on one. That asymmetry is the design: express is
 the only way out, so anything `@coder` gets from the world comes through something express
@@ -132,34 +152,35 @@ cannot be reached from the host.** Publishing a port does not help; docker does 
 published ports on an internal network, so the host gets connection refused while the
 service inside is perfectly healthy. Reaching `@coder` means being *on* the network.
 
-What holds today, verified with `internal: true` as committed:
+What holds, verified with `internal: true` exactly as committed — a full turn, no egress:
 
 | | |
 |---|---|
-| `/work/app` writable, `/work/specs` read-only at the kernel | ✅ |
 | container has no route out | ✅ |
-| express reaches it across the internal network | ✅ `GET /api/sandbox` |
-| express itself still reaches the API, runs `@spec`, writes `specs/` | ✅ |
-| approval card blocks a write from inside the container | ✅ declined Edit left the file byte-identical |
+| `app/` is the only mount and the only writable thing | ✅ |
+| model call reaches the API through `/anthropic` | ✅ |
+| glossary tools arrive over `/mcp/coder` | ✅ 6 tools, from `agents.ts` |
+| a write to `specs/` from inside the sandbox | ✅ raised `q-008` with quoted spec text |
+| a tool outside `@coder`'s definition | ✅ `propose_changeset` → tool not found |
+| approval card blocks an edit | ✅ declined Edit left the file byte-identical |
+| container holds no credential | ✅ `proxied-by-the-spec-tool` |
 
-**What does not hold yet.** The coder container still carries a credential and calls the
-API directly, so `internal: true` currently stops it working rather than merely containing
-it. Two steps close that, and the first is confirmed possible — `ANTHROPIC_BASE_URL` was
-tested against a local server and the SDK's first outbound call landed on it:
+**One correction the testing produced.** The prompts used to say every command is shown
+before it runs. That is not true: for `Bash` the SDK classifies the command and lets ones it
+judges read-only through without a card. `pwd && ls` ran unprompted; `touch
+/work/app/probe-file` raised a card and was blocked. The card covers commands that *change*
+things — the useful guarantee, but not the one that was written down.
 
-1. Express serves the glossary tools over MCP and proxies the model API; the container gets
-   `ANTHROPIC_BASE_URL` pointing at express. `coder/src/glossary.ts` and the `specs/` mount
-   both go away, and the container holds no credential at all.
-2. Express routes `@coder` turns to `CODER_URL` instead of running the agent in-process.
+**What does not hold yet.** Express still runs `@coder` in-process for the chat panel;
+nothing routes a turn to `CODER_URL`. The containers are proven and the UI does not use them.
 
-Until step 1, driving a real turn inside the sandbox needs egress:
+`docker-compose.open.yml` drops `internal` and is no longer needed for a turn to work. It
+stays for debugging from the host, where the sandbox is otherwise unreachable.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.open.yml up -d
-```
-
-That mode works end to end — tools, streaming and the approval card all behave as they do
-in-process. It is also the mode with no containment left worth the name.
+**Switching modes needs `down`, not `restart`.** Toggling `internal` recreates the network,
+and a container merely restarted onto a recreated network comes back *without its DNS
+aliases* — `spec` then fails to resolve from `coder`, which looks exactly like the spec tool
+being down. It cost time here.
 
 **One footgun.** `npm run dev` and the `spec` container both want `:5174`, and the host wins
 silently — docker publishes by DNAT, so there is no bind conflict and `ss -ltn` shows a
@@ -181,6 +202,8 @@ server/src/                 express — spec files, transcripts, and the two age
   agent/agents.ts           who @spec and @coder are, and what each may reach
   agent/runner.ts           runs a turn, streams it, blocks on approvals
   agent/tools.ts            the domain tools both agents call
+  agent/mcpHttp.ts          the same tools over HTTP, for an agent in another container
+  anthropicProxy.ts         the model API, relayed so the sandbox needs no egress or key
   sandbox.ts                whether the @coder container is up, asked from inside its network
 web/src/                    react — browse, search, review, apply, chat
 app/src/                    the ToDo app, written *from* specs/terms — the output side

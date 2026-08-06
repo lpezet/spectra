@@ -1,7 +1,9 @@
 import express from 'express'
+import { anthropicProxy } from './anthropicProxy.js'
 import { answerQuestion } from './answer.js'
 import { applyChangeset, markImplemented, rejectChangeset } from './commit.js'
 import { chatRoutes } from './agent/routes.js'
+import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
@@ -13,8 +15,16 @@ const transcripts = new TranscriptStore()
 const runner = new AgentRunner(transcripts)
 
 const app = express()
+
+// Before express.json(), and that ordering is load-bearing: the proxy forwards the request
+// body untouched, and a JSON parser upstream of it would consume the stream first.
+app.use('/anthropic', anthropicProxy())
+
 app.use(express.json())
 app.use('/api/chat', chatRoutes(transcripts, runner))
+// Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
+// over the internal docker network by an agent in another container.
+app.use('/mcp', mcpRoutes(transcripts))
 
 app.get('/api/terms', async (_req, res, next) => {
   try {

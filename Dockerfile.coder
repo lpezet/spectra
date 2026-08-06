@@ -35,9 +35,8 @@ COPY coder/ ./
 RUN chown -R node:node /agent
 USER node
 
-# /work/app  read-write — the only thing @coder may change
-# /work/specs read-only — so the implements: drift check can run. Temporary: that check is
-#             moving to the spec tool, and this mount goes with it.
+# /work/app is the only mount and the only writable thing. The glossary is not on this
+# filesystem in any form — it arrives as tool calls to the spec tool.
 WORKDIR /work/app
 
 ENV NODE_ENV=production

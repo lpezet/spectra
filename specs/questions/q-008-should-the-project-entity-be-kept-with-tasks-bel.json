@@ -1,0 +1,31 @@
+{
+  "id": "q-008",
+  "asks": "Should the Project entity be kept (with Tasks belonging to an archivable Project) or removed entirely (flattening Tasks to stand alone)?",
+  "because": "cs-002 adds `Project.archived: boolean` and rewrites deleteProject's spec — deepening Project's role — while cs-003 removes Project entirely, per its test \"a Task can exist without belonging to any Project.\" Task currently has `project: ref:Project` as a required (non-optional) attribute, which cs-003 would have to change; the two changesets propose incompatible futures for the same entity and cannot both be implemented.",
+  "raisedBy": {
+    "pass": "1",
+    "terms": [
+      "Project",
+      "Task",
+      "deleteProject"
+    ]
+  },
+  "options": [
+    {
+      "label": "Adopt cs-002: keep Project, add archiving",
+      "detail": "Project gains an `archived` boolean; deleteProject is rewritten to refuse deletion while incomplete Tasks remain, and archiving hides a Project from default listings without deleting its Tasks. Task keeps its required `project` reference.",
+      "proposal": null
+    },
+    {
+      "label": "Adopt cs-003: remove Project, flatten the model",
+      "detail": "Project is removed entirely. Task's `project: ref:Project` attribute would need to become optional or be dropped, and every Project-referencing function (deleteProject, moveTask, etc.) would need to be reconsidered.",
+      "proposal": null
+    },
+    {
+      "label": "Decline both, keep Project as-is with no archiving",
+      "detail": "Leave Project and Task unchanged; deleteProject keeps its current spec.",
+      "proposal": null
+    }
+  ],
+  "answer": null
+}
