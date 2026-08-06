@@ -12,12 +12,12 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.222",
     "@tb/shared": "*",
     "express": "^4.21.2",
+    "tsx": "^4.19.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.5",
-    "tsx": "^4.19.2",
     "vitest": "^3.0.2"
   }
 }

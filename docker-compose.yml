@@ -1,15 +1,80 @@
-# The sandbox for @coder.
+# The two halves of the tool, and the network boundary between them.
 #
-# Only @coder is here. @spec has no filesystem and no shell — its whole reach is six
-# in-process tools — so a container around it would add a build step and a network hop and
-# remove no capability. The spec tool keeps running under `npm run dev`, unchanged.
+#   docker compose up -d --build      # then `npm run dev:web` for the UI on :5173
 #
-#   docker compose up --build coder
+# The shape, which is the point of this file:
 #
-# Without it, @coder still runs in-process and unsandboxed, which is the current behaviour
-# and fine on your own machine. The compose file is what makes it safe to stop watching.
+#            host :5173 (vite)                     internet
+#                   |                                  ^
+#                   v  /api ->                         |  egress network
+#            +--------------+  127.0.0.1:5174   +--------------+
+#            |   your UI    | ----------------> |     spec     |
+#            +--------------+                   +--------------+
+#                                                      |  sandbox network (internal)
+#                                                      v
+#                                               +--------------+
+#                                               |    coder     |  no route out
+#                                               +--------------+
+#
+# `spec` is on both networks and `coder` is on one. That asymmetry is the whole design:
+# express is the only way out of the sandbox network, so anything @coder needs from the
+# world has to come through something express chose to offer it.
+#
+# Nothing here sandboxes @spec, and nothing needs to. It has no filesystem and no shell —
+# its whole reach is six in-process tools — so a container around it removes no capability.
+# It is here because an internal network is unreachable from the host, so express has to be
+# *on* the network to talk to @coder at all.
 
 services:
+  # ---------------------------------------------------------------------------------------
+  # The spec tool: the glossary, the transcripts, the credential, and the only egress.
+  # ---------------------------------------------------------------------------------------
+  spec:
+    build:
+      context: .
+      dockerfile: Dockerfile.spec
+    container_name: tb-spec
+
+    volumes:
+      # Source, not baked, so `tsx watch` reloads on save and the dev loop survives
+      # containerisation.
+      - ./server:/stack/server
+      - ./shared:/stack/shared
+      # Dependencies come from the image. Without this, the mount above would hide the
+      # image's server/node_modules — which is where the SDK and its zod 4 live — and the
+      # server would start against whatever the host happened to have.
+      - /stack/server/node_modules
+      # Read-write, unlike coder's: express owns every write to the glossary. That is the
+      # rule the whole tool rests on, and here it is a mount flag rather than a convention.
+      - ./specs:/stack/specs
+      - ./data:/stack/data
+
+    networks:
+      - sandbox
+      - egress
+    # Same port `npm run dev` uses on the host, and if both are running the host wins
+    # silently — docker publishes by DNAT, so there is no bind conflict to notice and
+    # `ss -ltn` shows one listener. The tell is GET /api/sandbox reporting
+    # `configured: false`: that answer can only come from a server with no CODER_URL, which
+    # means the host one. Run `npm run dev:sandbox`, not `npm run dev`, with these up.
+    ports:
+      - '127.0.0.1:5174:5174'
+
+    environment:
+      - PORT=5174
+      # Passed through, never baked: an image containing a token is a token you cannot
+      # rotate. This is the only service that gets one.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Reachable only from inside the sandbox network — which is the point. Express probes
+      # it at /api/sandbox so "is the box up?" is a question with an answer.
+      - CODER_URL=http://coder:5177
+
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------------------
+  # The sandbox for @coder.
+  # ---------------------------------------------------------------------------------------
   coder:
     build:
       context: .
@@ -26,30 +91,23 @@ services:
       # moves to the spec tool, delete this line.
       - ./specs:/work/specs:ro
 
-    # An internal network, not `network_mode: none`. None would also cut the spec tool off
-    # from the container, and express has to reach :5177 to send a turn — the isolation has
-    # to stop egress, not all traffic.
-    #
-    # `internal: true` below is what does the work: the container can be reached from the
-    # host side of this network and can reach nothing outward. A shell with no egress cannot
-    # exfiltrate the repo or install something unreviewed. It also cannot reach the Anthropic
-    # API, which is why the agent loop runs *here* only once that is resolved — see the note
-    # at the bottom.
+    # One network, and it has no route out. A shell with no egress cannot exfiltrate the
+    # repo or install something unreviewed.
     networks:
       - sandbox
 
     # Inert while the network is internal — verified: with `internal: true` docker does not
     # route published ports either, so the host gets "connection refused" even though the
-    # service inside is healthy. It is left here for the non-internal mode below, and as the
-    # reminder that reaching this container means *joining the network*, not publishing a
-    # port. Express has to become a service on `sandbox` for that reason alone.
+    # service inside is healthy. Left here for docker-compose.open.yml, and as the reminder
+    # that reaching this container means joining the network, not publishing a port.
     ports:
       - '127.0.0.1:5177:5177'
 
     environment:
       - NODE_ENV=production
-      # The credential is passed through rather than baked: an image containing a token is
-      # a token you cannot rotate.
+      # Still passed through today, and the plan below is to stop: once express proxies the
+      # API, the container holds no credential at all and a compromised one cannot spend
+      # your quota anywhere but through your own process.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
 
@@ -66,30 +124,28 @@ services:
     restart: unless-stopped
 
 networks:
+  # No route out, and unreachable from the host. Both services are here; it is how express
+  # reaches @coder and how @coder reaches nothing.
   sandbox:
     internal: true
+  # Only `spec` is on this one.
+  egress: {}
 
-# DECIDED — proxy the model API through the spec tool. What was unresolved here was whether
-# a proxy could work at all; it can. `ANTHROPIC_BASE_URL` was tested against a local server
-# and the SDK's first outbound call landed on it, so pointing the container at express is a
-# real option rather than a hopeful one. That makes the container need zero egress: it talks
-# to express, express talks to the world, and the credential stops entering this file at all.
+# WHAT IS LEFT. The container still carries a credential and still calls the API directly,
+# which is why `internal: true` currently stops it working rather than merely containing it.
+# The fix is a proxy in express, and it is real rather than hopeful: ANTHROPIC_BASE_URL was
+# tested against a local server and the SDK's first outbound call landed on it. Two steps
+# remain —
+#   1. express serves the glossary tools over MCP and proxies the model API, and the coder
+#      container gets ANTHROPIC_BASE_URL pointing at it. coder/src/glossary.ts and the
+#      ./specs mount both go away then.
+#   2. express routes @coder turns to CODER_URL instead of running the agent in-process.
 #
-# Not built yet. It needs two things, in this order:
-#   1. express joins `sandbox` as a compose service — see the note on `ports` above; nothing
-#      on the host can reach an internal network, so express must be on it.
-#   2. express serves the glossary tools over MCP and proxies /anthropic, and the container
-#      gets ANTHROPIC_BASE_URL pointing at it. coder/src/glossary.ts and the ./specs mount
-#      both go away at that point.
+# Until step 1, a real turn inside the sandbox needs egress, which means:
 #
-# What is verified today, with `internal: true` exactly as it stands: the image builds, the
-# service is healthy, /work/app is writable, /work/specs is read-only at the kernel, and
-# egress fails. What cannot be verified with it: a turn, because the SDK cannot reach the
-# API and express cannot reach the container. To exercise it end-to-end meanwhile, run
+#   docker compose -f docker-compose.yml -f docker-compose.open.yml up -d
 #
-#   docker compose -f docker-compose.yml -f docker-compose.open.yml up -d coder
-#
-# which drops `internal` and gives back both the published port and egress. That mode has
-# been exercised: tools, streaming, and the approval card all behave as they do in-process,
-# and a declined Edit left the file byte-identical. It is also the mode with no containment
-# left worth the name, so it is a thing you turn on deliberately and turn back off.
+# That mode has been exercised end to end — tools, streaming, and the approval card all
+# behave as they do in-process, and a declined Edit left the file byte-identical. It is also
+# the mode with no containment left worth the name, so turn it on deliberately and turn it
+# back off.

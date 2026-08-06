@@ -4,6 +4,7 @@ import { applyChangeset, markImplemented, rejectChangeset } from './commit.js'
 import { chatRoutes } from './agent/routes.js'
 import { AgentRunner } from './agent/runner.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
+import { CODER_URL, probeSandbox } from './sandbox.js'
 import { SPECS_DIR, readChangesets, readQuestions, readTerms } from './store.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
@@ -67,6 +68,14 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
   }
 })
 
+app.get('/api/sandbox', async (_req, res, next) => {
+  try {
+    res.json(await probeSandbox())
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.get('/api/questions', async (_req, res, next) => {
   try {
     res.json(await readQuestions())
@@ -110,6 +119,11 @@ app.listen(PORT, () => {
       : AgentRunner.configured
         ? '[server] chat: agent ready'
         : '[server] chat: no credential — set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN and restart',
+  )
+  console.log(
+    CODER_URL
+      ? `[server] sandbox: ${CODER_URL} — GET /api/sandbox for whether it is actually up`
+      : '[server] sandbox: none (CODER_URL unset) — @coder runs in-process, unsandboxed',
   )
   console.log(`[server] listening on http://localhost:${PORT}`)
 })

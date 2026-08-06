@@ -22,8 +22,9 @@ Two separate things run here, each with its own command.
 ```bash
 npm install
 
-npm run dev        # the spec tool — express on :5174, vite on :5173 → http://localhost:5173
-npm run dev:app    # the ToDo app implemented from those specs → http://localhost:5175
+npm run dev          # the spec tool, all on the host — express :5174, vite :5173
+npm run dev:sandbox  # the same, with express and @coder in containers (see Sandbox below)
+npm run dev:app      # the ToDo app implemented from those specs → http://localhost:5175
 
 # Chat needs a credential — see .env.example. One of:
 #   ANTHROPIC_API_KEY=sk-ant-api...        console key from console.anthropic.com
@@ -94,6 +95,77 @@ curl -XPOST localhost:5173/api/chat/sessions/$SID/approvals/$APPROVAL_ID \
   -H 'Content-Type: application/json' -d '{"decision":"allow"}'
 ```
 
+## Sandbox
+
+`@coder` has a shell, and a shell escapes every path rule the SDK can express — `cd` goes
+anywhere, redirection writes anywhere. The approval card has been the only real boundary,
+which means it depends on someone reading a diff carefully at 6pm. The containers are the
+boundary that does not.
+
+```
+        host :5173 (vite)                              internet
+               │                                           ▲
+               │ /api/* ──▶ 127.0.0.1:5174                 │ egress network
+               ▼                                           │
+      ┌──────────────────┐                        ┌────────┴─────────┐
+      │  your browser    │───────────────────────▶│  spec   :5174    │
+      └──────────────────┘                        │  owns specs/,    │
+                                                  │  data/, the key  │
+                                                  └────────┬─────────┘
+                                                           │ sandbox network
+                                                           │ (internal: true)
+                                                  ┌────────┴─────────┐
+                                                  │  coder  :5177    │
+                                                  │  app/ rw         │
+                                                  │  specs/ ro       │
+                                                  │  no route out    │
+                                                  └──────────────────┘
+```
+
+`spec` is on both networks and `coder` is on one. That asymmetry is the design: express is
+the only way out, so anything `@coder` gets from the world comes through something express
+chose to offer it.
+
+Express is containerised for exactly one reason, and it is not isolation — `@spec` has no
+filesystem and no shell, so a box around it removes nothing. **An internal docker network
+cannot be reached from the host.** Publishing a port does not help; docker does not route
+published ports on an internal network, so the host gets connection refused while the
+service inside is perfectly healthy. Reaching `@coder` means being *on* the network.
+
+What holds today, verified with `internal: true` as committed:
+
+| | |
+|---|---|
+| `/work/app` writable, `/work/specs` read-only at the kernel | ✅ |
+| container has no route out | ✅ |
+| express reaches it across the internal network | ✅ `GET /api/sandbox` |
+| express itself still reaches the API, runs `@spec`, writes `specs/` | ✅ |
+| approval card blocks a write from inside the container | ✅ declined Edit left the file byte-identical |
+
+**What does not hold yet.** The coder container still carries a credential and calls the
+API directly, so `internal: true` currently stops it working rather than merely containing
+it. Two steps close that, and the first is confirmed possible — `ANTHROPIC_BASE_URL` was
+tested against a local server and the SDK's first outbound call landed on it:
+
+1. Express serves the glossary tools over MCP and proxies the model API; the container gets
+   `ANTHROPIC_BASE_URL` pointing at express. `coder/src/glossary.ts` and the `specs/` mount
+   both go away, and the container holds no credential at all.
+2. Express routes `@coder` turns to `CODER_URL` instead of running the agent in-process.
+
+Until step 1, driving a real turn inside the sandbox needs egress:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.open.yml up -d
+```
+
+That mode works end to end — tools, streaming and the approval card all behave as they do
+in-process. It is also the mode with no containment left worth the name.
+
+**One footgun.** `npm run dev` and the `spec` container both want `:5174`, and the host wins
+silently — docker publishes by DNAT, so there is no bind conflict and `ss -ltn` shows a
+single listener. The tell is `GET /api/sandbox` answering `configured: false`: only a server
+with no `CODER_URL` says that, and that is the host one.
+
 ## Layout
 
 ```
@@ -109,12 +181,19 @@ server/src/                 express — spec files, transcripts, and the two age
   agent/agents.ts           who @spec and @coder are, and what each may reach
   agent/runner.ts           runs a turn, streams it, blocks on approvals
   agent/tools.ts            the domain tools both agents call
+  sandbox.ts                whether the @coder container is up, asked from inside its network
 web/src/                    react — browse, search, review, apply, chat
 app/src/                    the ToDo app, written *from* specs/terms — the output side
+coder/src/                  the sandboxed half of @coder — no history, no writes to specs/
+Dockerfile.spec             express, on both networks
+Dockerfile.coder            @coder, on the internal one
+docker-compose.yml          the boundary between them
+docker-compose.open.yml     the explicit escape hatch that removes it
 ```
 
-Ports: **5173** spec tool UI, **5174** its API, **5175** the ToDo app. The API serves no
-HTML — hitting `localhost:5174` in a browser gives a 404, which is correct.
+Ports: **5173** spec tool UI, **5174** its API, **5175** the ToDo app, **5177** the coder
+container (reachable only from inside the sandbox network). The API serves no HTML —
+hitting `localhost:5174` in a browser gives a 404, which is correct.
 
 The changeset engine lives in `shared/`, not the server: it is pure functions over
 in-memory term arrays with no filesystem access. The web app uses it to *preview* what a
