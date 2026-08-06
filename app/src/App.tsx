@@ -15,6 +15,7 @@ import { reopenTask } from './domain/reopenTask.js'
 import type { AnyTask, Project, Result, World } from './domain/types.js'
 import { PRIORITIES, isRecurring } from './domain/types.js'
 import { createProject, createTask, seedWorld, tasksOf } from './domain/world.js'
+import { describeRule } from './describeRule.js'
 
 interface LogEntry {
   id: number
@@ -24,6 +25,12 @@ interface LogEntry {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/** An unreadable rule shows as written, so a bad rule looks wrong rather than missing. */
+function phrase(rule: string): string {
+  const described = describeRule(rule)
+  return 'text' in described ? described.text : rule
 }
 
 export function App() {
@@ -239,8 +246,10 @@ function TaskRow({
       <span className={`priority priority-${task.priority}`}>{task.priority}</span>
 
       {recurring && (
+        // The raw RRULE stays as the tooltip — the phrasing is for reading, the rule is
+        // what the app actually runs, and you should be able to see both.
         <span className={`badge ${task.ended ? 'badge-ended' : ''}`} title={task.recurrenceRule}>
-          {task.ended ? '⊘ ended' : `↻ ${task.recurrenceRule}`}
+          {task.ended ? '⊘ ended' : `↻ ${phrase(task.recurrenceRule)}`}
         </span>
       )}
       {task.dueDate && <span className="muted due">due {task.dueDate}</span>}
