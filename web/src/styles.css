@@ -1242,3 +1242,36 @@ button.option:hover {
   padding: 6px 2px 2px;
   font-size: 13px;
 }
+
+/* ---- who said it ---- */
+
+.author {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.author-spec {
+  color: var(--accent);
+}
+
+.author-coder {
+  color: var(--attribute-type);
+}
+
+.bubble-assistant .author,
+.bubble-error .author {
+  float: left;
+  margin: 2px 8px 2px 0;
+}
+
+.bubble-from-coder {
+  border-left-color: var(--attribute-type);
+}
+
+.mention-agent {
+  color: var(--modify);
+}

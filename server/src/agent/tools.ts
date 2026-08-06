@@ -16,6 +16,7 @@ import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
+import { markImplemented } from '../commit.js'
 import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
 import type { RaiseRequest } from '../raise.js'
@@ -335,6 +336,16 @@ export function blueprintTools(transcripts: TranscriptStore) {
     },
   )
 
+  const markImplementedTool = tool(
+    'mark_implemented',
+    'Record that code has been written for an applied changeset. Call this only after the code in app/ actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI.',
+    { id: z.string().describe('The applied changeset id, e.g. "cs-001"') },
+    async (args) => {
+      const outcome = await markImplemented(args.id, new Date().toISOString())
+      return say(outcome.ok ? { marked: args.id, file: outcome.file } : { error: outcome.error })
+    },
+  )
+
   return [
     readGlossary,
     readQuestionsTool,
@@ -343,16 +354,18 @@ export function blueprintTools(transcripts: TranscriptStore) {
     searchTranscripts,
     raiseQuestionTool,
     proposeChangesetTool,
+    markImplementedTool,
   ]
 }
 
-/** Fully-qualified names, as the SDK addresses in-process MCP tools. */
-export const TOOL_NAMES = [
-  'read_glossary',
-  'read_questions',
-  'read_changesets',
-  'analyze_pending',
-  'search_transcripts',
-  'raise_question',
-  'propose_changeset',
-].map((name) => `mcp__blueprints__${name}`)
+/** The subset a given agent may call, resolved from its definition. */
+export function toolsFor(transcripts: TranscriptStore, names: readonly string[]) {
+  const wanted = new Set(names)
+  return blueprintTools(transcripts).filter((candidate) => wanted.has((candidate as { name: string }).name))
+}
+
+export function qualified(names: readonly string[]): string[] {
+  return names.map((name) => `mcp__blueprints__${name}`)
+}
+
+

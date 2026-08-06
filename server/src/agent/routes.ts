@@ -8,11 +8,23 @@
  * id you saw.
  */
 import express from 'express'
+import { AGENTS, AGENT_NAMES } from './agents.js'
+import type { AgentName } from './agents.js'
 import { AgentRunner } from './runner.js'
 import type { TranscriptStore } from '../transcripts.js'
 
 export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): express.Router {
   const router = express.Router()
+
+  router.get('/agents', (_req, res) => {
+    res.json({
+      agents: AGENT_NAMES.map((name) => ({
+        name,
+        label: AGENTS[name].label,
+        description: AGENTS[name].description,
+      })),
+    })
+  })
 
   router.get('/status', (_req, res) => {
     const problem = AgentRunner.misconfiguration
@@ -70,7 +82,14 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
       transcripts.renameSession(session.id, text.slice(0, 72), new Date().toISOString())
     }
 
-    const outcome = runner.send(session.id, text)
+    // Null addressee is a message to the channel that nobody acts on — recorded, not run.
+    const requested = typeof req.body?.to === 'string' ? req.body.to : null
+    if (requested !== null && !AGENT_NAMES.includes(requested as AgentName)) {
+      res.status(400).json({ error: `No agent called "${requested}".` })
+      return
+    }
+
+    const outcome = runner.send(session.id, text, requested as AgentName | null)
     res.status(outcome.ok ? 202 : 409).json(outcome)
   })
 

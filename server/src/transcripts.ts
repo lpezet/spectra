@@ -30,9 +30,13 @@ export const TRANSCRIPTS_DB = process.env.TRANSCRIPTS_DB ?? path.join(DATA_DIR, 
 export type EventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error'
 export type ToolStatus = 'started' | 'completed' | 'failed'
 
+/** Who produced an event. `kind` says what it is; this says who said it. */
+export type Author = 'human' | 'spec' | 'coder'
+
 export interface TranscriptEvent {
   id: number
   sessionId: string
+  author: Author
   kind: EventKind
   /** Plain text, kept searchable. For tool events, a one-line summary. */
   text: string | null
@@ -51,6 +55,7 @@ export interface Session {
 }
 
 export interface NewEvent {
+  author: Author
   kind: EventKind
   text?: string | null
   payload?: unknown
@@ -69,6 +74,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS events (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   sessionId   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  author      TEXT NOT NULL DEFAULT 'spec',
   kind        TEXT NOT NULL,
   text        TEXT,
   payload     TEXT,
@@ -91,6 +97,20 @@ export class TranscriptStore {
     // WAL keeps a reader (the UI replaying) from blocking the writer (a live agent run).
     if (file !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec(SCHEMA)
+    this.migrate()
+  }
+
+  /**
+   * `author` arrived after the first transcripts were written. Existing rows are back-filled
+   * from `kind`, which is the best guess available and right for every row that existed:
+   * only the human and one agent were talking.
+   */
+  private migrate(): void {
+    const columns = this.db.prepare('PRAGMA table_info(events)').all() as unknown as Array<{ name: string }>
+    if (columns.some((column) => column.name === 'author')) return
+
+    this.db.exec("ALTER TABLE events ADD COLUMN author TEXT NOT NULL DEFAULT 'spec'")
+    this.db.exec("UPDATE events SET author = 'human' WHERE kind = 'user'")
   }
 
   createSession(id: string, title: string, now: string): Session {
@@ -119,11 +139,12 @@ export class TranscriptStore {
   append(sessionId: string, event: NewEvent, now: string): number {
     const result = this.db
       .prepare(
-        `INSERT INTO events (sessionId, kind, text, payload, toolCallId, status, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (sessionId, author, kind, text, payload, toolCallId, status, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         sessionId,
+        event.author,
         event.kind,
         event.text ?? null,
         event.payload === undefined ? null : JSON.stringify(event.payload),

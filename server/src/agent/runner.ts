@@ -13,24 +13,10 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
-import { SPECS_DIR } from '../store.js'
 import type { TranscriptStore } from '../transcripts.js'
-import { TOOL_NAMES, blueprintTools } from './tools.js'
-
-const SYSTEM_PROMPT = `You are the spec agent for todo-blueprints, a tool for authoring a shared glossary that a human and an AI coder both work from. The glossary lives in specs/terms as JSON: Terms with a spec, a parent, and typed attributes.
-
-Rules you work under:
-
-- The human write path is changesets only. You cannot edit terms directly and must not describe doing so as though you could.
-- Route a request to one of three places, and say which:
-  1. The change is clear and no product decision is left — propose a changeset.
-  2. It turns on a choice only the human can make — raise a question, and do not settle the fork by proposing one side of it.
-  3. It needs no glossary change at all — say so plainly. The glossary describes the domain, not the app that renders it, so presentation, wording and display are implementation work. Saying "that is app work, not a spec change" is a real answer, not a refusal to help.
-- A question is for a decision a human must make, not for an observation. If it cannot be phrased as something someone answers, do not raise it.
-- When asked what to work on first, call analyze_pending and answer from what it returns. Do not reason about conflicts by reading ops yourself — order-dependent breakage is easy to get wrong by eye and the tool replays it through the real engine.
-- Prefer quoting spec text over paraphrasing it. Precision about what the specs actually say is the point of this tool.
-
-Be concise and concrete. Cite term names, question ids and changeset ids. When you are unsure whether something is settled, check with read_questions before assuming.`
+import { AGENTS } from './agents.js'
+import type { AgentName } from './agents.js'
+import { qualified, toolsFor } from './tools.js'
 
 export interface RunnerEvent {
   /** `update` re-sends a row that already streamed — a tool call that has now settled. */
@@ -43,8 +29,12 @@ export interface RunnerEvent {
 
 export class AgentRunner {
   private readonly emitters = new Map<string, EventEmitter>()
-  /** SDK session id per chat session, so a follow-up turn resumes rather than restarts. */
+  /**
+   * SDK session id per channel *and* agent — each keeps its own conversation, so asking
+   * @coder something does not land in the middle of @spec's thread.
+   */
   private readonly sdkSessions = new Map<string, string>()
+  /** Keyed the same way: @spec working does not block you from messaging @coder. */
   private readonly active = new Set<string>()
 
   constructor(private readonly transcripts: TranscriptStore) {}
@@ -74,7 +64,7 @@ export class AgentRunner {
   }
 
   isRunning(sessionId: string): boolean {
-    return this.active.has(sessionId)
+    return [...this.active].some((key) => key.startsWith(`${sessionId}:`))
   }
 
   events(sessionId: string): EventEmitter {
@@ -97,44 +87,52 @@ export class AgentRunner {
    * Records the human turn, then launches the agent. Returns once the run has started —
    * output arrives over the session's event stream.
    */
-  send(sessionId: string, prompt: string): { ok: boolean; error?: string } {
-    if (this.active.has(sessionId)) {
-      return { ok: false, error: 'That conversation is still working on the previous message.' }
-    }
+  send(sessionId: string, prompt: string, to: AgentName | null): { ok: boolean; error?: string } {
+    this.record(sessionId, { author: 'human', kind: 'user', text: prompt })
 
-    this.record(sessionId, { kind: 'user', text: prompt })
+    // Unaddressed messages go to nobody, as in any channel. Two agents racing to answer
+    // is worse than a message that visibly waits for you to say who it is for.
+    if (!to) return { ok: true }
+
+    const key = `${sessionId}:${to}`
+    if (this.active.has(key)) {
+      return { ok: false, error: `@${to} is still working on the previous message.` }
+    }
 
     const misconfigured = AgentRunner.misconfiguration
     if (misconfigured) {
-      this.record(sessionId, { kind: 'error', text: misconfigured })
+      this.record(sessionId, { author: to, kind: 'error', text: misconfigured })
       return { ok: true }
     }
 
     if (!AgentRunner.configured) {
       this.record(sessionId, {
+        author: to,
         kind: 'error',
         text: 'No credential is set, so the agent cannot run. Put a console API key in ANTHROPIC_API_KEY, or a `claude setup-token` token in CLAUDE_CODE_OAUTH_TOKEN, then restart the server.',
       })
       return { ok: true }
     }
 
-    this.active.add(sessionId)
-    void this.run(sessionId, prompt).finally(() => {
-      this.active.delete(sessionId)
+    this.active.add(key)
+    void this.run(sessionId, prompt, to).finally(() => {
+      this.active.delete(key)
       this.events(sessionId).emit('event', { kind: 'done' } satisfies RunnerEvent)
     })
 
     return { ok: true }
   }
 
-  private async run(sessionId: string, prompt: string): Promise<void> {
+  private async run(sessionId: string, prompt: string, to: AgentName): Promise<void> {
+    const agent = AGENTS[to]
     const server = createSdkMcpServer({
       name: 'blueprints',
       version: '1.0.0',
-      tools: blueprintTools(this.transcripts),
+      tools: toolsFor(this.transcripts, agent.domainTools),
     })
 
-    const resume = this.sdkSessions.get(sessionId)
+    const key = `${sessionId}:${to}`
+    const resume = this.sdkSessions.get(key)
     /** Tool calls seen this turn, so a result can be matched back to its call. */
     const openCalls = new Map<string, string>()
 
@@ -143,22 +141,23 @@ export class AgentRunner {
         prompt,
         options: {
           mcpServers: { blueprints: server },
-          // No built-in tools at all: the agent reaches the repo only through the domain
-          // tools above, which is what keeps it on the changeset path.
-          tools: [],
-          allowedTools: TOOL_NAMES,
+          // @spec gets none of these, so it reaches the repo only through domain tools.
+          // @coder gets file access, rooted at app/ by cwd below.
+          tools: agent.builtins,
+          allowedTools: [...qualified(agent.domainTools), ...agent.builtins],
+          ...(agent.disallowedTools ? { disallowedTools: agent.disallowedTools } : {}),
           // Do not inherit the machine's Claude Code settings. Without this the spec agent
           // picks up whatever MCP servers the user has configured globally — Gmail, Drive,
           // Calendar — which have no business being reachable from a glossary tool.
           settingSources: [],
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt: agent.systemPrompt,
           includePartialMessages: true,
-          cwd: SPECS_DIR,
+          cwd: agent.cwd,
           ...(resume ? { resume } : {}),
         },
       })) {
         if (message.type === 'system' && 'session_id' in message && message.session_id) {
-          this.sdkSessions.set(sessionId, message.session_id as string)
+          this.sdkSessions.set(key, message.session_id as string)
           continue
         }
 
@@ -178,11 +177,12 @@ export class AgentRunner {
         if (message.type === 'assistant') {
           for (const block of message.message.content) {
             if (block.type === 'text' && block.text.trim()) {
-              this.record(sessionId, { kind: 'assistant', text: block.text })
+              this.record(sessionId, { author: to, kind: 'assistant', text: block.text })
             }
             if (block.type === 'tool_use') {
               openCalls.set(block.id, block.name)
               this.record(sessionId, {
+                author: to,
                 kind: 'tool_call',
                 text: shortName(block.name),
                 payload: { input: block.input },
@@ -219,9 +219,10 @@ export class AgentRunner {
         }
 
         if (message.type === 'result') {
-          if (message.session_id) this.sdkSessions.set(sessionId, message.session_id)
+          if (message.session_id) this.sdkSessions.set(key, message.session_id)
           if (message.subtype !== 'success') {
             this.record(sessionId, {
+              author: to,
               kind: 'error',
               text: `The run ended early (${message.subtype}).`,
             })
@@ -229,7 +230,7 @@ export class AgentRunner {
         }
       }
     } catch (cause) {
-      this.record(sessionId, { kind: 'error', text: (cause as Error).message })
+      this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
     } finally {
       // Anything still open died with the run. Leaving it marked `started` is the honest
       // record — a later resume can see the call may or may not have taken effect.

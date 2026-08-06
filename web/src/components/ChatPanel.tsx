@@ -8,12 +8,14 @@
  * its own file plus everything pointing at it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatEvent, ChatSession, Entity } from '../chat.js'
+import type { Agent, ChatEvent, ChatSession, Entity, Mention } from '../chat.js'
 import { Markdown } from './Markdown.js'
 import {
+  addresseeOf,
   createSession,
   deleteSession,
   fetchChatStatus,
+  listAgents,
   listSessions,
   matchEntities,
   mentionAt,
@@ -36,6 +38,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   const [streaming, setStreaming] = useState('')
   const [running, setRunning] = useState(false)
   const [configured, setConfigured] = useState(true)
+  const [agents, setAgents] = useState<Agent[]>([])
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -48,10 +51,11 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
 
   const composer = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
-  const [mention, setMention] = useState<{ query: string; from: number } | null>(null)
+  const [mention, setMention] = useState<Mention | null>(null)
 
   useEffect(() => {
     void fetchChatStatus().then((status) => setConfigured(status.configured))
+    void listAgents().then(({ agents: found }) => setAgents(found))
     void listSessions().then(({ sessions: found }) => {
       setSessions(found)
       setSessionId((current) => current ?? found[0]?.id ?? null)
@@ -61,7 +65,9 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   // A tool call that writes lands on disk; the glossary behind this panel is now stale.
   const settled = useCallback(
     (event: ChatEvent) => {
-      if (event.kind === 'tool_call' && event.status === 'completed' && event.text === 'raise_question') {
+      // Anything that writes to specs/ leaves the glossary behind this panel stale.
+      const writes = ['raise_question', 'propose_changeset', 'mark_implemented']
+      if (event.kind === 'tool_call' && event.status === 'completed' && writes.includes(event.text ?? '')) {
         onSpecsChanged()
       }
     },
@@ -119,7 +125,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     setError(null)
 
     try {
-      const outcome = await sendMessage(target, text)
+      const outcome = await sendMessage(target, text, addresseeOf(text, agentNames))
       if (!outcome.ok) {
         setError(outcome.error ?? 'The message was refused.')
         setRunning(false)
@@ -135,16 +141,24 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     setMention(mentionAt(value, caret))
   }
 
-  function insertMention(entity: Entity) {
+  function insert(name: string, sigil: '@' | '#') {
     if (!mention) return
     const caret = composer.current?.selectionStart ?? draft.length
-    const next = `${draft.slice(0, mention.from)}@${entity.name} ${draft.slice(caret)}`
-    setDraft(next)
+    setDraft(`${draft.slice(0, mention.from)}${sigil}${name} ${draft.slice(caret)}`)
     setMention(null)
     requestAnimationFrame(() => composer.current?.focus())
   }
 
-  const suggestions = mention ? matchEntities(entities, mention.query) : []
+  const agentNames = agents.map((agent) => agent.name)
+  const to = addresseeOf(draft, agentNames)
+
+  // `@` completes over who is in the channel, `#` over what the glossary holds.
+  const suggestions =
+    mention?.sigil === 'artifact' ? matchEntities(entities, mention.query) : []
+  const agentSuggestions =
+    mention?.sigil === 'agent'
+      ? agents.filter((agent) => agent.name.startsWith(mention.query.toLowerCase()))
+      : []
 
   return (
     <aside className="chat">
@@ -197,9 +211,9 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
           <div className="chat-empty">
             <p className="muted">Ask about the specs. It can read the glossary, the questions and the pending changesets, work out what conflicts with what, and raise a question — but it cannot edit a term.</p>
             <ul className="chat-hints">
-              <li>Where should I start?</li>
-              <li>Why does @deleteProject block instead of cascade?</li>
-              <li>What does @q-004 depend on?</li>
+              <li>@spec where should I start?</li>
+              <li>@spec why does #deleteProject block instead of cascade?</li>
+              <li>@coder implement the changesets that just landed</li>
             </ul>
           </div>
         )}
@@ -220,13 +234,22 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
       {error && <p className="chat-warn">{error}</p>}
 
       <div className="composer">
-        {suggestions.length > 0 && (
+        {(suggestions.length > 0 || agentSuggestions.length > 0) && (
           <ul className="mentions">
+            {agentSuggestions.map((agent) => (
+              <li key={`agent-${agent.name}`}>
+                <button type="button" onClick={() => insert(agent.name, '@')}>
+                  <span className="mention-kind mention-agent">agent</span>
+                  <span className="mention-name">@{agent.name}</span>
+                  <span className="muted mention-hint">{agent.description}</span>
+                </button>
+              </li>
+            ))}
             {suggestions.map((entity) => (
               <li key={`${entity.kind}-${entity.name}`}>
-                <button type="button" onClick={() => insertMention(entity)}>
+                <button type="button" onClick={() => insert(entity.name, '#')}>
                   <span className={`mention-kind mention-${entity.kind}`}>{entity.kind}</span>
-                  <span className="mention-name">{entity.name}</span>
+                  <span className="mention-name">#{entity.name}</span>
                   <span className="muted mention-hint">{entity.hint}</span>
                 </button>
               </li>
@@ -238,19 +261,28 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
           ref={composer}
           value={draft}
           rows={3}
-          placeholder="Ask about the specs — @ to reference a term, question or changeset"
+          placeholder="@spec or @coder to address someone, # to refer to a term or change"
           onChange={(event) => onDraftChange(event.target.value, event.target.selectionStart)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') setMention(null)
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
-              if (suggestions.length > 0) insertMention(suggestions[0]!)
+              if (agentSuggestions.length > 0) insert(agentSuggestions[0]!.name, '@')
+              else if (suggestions.length > 0) insert(suggestions[0]!.name, '#')
               else void submit()
             }
           }}
         />
         <div className="composer-actions">
-          <span className="muted">Enter to send · Shift+Enter for a new line</span>
+          <span className="muted">
+            {to ? (
+              <>
+                to <strong className={`author author-${to}`}>@{to}</strong> · Enter to send
+              </>
+            ) : (
+              'Address @spec or @coder — an unaddressed message is recorded but acted on by nobody'
+            )}
+          </span>
           <button type="button" className="action" disabled={running || !draft.trim()} onClick={() => void submit()}>
             Send
           </button>
@@ -272,16 +304,22 @@ function Bubble({
   if (event.kind === 'tool_call') return <ToolCall event={event} />
 
   if (event.kind === 'error') {
-    return <div className="bubble bubble-error">{event.text}</div>
+    return (
+      <div className="bubble bubble-error">
+        <span className={`author author-${event.author}`}>@{event.author}</span>
+        {event.text}
+      </div>
+    )
   }
 
-  // Your own message renders exactly as typed. Only the agent's prose is Markdown.
+  // Your own message renders exactly as typed. Only an agent's prose is Markdown.
   if (event.kind === 'user') {
     return <div className="bubble bubble-user">{event.text}</div>
   }
 
   return (
-    <div className={`bubble bubble-${event.kind}`}>
+    <div className={`bubble bubble-${event.kind} bubble-from-${event.author}`}>
+      <span className={`author author-${event.author}`}>@{event.author}</span>
       <Markdown text={event.text ?? ''} known={known} onSelectTerm={onSelectTerm} />
     </div>
   )
@@ -295,6 +333,7 @@ function ToolCall({ event }: { event: ChatEvent }) {
     <div className={`tool tool-${event.status ?? 'started'}`}>
       <button type="button" className="tool-head" onClick={() => setOpen(!open)}>
         <span className="tool-dot" />
+        <span className={`author author-${event.author}`}>@{event.author}</span>
         <code>{event.text}</code>
         <span className="muted">{event.status === 'started' ? 'running…' : event.status}</span>
       </button>

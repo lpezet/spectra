@@ -7,9 +7,12 @@
 
 export type ChatEventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error'
 
+export type Author = 'human' | 'spec' | 'coder'
+
 export interface ChatEvent {
   id: number
   sessionId: string
+  author: Author
   kind: ChatEventKind
   text: string | null
   payload: unknown
@@ -52,11 +55,25 @@ export function deleteSession(id: string): Promise<{ ok: boolean }> {
   return json(`/api/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export function sendMessage(id: string, text: string): Promise<{ ok: boolean; error?: string }> {
+export interface Agent {
+  name: string
+  label: string
+  description: string
+}
+
+export function listAgents(): Promise<{ agents: Agent[] }> {
+  return json('/api/chat/agents')
+}
+
+export function sendMessage(
+  id: string,
+  text: string,
+  to: string | null,
+): Promise<{ ok: boolean; error?: string }> {
   return json(`/api/chat/sessions/${encodeURIComponent(id)}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, to }),
   })
 }
 
@@ -123,12 +140,42 @@ export interface Entity {
   hint: string
 }
 
-/** Matches a trailing `@partial` the caret is sitting in, for the mention menu. */
-export function mentionAt(text: string, caret: number): { query: string; from: number } | null {
+/**
+ * `@` addresses a person, `#` refers to a thing — the convention every messaging app
+ * already taught everyone. `@` used to do artifacts here; with two agents in the channel
+ * it has to mean "who is this for".
+ */
+export type SigilKind = 'agent' | 'artifact'
+
+export interface Mention {
+  sigil: SigilKind
+  query: string
+  from: number
+}
+
+/** Matches a trailing `@partial` or `#partial` the caret is sitting in. */
+export function mentionAt(text: string, caret: number): Mention | null {
   const before = text.slice(0, caret)
-  const match = /(^|\s)@([A-Za-z0-9_-]*)$/.exec(before)
+  const match = /(^|\s)([@#])([A-Za-z0-9_-]*)$/.exec(before)
   if (!match) return null
-  return { query: match[2] ?? '', from: caret - (match[2] ?? '').length - 1 }
+
+  const query = match[3] ?? ''
+  return {
+    sigil: match[2] === '@' ? 'agent' : 'artifact',
+    query,
+    from: caret - query.length - 1,
+  }
+}
+
+/**
+ * Who a message is addressed to — the first `@name` that matches a real agent. An
+ * unaddressed message is recorded and acted on by nobody, as in any channel.
+ */
+export function addresseeOf(text: string, agents: readonly string[]): string | null {
+  for (const match of text.matchAll(/(?:^|\s)@([A-Za-z0-9_-]+)/g)) {
+    if (agents.includes(match[1]!)) return match[1]!
+  }
+  return null
 }
 
 export function matchEntities(entities: Entity[], query: string, limit = 8): Entity[] {
