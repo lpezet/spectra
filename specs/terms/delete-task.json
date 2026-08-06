@@ -1,0 +1,10 @@
+{
+  "name": "deleteTask",
+  "type": "function",
+  "spec": "Deletes a single Task, removing it from its Project.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Task" }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "q-005-spec-both-deletetask-and-movetask",
+  "summary": "Add deleteTask and moveTask functions.",
+  "ops": [
+    {
+      "op": "add_entity",
+      "term": "deleteTask",
+      "termType": "function",
+      "spec": "Deletes a single Task, removing it from its Project.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:Task"
+        }
+      ]
+    },
+    {
+      "op": "add_entity",
+      "term": "moveTask",
+      "termType": "function",
+      "spec": "Reassigns a Task from its current Project to a different Project.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:Task"
+        },
+        {
+          "name": "destination",
+          "valueType": "ref:Project"
+        }
+      ]
+    }
+  ],
+  "tests": [
+    "deleteTask removes the target Task from its Project's tasks list",
+    "moveTask changes target.project to destination and updates both Projects' tasks lists"
+  ],
+  "fromQuestion": "q-005",
+  "appliedAt": "2026-08-06T00:55:15.759Z",
+  "implementedAt": "2026-08-06T00:58:43.135Z"
+}

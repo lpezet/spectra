@@ -1,0 +1,11 @@
+{
+  "name": "moveTask",
+  "type": "function",
+  "spec": "Reassigns a Task from its current Project to a different Project.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Task" },
+    { "name": "destination", "valueType": "ref:Project" }
+  ]
+}

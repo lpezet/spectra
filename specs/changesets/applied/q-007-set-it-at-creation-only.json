@@ -1,0 +1,28 @@
+{
+  "id": "q-007-set-it-at-creation-only",
+  "summary": "Let createTask set a priority",
+  "ops": [
+    {
+      "op": "add_attribute",
+      "term": "createTask",
+      "attribute": {
+        "name": "priority",
+        "valueType": "ref:Priority",
+        "optional": true
+      }
+    },
+    {
+      "op": "modify_spec",
+      "term": "createTask",
+      "spec": "Creates a Task inside the given Project. The new Task is not done. Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it creates a plain Task. Supplying a priority sets it; omitting it leaves the Task at normal."
+    }
+  ],
+  "tests": [
+    "createTask with priority high yields a Task at high priority",
+    "createTask without a priority yields a Task at normal",
+    "createTask with a priority outside low/normal/high is rejected"
+  ],
+  "fromQuestion": "q-007",
+  "appliedAt": "2026-08-06T00:55:28.067Z",
+  "implementedAt": "2026-08-06T00:58:43.101Z"
+}

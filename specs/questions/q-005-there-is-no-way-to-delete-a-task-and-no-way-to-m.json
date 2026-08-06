@@ -111,5 +111,10 @@
       "proposal": null
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Spec both deleteTask and moveTask",
+    "note": "",
+    "answeredAt": "2026-08-06T00:54:32.182Z",
+    "changesetId": "q-005-spec-both-deletetask-and-movetask"
+  }
 }

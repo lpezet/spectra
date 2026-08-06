@@ -52,8 +52,14 @@
             "termType": "function",
             "spec": "Sets the priority of a Task. The priority must be one of low, normal or high; anything else is refused and the Task is left unchanged. Setting the priority a Task already has is a no-op (idempotent) — it does not error.",
             "attributes": [
-              { "name": "target", "valueType": "ref:Task" },
-              { "name": "priority", "valueType": "ref:Priority" }
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              },
+              {
+                "name": "priority",
+                "valueType": "ref:Priority"
+              }
             ]
           }
         ],
@@ -90,8 +96,14 @@
             "termType": "function",
             "spec": "Sets the priority of a Task. The priority must be one of low, normal or high; anything else is refused and the Task is left unchanged. Setting the priority a Task already has is a no-op (idempotent) — it does not error.",
             "attributes": [
-              { "name": "target", "valueType": "ref:Task" },
-              { "name": "priority", "valueType": "ref:Priority" }
+              {
+                "name": "target",
+                "valueType": "ref:Task"
+              },
+              {
+                "name": "priority",
+                "valueType": "ref:Priority"
+              }
             ]
           }
         ],
@@ -108,8 +120,15 @@
       "proposal": {
         "summary": "Remove Task.priority and the Priority type",
         "ops": [
-          { "op": "remove_attribute", "term": "Task", "attribute": "priority" },
-          { "op": "remove_entity", "term": "Priority" }
+          {
+            "op": "remove_attribute",
+            "term": "Task",
+            "attribute": "priority"
+          },
+          {
+            "op": "remove_entity",
+            "term": "Priority"
+          }
         ],
         "tests": [
           "a Task has no priority attribute",
@@ -118,5 +137,10 @@
       }
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "Set it at creation only",
+    "note": "",
+    "answeredAt": "2026-08-06T00:55:03.999Z",
+    "changesetId": "q-007-set-it-at-creation-only"
+  }
 }
