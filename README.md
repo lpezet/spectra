@@ -33,6 +33,57 @@ npm test           # unit tests: the engine in shared/, the domain in app/
 npm run typecheck
 ```
 
+## Architecture
+
+Two independent things run here. They share a repo and nothing else.
+
+```
+   browser tab                                browser tab
+┌──────────────────────────┐              ┌────────────────────────┐
+│  spec tool         :5173 │              │  ToDo app       :5175  │
+│  vite — react            │              │  vite — react          │
+└────────────┬─────────────┘              │                        │
+             │ /api/* proxied to :5174    │  no server, no API     │
+             ▼                            │  state is in memory,   │
+┌──────────────────────────┐              │  gone on refresh       │
+│  express           :5174 │              └────────────────────────┘
+│                          │                          ▲
+│  reads + writes specs/   │                          ╎
+│  data/transcripts.db     │      the only link is the implementation
+│  runs @spec and @coder   │      pass: a human or @coder editing app/
+│  via the Agent SDK       │╌╌╌╌╌╌to match specs/. Nothing at runtime.
+└──────────────────────────┘
+```
+
+`npm run dev` starts the **spec tool** — both halves of it, express and vite, under one
+`concurrently`. `npm run dev:app` starts the **ToDo app**, separately and on purpose: it is
+the *output* of this tool, not part of it. Stopping the spec tool does not affect it, and
+the app has never heard of `specs/` at runtime — it was written from those files, and the
+files are not present at runtime in any form.
+
+That separation is the point. If the app needed the spec tool running, the glossary would
+be a config format rather than a design-time vocabulary.
+
+**Talking to it directly.** Everything the chat panel does is plain HTTP through the Vite
+proxy, so curl reaches the same endpoints the browser does:
+
+```bash
+curl localhost:5173/api/chat/agents
+SID=$(curl -s -XPOST localhost:5173/api/chat/sessions -H 'Content-Type: application/json' \
+  -d '{}' | jq -r .session.id)
+curl -XPOST localhost:5173/api/chat/sessions/$SID/messages \
+  -H 'Content-Type: application/json' -d '{"text":"@spec where should I start?","to":"spec"}'
+curl "localhost:5173/api/chat/sessions/$SID/events"          # poll, or
+curl -N "localhost:5173/api/chat/sessions/$SID/stream"       # the SSE stream the UI uses
+```
+
+An agent waiting on an approval blocks until answered, from curl exactly as from the UI:
+
+```bash
+curl -XPOST localhost:5173/api/chat/sessions/$SID/approvals/$APPROVAL_ID \
+  -H 'Content-Type: application/json' -d '{"decision":"allow"}'
+```
+
 ## Layout
 
 ```
@@ -42,11 +93,18 @@ specs/                      the source of truth — plain JSON, hand-editable
   changesets/applied/       what landed
   changesets/rejected/      what was turned down
   questions/*.json          what the glossary does not settle, and what was decided
-shared/src/                 the engine: types, value-type grammar, backlinks, changeset apply
-server/src/                 express — reads and writes spec files, nothing else
-web/src/                    react — browse, search, review, apply
+data/transcripts.db         chat history — gitignored, prunable, never the record
+shared/src/                 the engine: types, value-type grammar, backlinks, conflicts
+server/src/                 express — spec files, transcripts, and the two agents
+  agent/agents.ts           who @spec and @coder are, and what each may reach
+  agent/runner.ts           runs a turn, streams it, blocks on approvals
+  agent/tools.ts            the domain tools both agents call
+web/src/                    react — browse, search, review, apply, chat
 app/src/                    the ToDo app, written *from* specs/terms — the output side
 ```
+
+Ports: **5173** spec tool UI, **5174** its API, **5175** the ToDo app. The API serves no
+HTML — hitting `localhost:5174` in a browser gives a 404, which is correct.
 
 The changeset engine lives in `shared/`, not the server: it is pure functions over
 in-memory term arrays with no filesystem access. The web app uses it to *preview* what a
