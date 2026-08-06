@@ -7,7 +7,8 @@
  * about. Answering it put them in the glossary, so they are now spec'd like anything else
  * — see specs/terms/create-project.json and create-task.json.
  */
-import type { AnyTask, Project, World } from './types.js'
+import type { AnyTask, Project, Result, World } from './types.js'
+import { isPriority } from './types.js'
 
 let sequence = 0
 
@@ -45,6 +46,16 @@ export interface NewTask {
   dueDate?: string | null
   /** Supplying one makes the instance a RecurringTask instead of a plain Task. */
   recurrenceRule?: string | null
+  /** Omitted leaves the Task at normal. Anything outside low/normal/high is refused. */
+  priority?: string | null
+}
+
+/**
+ * createTask gained a way to fail when q-007 let it take a priority, so it now answers in
+ * the same shape as every other spec'd function. `task` is null exactly when `ok` is false.
+ */
+export interface CreateTaskResult extends Result {
+  task: AnyTask | null
 }
 
 /**
@@ -52,7 +63,18 @@ export interface NewTask {
  * Supplying a recurrenceRule creates a RecurringTask instead of a plain Task; omitting it
  * creates a plain Task."
  */
-export function createTask(world: World, input: NewTask): { world: World; task: AnyTask } {
+export function createTask(world: World, input: NewTask): CreateTaskResult {
+  // "Supplying a priority sets it; omitting it leaves the Task at normal." Priority's own
+  // spec closes the set, so anything outside it is refused rather than coerced.
+  if (input.priority != null && !isPriority(input.priority)) {
+    return {
+      world,
+      task: null,
+      ok: false,
+      message: `createTask: "${input.priority}" is not a priority — expected low, normal or high.`,
+    }
+  }
+
   const base = {
     id: nextId('task'),
     title: input.title,
@@ -60,15 +82,19 @@ export function createTask(world: World, input: NewTask): { world: World; task: 
     done: false,
     dueDate: input.dueDate ?? null,
     project: input.project,
-    // Task.priority carries `"default": "normal"`. createTask takes no priority argument
-    // because its spec lists none, so every Task starts — and stays — normal. See q-007.
-    priority: 'normal' as const,
+    // Task.priority carries `"default": "normal"`.
+    priority: input.priority ?? 'normal',
   }
   const task: AnyTask = input.recurrenceRule
     ? { ...base, recurrenceRule: input.recurrenceRule, ended: false }
     : base
 
-  return { world: { ...world, tasks: [...world.tasks, task] }, task }
+  return {
+    world: { ...world, tasks: [...world.tasks, task] },
+    task,
+    ok: true,
+    message: `createTask: added "${task.title}".`,
+  }
 }
 
 export function emptyWorld(): World {

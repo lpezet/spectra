@@ -1,5 +1,5 @@
 /**
- * implements: Project, Task, RecurringTask, completeTask, reopenTask, deleteProject, endRecurrence
+ * implements: Project, Task, RecurringTask, Priority, completeTask, reopenTask, deleteProject, endRecurrence, createProject, createTask, deleteTask, moveTask
  *
  * Intentionally bare. The point is to exercise the spec'd behaviour, not to be a good
  * ToDo app — so every spec'd function reports what it did into the log at the bottom,
@@ -8,10 +8,12 @@
 import { useMemo, useState } from 'react'
 import { completeTask } from './domain/completeTask.js'
 import { deleteProject } from './domain/deleteProject.js'
+import { deleteTask } from './domain/deleteTask.js'
+import { moveTask } from './domain/moveTask.js'
 import { endRecurrence } from './domain/endRecurrence.js'
 import { reopenTask } from './domain/reopenTask.js'
-import type { AnyTask, Result, World } from './domain/types.js'
-import { isRecurring } from './domain/types.js'
+import type { AnyTask, Project, Result, World } from './domain/types.js'
+import { PRIORITIES, isRecurring } from './domain/types.js'
 import { createProject, createTask, seedWorld, tasksOf } from './domain/world.js'
 
 interface LogEntry {
@@ -33,6 +35,7 @@ export function App() {
   const [title, setTitle] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [rule, setRule] = useState('')
+  const [priority, setPriority] = useState('normal')
 
   const selected = world.projects.find((project) => project.id === openProject) ?? world.projects[0] ?? null
   const tasks = useMemo(() => (selected ? tasksOf(world, selected.id) : []), [world, selected])
@@ -55,17 +58,23 @@ export function App() {
   function addTask(event: React.FormEvent) {
     event.preventDefault()
     if (!title.trim() || !selected) return
-    setWorld(
-      createTask(world, {
-        title: title.trim(),
-        project: selected.id,
-        dueDate: dueDate || null,
-        recurrenceRule: rule.trim() || null,
-      }).world,
-    )
+
+    const created = createTask(world, {
+      title: title.trim(),
+      project: selected.id,
+      dueDate: dueDate || null,
+      recurrenceRule: rule.trim() || null,
+      priority,
+    })
+
+    // createTask can refuse since q-007, so it reports like every other spec'd function.
+    run(created)
+    if (!created.ok) return
+
     setTitle('')
     setDueDate('')
     setRule('')
+    setPriority('normal')
   }
 
   return (
@@ -144,6 +153,17 @@ export function App() {
                   placeholder="RRULE, e.g. FREQ=WEEKLY"
                   aria-label="Recurrence rule — leave blank for a plain Task"
                 />
+                <select
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value)}
+                  aria-label="Priority"
+                >
+                  {PRIORITIES.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
                 <button type="submit">Add</button>
               </form>
 
@@ -158,6 +178,9 @@ export function App() {
                       onComplete={() => run(completeTask(world, task.id, today()))}
                       onReopen={() => run(reopenTask(world, task.id))}
                       onEnd={() => run(endRecurrence(world, task.id))}
+                      onDelete={() => run(deleteTask(world, task.id))}
+                      onMove={(destination) => run(moveTask(world, task.id, destination))}
+                      elsewhere={world.projects.filter((project) => project.id !== task.project)}
                     />
                   ))}
                 </ul>
@@ -192,11 +215,18 @@ function TaskRow({
   onComplete,
   onReopen,
   onEnd,
+  onDelete,
+  onMove,
+  elsewhere,
 }: {
   task: AnyTask
   onComplete: () => void
   onReopen: () => void
   onEnd: () => void
+  onDelete: () => void
+  onMove: (destination: string) => void
+  /** Projects this Task is not already in — nothing to offer when there are none. */
+  elsewhere: Project[]
 }) {
   const recurring = isRecurring(task)
 
@@ -228,6 +258,23 @@ function TaskRow({
             End
           </button>
         )}
+        {elsewhere.length > 0 && (
+          <select
+            value=""
+            aria-label={`Move "${task.title}" to another Project`}
+            onChange={(event) => event.target.value && onMove(event.target.value)}
+          >
+            <option value="">Move to…</option>
+            {elsewhere.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" className="danger" onClick={onDelete} title="Delete this Task outright">
+          Delete
+        </button>
       </span>
     </li>
   )

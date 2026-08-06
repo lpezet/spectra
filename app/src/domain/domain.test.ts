@@ -7,6 +7,8 @@ import { completeTask } from './completeTask.js'
 import { deleteProject } from './deleteProject.js'
 import { reopenTask } from './reopenTask.js'
 import { endRecurrence } from './endRecurrence.js'
+import { deleteTask } from './deleteTask.js'
+import { moveTask } from './moveTask.js'
 import { PRIORITIES, isPriority, isRecurring } from './types.js'
 import type { World } from './types.js'
 import { createProject, createTask, emptyWorld, tasksOf } from './world.js'
@@ -28,7 +30,7 @@ function scenario(options: { recurrenceRule?: string; dueDate?: string } = {}) {
   })
   world = task.world
 
-  return { world, projectId: project.project.id, taskId: task.task.id }
+  return { world, projectId: project.project.id, taskId: task.task!.id }
 }
 
 describe('Project / Task', () => {
@@ -80,6 +82,27 @@ describe('Project / Task', () => {
     const once = completeTask(world, taskId, TODAY)
     const twice = completeTask(once.world, taskId, TODAY)
     expect(twice.world.tasks[0]!.priority).toBe('normal')
+  })
+
+  // The tests q-007's changeset committed to.
+  it('creates a Task at the priority given', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    const created = createTask(project.world, { title: 'Urgent', project: project.project.id, priority: 'high' })
+
+    expect(created.ok).toBe(true)
+    expect(created.task!.priority).toBe('high')
+  })
+
+  it('refuses a priority outside low/normal/high and creates nothing', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    const created = createTask(project.world, { title: 'Bad', project: project.project.id, priority: 'urgent' })
+
+    expect(created.ok).toBe(false)
+    expect(created.task).toBeNull()
+    expect(created.world.tasks).toEqual([])
+    expect(created.message).toMatch(/is not a priority/)
   })
 
   it('treats a Task carrying recurrenceRule as a RecurringTask', () => {
@@ -238,7 +261,7 @@ describe('deleteProject', () => {
 
     // Complete it as many times as you like — it is open again every time.
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      world = completeTask(world, task.task.id, TODAY).world
+      world = completeTask(world, task.task!.id, TODAY).world
     }
 
     const result = deleteProject(world, project.project.id)
@@ -258,8 +281,8 @@ describe('deleteProject', () => {
     })
     world = task.world
 
-    world = endRecurrence(world, task.task.id).world
-    world = completeTask(world, task.task.id, TODAY).world
+    world = endRecurrence(world, task.task!.id).world
+    world = completeTask(world, task.task!.id, TODAY).world
 
     const result = deleteProject(world, project.project.id)
     expect(result.ok).toBe(true)
@@ -332,5 +355,111 @@ describe('endRecurrence', () => {
     const { world } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
     const task = world.tasks[0]!
     expect(isRecurring(task) && task.ended).toBe(false)
+  })
+})
+
+describe('deleteTask', () => {
+  // The test q-005's changeset committed to.
+  it('removes the target Task from its Project', () => {
+    const { world, projectId, taskId } = scenario()
+    const result = deleteTask(world, taskId)
+
+    expect(result.ok).toBe(true)
+    expect(tasksOf(result.world, projectId)).toEqual([])
+  })
+
+  it('refuses a Task that does not exist', () => {
+    const { world } = scenario()
+    const result = deleteTask(world, 'task-999')
+
+    expect(result.ok).toBe(false)
+    expect(result.world).toBe(world)
+  })
+
+  it('leaves other Tasks alone', () => {
+    let { world, projectId, taskId } = scenario()
+    world = createTask(world, { title: 'Survivor', project: projectId }).world
+
+    const result = deleteTask(world, taskId)
+    expect(result.world.tasks.map((task) => task.title)).toEqual(['Survivor'])
+  })
+
+  // deleteProject blocks on incomplete Tasks; this does not, so it is the way round it.
+  it('deletes an incomplete Task, unlike deleteProject', () => {
+    const { world, taskId } = scenario()
+    expect(world.tasks[0]!.done).toBe(false)
+    expect(deleteTask(world, taskId).ok).toBe(true)
+  })
+})
+
+describe('moveTask', () => {
+  /** Two Projects, with the Task in the first. */
+  function twoProjects() {
+    let world = emptyWorld()
+    const home = createProject(world, 'Home')
+    world = home.world
+    const work = createProject(world, 'Work')
+    world = work.world
+    const task = createTask(world, { title: 'Water the plants', project: home.project.id })
+    world = task.world
+
+    return { world, homeId: home.project.id, workId: work.project.id, taskId: task.task!.id }
+  }
+
+  // The test q-005's changeset committed to.
+  it('reassigns the Task and updates both Projects', () => {
+    const { world, homeId, workId, taskId } = twoProjects()
+    const result = moveTask(world, taskId, workId)
+
+    expect(result.ok).toBe(true)
+    expect(result.world.tasks[0]!.project).toBe(workId)
+    expect(tasksOf(result.world, homeId)).toEqual([])
+    expect(tasksOf(result.world, workId).map((task) => task.id)).toEqual([taskId])
+  })
+
+  it('refuses a destination that does not exist, leaving the Task where it was', () => {
+    const { world, homeId, taskId } = twoProjects()
+    const result = moveTask(world, taskId, 'project-999')
+
+    expect(result.ok).toBe(false)
+    expect(result.world).toBe(world)
+    expect(tasksOf(world, homeId)).toHaveLength(1)
+  })
+
+  it('refuses a Task that does not exist', () => {
+    const { world, workId } = twoProjects()
+    expect(moveTask(world, 'task-999', workId).ok).toBe(false)
+  })
+
+  // The spec says "to a different Project" without saying what the same one does.
+  it('is a no-op when the destination is the Project it is already in', () => {
+    const { world, homeId, taskId } = twoProjects()
+    const result = moveTask(world, taskId, homeId)
+
+    expect(result.ok).toBe(true)
+    expect(result.world).toBe(world)
+    expect(result.message).toMatch(/already in/)
+  })
+
+  it('carries everything but the Project across', () => {
+    let world = emptyWorld()
+    const home = createProject(world, 'Home')
+    world = home.world
+    const work = createProject(world, 'Work')
+    world = work.world
+    const task = createTask(world, {
+      title: 'Water the plants',
+      project: home.project.id,
+      priority: 'high',
+      recurrenceRule: 'FREQ=WEEKLY',
+      dueDate: '2026-08-05',
+    })
+
+    const moved = moveTask(task.world, task.task!.id, work.project.id)
+    const after = moved.world.tasks[0]!
+
+    expect(after.priority).toBe('high')
+    expect(after.dueDate).toBe('2026-08-05')
+    expect(isRecurring(after) && after.recurrenceRule).toBe('FREQ=WEEKLY')
   })
 })
