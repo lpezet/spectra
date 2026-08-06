@@ -395,10 +395,21 @@ function Approval({
 /** File tools carry the whole new content, which is the part worth actually reading. */
 function Input({ input }: { input?: Record<string, unknown> }) {
   if (!input) return null
-  const { file_path: file, content, new_string: next, old_string: previous, ...rest } = input
+  const {
+    file_path: file,
+    content,
+    new_string: next,
+    old_string: previous,
+    command,
+    description,
+    ...rest
+  } = input
 
   return (
     <div className="approval-input">
+      {/* A command is the whole decision, so it leads rather than sitting in the JSON. */}
+      {typeof command === 'string' && <pre className="approval-diff approval-command">{command}</pre>}
+      {typeof description === 'string' && <p className="muted approval-note">{description}</p>}
       {typeof file === 'string' && <code className="approval-file">{file}</code>}
       {typeof previous === 'string' && <pre className="approval-diff approval-old">{previous}</pre>}
       {typeof next === 'string' && <pre className="approval-diff approval-new">{next}</pre>}

@@ -1367,3 +1367,8 @@ button.option:hover {
   margin: 6px 0 0;
   font-size: 12px;
 }
+
+.approval-command {
+  border-left: 2px solid var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

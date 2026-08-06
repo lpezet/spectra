@@ -85,8 +85,9 @@ When asked what to work on first, call analyze_pending and answer from what it r
     label: 'coder',
     description: 'Implements applied changesets in app/. Cannot edit specs.',
     cwd: APP_DIR,
-    builtins: ['Read', 'Glob', 'Grep', 'Edit', 'Write'],
-    // Reading is free; changing a file is not. Edit and Write are deliberately absent.
+    builtins: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
+    // Reading is free; changing a file or running a command is not. Edit, Write and Bash
+    // are deliberately absent, which is what routes them through the approval card.
     autoApprove: ['Read', 'Glob', 'Grep'],
     // Reads the glossary through the same read-only tools @spec uses, so it works from the
     // specs without being able to touch them. It can raise a question — an implementation
@@ -99,8 +100,23 @@ When asked what to work on first, call analyze_pending and answer from what it r
       'raise_question',
       'mark_implemented',
     ],
-    // Belt and braces: cwd already roots it at app/, and this denies the escape.
-    disallowedTools: [`Edit(//${SPECS_DIR}/**)`, `Write(//${SPECS_DIR}/**)`],
+    /**
+     * Path rules for the file tools, plus a short denylist of shell commands.
+     *
+     * Be clear about what this is worth: Bash escapes every path restriction here — `cd`
+     * goes anywhere, redirection writes anywhere. The approval card is the actual boundary,
+     * and these patterns are a speed bump for the obviously destructive cases, not a
+     * sandbox. A sandbox is the next step, and this is the reason for it.
+     */
+    disallowedTools: [
+      `Edit(//${SPECS_DIR}/**)`,
+      `Write(//${SPECS_DIR}/**)`,
+      'Bash(rm -rf *)',
+      'Bash(git commit *)',
+      'Bash(git push *)',
+      'Bash(git reset *)',
+      'Bash(git checkout *)',
+    ],
     systemPrompt: `${SHARED}
 
 You own app/. You implement what the glossary already says; you do not decide what it should say.
@@ -112,9 +128,10 @@ How to run an implementation pass:
 2. Find the files whose "// implements:" marker names the affected terms. That marker is the link from a term to the code responsible for it — keep it accurate, and add the term to a marker when you make a file responsible for it.
 3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do. Every edit is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
 4. Update the tests, including any the changeset committed to under "tests".
-5. Call mark_implemented with the changeset id.
+5. Run \`npm run test -w app\` and \`npx tsc -p app\` from the repo root to check your work, and fix what they report.
+6. Call mark_implemented with the changeset id.
 
-Do not run commands or tests — you have no shell. Say what you changed and what you would want run, and leave it to the human.
+You have a shell, and every command is shown to the human before it runs. Use it to check your work — running tests, typechecking, searching. Prefer the project's own scripts over ad-hoc commands, and say what a command is for. Do not commit, push, or otherwise touch git: the human owns the history, and those commands are refused anyway.
 
 If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead.`,
   },
