@@ -6,15 +6,20 @@
  * directly and the discipline would rest on the system prompt asking it not to. Here it
  * rests on there being no such tool. The agent physically cannot bypass review.
  *
- * Everything below is read-only except `raise_question`, which only ever produces a
- * proposal a human still has to answer — so nothing here needs an approval prompt yet.
+ * Two of these write, and neither needs an approval prompt. `raise_question` produces a
+ * question a human still has to answer; `propose_changeset` produces a changeset a human
+ * still has to review and apply. Both land in a queue and change nothing on their own —
+ * "writes a file" is not the same as "changes the glossary", and the approval already
+ * exists downstream.
  */
 import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
+import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
 import type { RaiseRequest } from '../raise.js'
+import type { ProposeRequest } from '../propose.js'
 import { readChangesets, readQuestions, readTerms } from '../store.js'
 import type { TranscriptStore } from '../transcripts.js'
 
@@ -27,7 +32,7 @@ import type { TranscriptStore } from '../transcripts.js'
  * register — the agent then reports having no tools at all, with nothing in the logs. Each
  * construct is fine on its own; it is the depth that breaks it.
  *
- * Nothing is lost: `raiseQuestion` runs the real schema over the result before writing, so
+ * Nothing is lost: both write paths run the real schema over the result before writing, so
  * a malformed op is rejected there with a readable message rather than landing on disk.
  */
 const attributeInput = z.object({
@@ -45,7 +50,12 @@ const opInput = z.object({
   spec: z.string().optional().describe('Required for add_entity and modify_spec'),
   tags: z.array(z.string()).optional(),
   attributes: z.array(attributeInput).optional().describe('add_entity only'),
-  attribute: z.unknown().optional().describe('add_attribute takes an attribute object; remove_attribute takes its name as a string'),
+  // Typed rather than `unknown`: with no shape to follow the model reaches for
+  // `attributes` (the add_entity field) and the write is refused on the first try.
+  attribute: z
+    .union([attributeInput, z.string()])
+    .optional()
+    .describe('add_attribute takes the attribute object; remove_attribute takes just its name as a string'),
 })
 
 const proposalInput = z.object({
@@ -285,6 +295,46 @@ export function blueprintTools(transcripts: TranscriptStore) {
     },
   )
 
+  const proposeChangesetTool = tool(
+    'propose_changeset',
+    [
+      'Propose an edit to the glossary. Use this when the change is clear and there is no product decision left to make — a missing term, a spec that says two things, a name that does not match what it describes.',
+      'It lands in the pending queue and changes nothing until a human reviews and applies it, so it is safe to propose; it is not safe to guess.',
+      'If the change turns on a choice only the human can make, raise a question instead. Do not settle a fork by proposing one side of it — a changeset that quietly picked a default is far harder to review than a question that names the options.',
+      'If the request needs no glossary change at all — presentation, wording in the UI, how something is displayed or implemented — say so and do not propose anything. The glossary describes the domain, not the app that renders it.',
+      'Say in your reply what you did not decide. A proposal that names its own open ends is worth more than one that reads as finished.',
+    ].join(' '),
+    {
+      summary: z.string().describe('One line: what this change does'),
+      ops: z.array(opInput).describe('The edits, applied in order'),
+      tests: z
+        .array(z.string())
+        .describe('Plain-language behaviours this change commits to — what a reviewer should expect to hold afterwards'),
+      fromQuestion: z
+        .string()
+        .optional()
+        .describe('Id of an already-answered question this follows from, if any'),
+    },
+    async (args) => {
+      const outcome = await proposeChangeset({
+        summary: args.summary,
+        ops: args.ops as ProposeRequest['ops'],
+        tests: args.tests,
+        ...(args.fromQuestion ? { fromQuestion: args.fromQuestion } : {}),
+      })
+
+      return say(
+        outcome.ok
+          ? {
+              proposed: outcome.id,
+              file: `specs/changesets/${outcome.file}`,
+              awaiting: 'human review — nothing has changed in the glossary yet',
+            }
+          : { error: outcome.error },
+      )
+    },
+  )
+
   return [
     readGlossary,
     readQuestionsTool,
@@ -292,6 +342,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     analyzePendingTool,
     searchTranscripts,
     raiseQuestionTool,
+    proposeChangesetTool,
   ]
 }
 
@@ -303,4 +354,5 @@ export const TOOL_NAMES = [
   'analyze_pending',
   'search_transcripts',
   'raise_question',
+  'propose_changeset',
 ].map((name) => `mcp__blueprints__${name}`)
