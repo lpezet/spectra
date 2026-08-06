@@ -93,14 +93,17 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
     res.status(outcome.ok ? 202 : 409).json(outcome)
   })
 
-  router.post('/sessions/:id/approvals/:approvalId', (req, res) => {
+  // Async because the run may be blocked in the sandbox rather than in this process, in
+  // which case deciding means an HTTP call to it. The card looks the same either way.
+  router.post('/sessions/:id/approvals/:approvalId', async (req, res) => {
     const allow = req.body?.decision === 'allow'
     const note = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim() : null
 
-    if (!runner.decide(req.params.approvalId, allow, note)) {
+    if (!(await runner.decide(req.params.approvalId, allow, note))) {
       res.status(409).json({
         ok: false,
-        error: 'Nothing is waiting on that any more — the run ended, or the server restarted.',
+        error:
+          'Nothing is waiting on that any more — the run ended, the server restarted, or the sandbox could not be told.',
       })
       return
     }

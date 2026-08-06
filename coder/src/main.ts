@@ -35,53 +35,30 @@ const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
 const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
 const MCP_URL = `${SPEC_URL}/mcp/coder`
 
-const SYSTEM_PROMPT = `You are @coder, working inside a sandbox on todo-blueprints. You own app/ — a ToDo app implemented from a glossary of Terms that lives in specs/.
-
-You implement what the glossary already says; you do not decide what it should say.
-
-Your working directory is app/, and it is the only thing you can write. The glossary is not on your filesystem at all — you reach it through tools served by the spec tool, which owns those files. You can read every term, changeset and question through them, and there is no tool here that edits a term. That is not a rule you are being asked to follow; it is the whole surface you have.
-
-Two of those tools do write, and they are the way work comes back:
-- raise_question, when the specs are wrong, incomplete, or say two contradictory things. Raise it rather than working around it, and do not change the code to something the specs do not describe. A question is for a decision a human must make — if it cannot be phrased as something someone answers, do not raise it.
-- mark_implemented, when you have finished a changeset and its tests pass.
-
-How to run an implementation pass:
-1. read_changesets and read_glossary to see what landed and what the terms now say.
-2. Find the files whose "// implements:" marker names the affected terms. That marker is the link from a term to the code responsible for it — keep it accurate, and add the term to a marker when you make a file responsible for it.
-3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do.
-4. Update the tests, including any the changeset committed to under "tests".
-5. Run \`npm test\` and \`npm run typecheck\` and fix what they report.
-6. Call mark_implemented with the changeset id.
-
-Every edit, and every command that changes anything, is shown to the human for approval before it happens. Commands the SDK judges read-only run without asking. So make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
-
-If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and say so rather than guessing.
-
-Be concise and concrete. Cite term names, changeset ids and file paths.`
-
 /**
- * Which glossary tools this agent may call — asked, not assumed.
+ * Who this agent is — fetched, not stored.
  *
- * The obvious thing is a hardcoded list here. But then two places would decide what @coder
- * can do, and the one in this container is the one an attacker who got in would edit. So
- * ask the spec tool, and let the answer be whatever agents.ts says. Naming a tool the
- * server does not serve gets "tool not found" from the server regardless, so this list is
- * a convenience for the model, not the boundary.
+ * The system prompt used to live here as a second copy of the one in the spec tool's
+ * agents.ts, and it had already started to differ. Same mistake as the glossary reader that
+ * used to sit next to it: two answers to "who is @coder", and the copy an attacker who got
+ * into this container could edit is this one. So agents.ts is the single definition and this
+ * asks for it — prompt, which builtins to load, which run without a card, and the tool list.
  *
- * Cached for the life of the process: it changes when agents.ts changes, which means a
- * restart of the other container anyway.
+ * Fetched per run rather than at boot, so editing agents.ts and restarting the spec tool is
+ * enough; this container does not need rebuilding to change who it is.
  */
-let cachedToolNames: string[] | null = null
+interface Profile {
+  systemPrompt: string
+  builtins: string[]
+  autoApprove: string[]
+  disallowedTools: string[]
+  tools: string[]
+}
 
-async function glossaryToolNames(): Promise<string[]> {
-  if (cachedToolNames) return cachedToolNames
-
-  const response = await fetch(`${MCP_URL}/tools`, { signal: AbortSignal.timeout(5_000) })
-  if (!response.ok) throw new Error(`The spec tool answered ${response.status} for the tool list.`)
-
-  const body = (await response.json()) as { tools: Array<{ name: string }> }
-  cachedToolNames = body.tools.map((entry) => `mcp__blueprints__${entry.name}`)
-  return cachedToolNames
+async function profile(): Promise<Profile> {
+  const response = await fetch(`${MCP_URL}/profile`, { signal: AbortSignal.timeout(5_000) })
+  if (!response.ok) throw new Error(`The spec tool answered ${response.status} for the agent profile.`)
+  return (await response.json()) as Profile
 }
 
 interface Pending {
@@ -117,6 +94,9 @@ function askPermission(sessionId: string) {
     const decision = await new Promise<{ allow: boolean; note: string | null }>((resolve) => {
       const timer = setTimeout(() => {
         awaiting.delete(approvalId)
+        // Say so, or the card on the other side sits at "waiting" forever describing a
+        // decision that has already been made for it.
+        emit(sessionId, { kind: 'approval_expired', approvalId })
         resolve({ allow: false, note: 'no answer' })
       }, APPROVAL_TIMEOUT_MS)
       awaiting.set(approvalId, { resolve, timer })
@@ -136,15 +116,15 @@ function askPermission(sessionId: string) {
 async function run(sessionId: string, prompt: string): Promise<void> {
   const resume = sdkSessions.get(sessionId)
 
-  let toolNames: string[]
+  let who: Profile
   try {
-    toolNames = await glossaryToolNames()
+    who = await profile()
   } catch (cause) {
     // Worth failing loudly rather than running blind: an agent that silently lost the
     // glossary will implement something plausible and wrong.
     emit(sessionId, {
       kind: 'error',
-      text: `Cannot reach the glossary at ${MCP_URL} (${(cause as Error).message}). Not starting a run without it.`,
+      text: `Cannot reach the spec tool at ${MCP_URL} (${(cause as Error).message}). Not starting a run without it.`,
     })
     return
   }
@@ -156,13 +136,17 @@ async function run(sessionId: string, prompt: string): Promise<void> {
         // Over HTTP to the spec tool, not in-process. One definition of these tools exists
         // and it lives with the files they touch.
         mcpServers: { blueprints: { type: 'http', url: MCP_URL } },
-        tools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
+        tools: who.builtins,
         // Reads run freely; anything that changes a file or runs a command is not here,
         // which is what routes it through canUseTool and out to the approval card.
-        allowedTools: [...toolNames, 'Read', 'Glob', 'Grep'],
+        allowedTools: [
+          ...who.tools.map((name) => `mcp__blueprints__${name}`),
+          ...who.autoApprove,
+        ],
+        ...(who.disallowedTools.length > 0 ? { disallowedTools: who.disallowedTools } : {}),
         canUseTool: askPermission(sessionId),
         settingSources: [],
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt: who.systemPrompt,
         includePartialMessages: true,
         cwd: APP_DIR,
         ...(resume ? { resume } : {}),
@@ -184,6 +168,24 @@ async function run(sessionId: string, prompt: string): Promise<void> {
             emit(sessionId, { kind: 'tool_call', tool: block.name, id: block.id, input: block.input })
           }
         }
+      } else if (message.type === 'user') {
+        // Tool results arrive as a user turn. Relayed on so the transcript on the other
+        // side can settle the call — without this a tool row streams as "running" and stays
+        // there, because nothing else ever mentions that id again.
+        const content = message.message.content
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (typeof block === 'object' && block && 'type' in block && block.type === 'tool_result') {
+              const result = block as { tool_use_id: string; content?: unknown; is_error?: boolean }
+              emit(sessionId, {
+                kind: 'tool_result',
+                id: result.tool_use_id,
+                isError: result.is_error === true,
+                content: result.content ?? null,
+              })
+            }
+          }
+        }
       } else if (message.type === 'result') {
         if (message.session_id) sdkSessions.set(sessionId, message.session_id)
         if (message.subtype !== 'success') {
@@ -203,7 +205,7 @@ app.get('/health', async (_req, res) => {
   let tools: string[] | null = null
   let glossaryError: string | null = null
   try {
-    tools = (await glossaryToolNames()).map((name) => name.replace('mcp__blueprints__', ''))
+    tools = (await profile()).tools
   } catch (cause) {
     glossaryError = (cause as Error).message
   }

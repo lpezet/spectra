@@ -14,6 +14,7 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptStore } from '../transcripts.js'
+import { CODER_URL, probeSandbox } from '../sandbox.js'
 import { AGENTS } from './agents.js'
 import type { AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
@@ -47,6 +48,11 @@ export class AgentRunner {
   private readonly active = new Set<string>()
   /** Tool calls waiting on a human decision, keyed by the approval id shown in the card. */
   private readonly awaiting = new Map<string, PendingApproval>()
+  /**
+   * Approvals owned by the sandbox rather than by a promise in this process. The card looks
+   * identical from the UI; the difference is where the decision has to be delivered.
+   */
+  private readonly remoteApprovals = new Map<string, string>()
 
   constructor(private readonly transcripts: TranscriptStore) {}
 
@@ -130,7 +136,10 @@ export class AgentRunner {
     }
 
     this.active.add(key)
-    void this.run(sessionId, prompt, to).finally(() => {
+    // @coder runs in the sandbox when there is one. @spec never does — it has no filesystem
+    // and no shell, so there is nothing to contain.
+    const start = to === 'coder' && CODER_URL ? this.relay(sessionId, prompt) : this.run(sessionId, prompt, to)
+    void start.finally(() => {
       this.active.delete(key)
       this.events(sessionId).emit('event', { kind: 'done' } satisfies RunnerEvent)
     })
@@ -258,6 +267,113 @@ export class AgentRunner {
     }
   }
 
+  /**
+   * The same turn, run in the sandbox instead of here.
+   *
+   * The container holds no history on purpose, so this is not a handoff — it is a relay.
+   * Every event that arrives is written to the same transcript rows the in-process path
+   * writes, which is why the UI needs no idea which side ran the turn.
+   *
+   * There is no fallback. If the sandbox is configured and unreachable, the turn does not
+   * run. Quietly running unsandboxed under a UI that says "sandboxed" would be worse than
+   * both options it sits between: you would think you had a boundary and you would not.
+   * (An *unset* CODER_URL is a different thing — a deliberate choice to run without a
+   * sandbox at all, which `send` routes to `run` and /api/sandbox reports honestly.)
+   */
+  private async relay(sessionId: string, prompt: string): Promise<void> {
+    const to: AgentName = 'coder'
+    const openCalls = new Set<string>()
+    const controller = new AbortController()
+
+    const status = await probeSandbox()
+    if (!status.reachable) {
+      this.record(sessionId, {
+        author: to,
+        kind: 'error',
+        text: `The @coder sandbox at ${CODER_URL} is not reachable${status.error ? ` (${status.error})` : ''}. Nothing ran — start it with \`docker compose up -d\`. There is deliberately no fallback: running unsandboxed while the UI says otherwise is worse than not running.`,
+      })
+      return
+    }
+
+    try {
+      // Open the stream before sending the turn. The container's emitter does not buffer,
+      // so anything it publishes before this listener attaches is simply gone — and the
+      // first tool call arrives fast enough for that to be a real race, not a theoretical.
+      const stream = await fetch(`${CODER_URL}/sessions/${sessionId}/stream`, {
+        signal: controller.signal,
+      })
+      if (!stream.ok || !stream.body) {
+        throw new Error(`The sandbox would not open a stream (${stream.status}).`)
+      }
+
+      const turn = await fetch(`${CODER_URL}/sessions/${sessionId}/turn`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+      if (!turn.ok) {
+        throw new Error(`The sandbox refused the turn (${turn.status}): ${await turn.text()}`)
+      }
+
+      for await (const event of readEvents(stream.body)) {
+        if (event.kind === 'done') break
+
+        if (event.kind === 'delta') {
+          this.events(sessionId).emit('event', {
+            kind: 'delta',
+            text: String(event.text ?? ''),
+          } satisfies RunnerEvent)
+        } else if (event.kind === 'assistant') {
+          this.record(sessionId, { author: to, kind: 'assistant', text: String(event.text ?? '') })
+        } else if (event.kind === 'tool_call') {
+          const id = String(event.id)
+          openCalls.add(id)
+          this.record(sessionId, {
+            author: to,
+            kind: 'tool_call',
+            text: shortName(String(event.tool)),
+            payload: { input: event.input },
+            toolCallId: id,
+            status: 'started',
+          })
+        } else if (event.kind === 'tool_result') {
+          const id = String(event.id)
+          if (!openCalls.delete(id)) continue
+          this.transcripts.settleToolCall(id, event.isError ? 'failed' : 'completed', event.content ?? null)
+          this.events(sessionId).emit('event', { kind: 'update', toolCallId: id } satisfies RunnerEvent)
+        } else if (event.kind === 'approval') {
+          const approvalId = String(event.approvalId)
+          // Recorded here, decided here, delivered back over HTTP by `decide`.
+          this.remoteApprovals.set(approvalId, sessionId)
+          this.record(sessionId, {
+            author: to,
+            kind: 'approval',
+            text: String(event.tool),
+            payload: { input: event.input },
+            toolCallId: approvalId,
+            status: 'started',
+          })
+        } else if (event.kind === 'approval_expired') {
+          const approvalId = String(event.approvalId)
+          this.remoteApprovals.delete(approvalId)
+          this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
+          this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
+        } else if (event.kind === 'error') {
+          this.record(sessionId, { author: to, kind: 'error', text: String(event.text ?? '') })
+        }
+      }
+    } catch (cause) {
+      this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
+    } finally {
+      controller.abort()
+      // Same honesty as the in-process path: a call still open died with the run, and may
+      // or may not have taken effect on the far side.
+      for (const callId of openCalls) {
+        this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
+      }
+    }
+  }
+
   newSessionId(): string {
     return randomUUID()
   }
@@ -267,18 +383,38 @@ export class AgentRunner {
    * abandoned, or the server restarted and the promise went with it. The transcript row
    * still says `started` in that case, which is the honest record.
    */
-  decide(approvalId: string, allow: boolean, note: string | null): boolean {
+  async decide(approvalId: string, allow: boolean, note: string | null): Promise<boolean> {
     const pending = this.awaiting.get(approvalId)
-    if (!pending) return false
+    if (pending) {
+      clearTimeout(pending.timer)
+      this.awaiting.delete(approvalId)
+      this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
+      this.events(this.sessionOf(approvalId)).emit('event', {
+        kind: 'approval',
+        approvalId,
+      } satisfies RunnerEvent)
+      pending.resolve({ allow, note })
+      return true
+    }
 
-    clearTimeout(pending.timer)
-    this.awaiting.delete(approvalId)
+    // Not ours: a run blocked inside the sandbox, waiting on this decision over HTTP.
+    const sessionId = this.remoteApprovals.get(approvalId)
+    if (sessionId === undefined) return false
+
+    // Deliver first, record second. Settling the transcript for a decision that never
+    // arrived would leave the row saying "allowed" beside an agent still sitting on the
+    // question — the one inconsistency worth ordering the code around.
+    const response = await fetch(`${CODER_URL}/approvals/${approvalId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: allow ? 'allow' : 'deny', note }),
+    }).catch(() => null)
+
+    if (!response?.ok) return false
+
+    this.remoteApprovals.delete(approvalId)
     this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
-    this.events(this.sessionOf(approvalId)).emit('event', {
-      kind: 'approval',
-      approvalId,
-    } satisfies RunnerEvent)
-    pending.resolve({ allow, note })
+    this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
     return true
   }
 
@@ -332,4 +468,36 @@ export class AgentRunner {
 
 function shortName(toolName: string): string {
   return toolName.replace(/^mcp__blueprints__/, '')
+}
+
+/**
+ * The sandbox's SSE stream, as events.
+ *
+ * Deliberately minimal: this consumes one stream from one service we wrote, which only ever
+ * sends `data:` lines and keep-alive comments. A full SSE parser would handle event types,
+ * ids and retry hints that nothing here emits.
+ */
+async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Record<string, unknown>> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) return
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    // The last piece may be half a line; keep it for the next chunk.
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      try {
+        yield JSON.parse(line.slice(6)) as Record<string, unknown>
+      } catch {
+        // A malformed frame is the sandbox's bug, not a reason to drop the whole run.
+      }
+    }
+  }
 }

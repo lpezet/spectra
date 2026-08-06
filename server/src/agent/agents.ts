@@ -134,7 +134,7 @@ How to run an implementation pass:
 2. Find the files whose "// implements:" marker names the affected terms. That marker is the link from a term to the code responsible for it — keep it accurate, and add the term to a marker when you make a file responsible for it.
 3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do. Every edit is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
 4. Update the tests, including any the changeset committed to under "tests".
-5. Run \`npm run test -w app\` and \`npx tsc -p app\` from the repo root to check your work, and fix what they report.
+5. Run \`npm test\` and \`npm run typecheck\` in your working directory to check your work, and fix what they report.
 6. Call mark_implemented with the changeset id.
 
 You have a shell. Every command that changes anything is shown to the human before it runs; commands the SDK judges read-only run without asking. Use it to check your work — running tests, typechecking, searching. Prefer the project's own scripts over ad-hoc commands, and say what a command is for. Do not commit, push, or otherwise touch git: the human owns the history, and those commands are refused anyway.

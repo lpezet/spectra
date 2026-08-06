@@ -51,8 +51,8 @@ Two independent things run here. They share a repo and nothing else.
 │                          │                          ▲
 │  reads + writes specs/   │                          ╎
 │  data/transcripts.db     │      the only link is the implementation
-│  runs @spec and @coder   │      pass: a human or @coder editing app/
-│  via the Agent SDK       │╌╌╌╌╌╌to match specs/. Nothing at runtime.
+│  runs @spec; relays      │      pass: a human or @coder editing app/
+│  @coder to its sandbox   │╌╌╌╌╌╌to match specs/. Nothing at runtime.
 └──────────────────────────┘
 ```
 
@@ -171,8 +171,25 @@ judges read-only through without a card. `pwd && ls` ran unprompted; `touch
 /work/app/probe-file` raised a card and was blocked. The card covers commands that *change*
 things — the useful guarantee, but not the one that was written down.
 
-**What does not hold yet.** Express still runs `@coder` in-process for the chat panel;
-nothing routes a turn to `CODER_URL`. The containers are proven and the UI does not use them.
+**The chat panel uses this.** Messaging `@coder` relays the turn to the container over HTTP
+and writes every event back into the same transcript rows the in-process path writes — so
+the UI needs no idea which side ran it, and the approval card behaves identically. `@spec`
+still runs in express: no filesystem, no shell, nothing to contain.
+
+Verified through the chat API, the same path the browser takes: tool calls stream and settle
+(none left hanging), a declined `Edit` left the file byte-identical, an approved one applied
+and the transcript recorded both decisions.
+
+**No fallback, deliberately.** If `CODER_URL` is set and the container is down, the turn does
+not run — it records why. Running unsandboxed under a UI that says "sandboxed" is worse than
+stopping, because you would believe you had a boundary. An *unset* `CODER_URL` is a different
+thing: a deliberate choice to run without a sandbox, which is what plain `npm run dev` does
+and what `/api/sandbox` reports as `configured: false`.
+
+**One definition of who `@coder` is.** The container used to carry its own copy of the system
+prompt, which had already drifted. It now fetches prompt, builtins, auto-approvals and tool
+list from `/mcp/coder/profile` at the start of every run, so `agents.ts` stays the single
+answer — and the copy an attacker in the box could edit is not the one that decides.
 
 `docker-compose.open.yml` drops `internal` and is no longer needed for a turn to work. It
 stays for debugging from the host, where the sandbox is otherwise unreachable.

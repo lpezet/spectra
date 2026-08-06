@@ -56,6 +56,34 @@ export function mcpRoutes(transcripts: TranscriptStore): Router {
     })
   })
 
+  /**
+   * Who the agent is, for a container that runs its loop.
+   *
+   * The sandbox used to carry its own copy of the system prompt, which is the same mistake
+   * as its own copy of the glossary reader and drifts the same way — two answers to "who is
+   * @coder", and the one an attacker can edit is the one in the box. So agents.ts stays the
+   * single definition and the container asks for it at the start of every run.
+   *
+   * `disallowedTools` goes over verbatim, including the `specs/` path rules whose paths only
+   * exist on this side. They match nothing in the container, which is harmless — the mount
+   * they guarded is gone, and the shell entries are the ones that still do work.
+   */
+  router.get('/:agent/profile', (req, res) => {
+    const agent = AGENTS[req.params.agent as AgentName]
+    if (!agent) {
+      res.status(404).json({ error: `No agent called "${req.params.agent}".` })
+      return
+    }
+    res.json({
+      agent: agent.name,
+      systemPrompt: agent.systemPrompt,
+      builtins: agent.builtins,
+      autoApprove: agent.autoApprove,
+      disallowedTools: agent.disallowedTools ?? [],
+      tools: toolsFor(transcripts, agent.domainTools).map((entry) => entry.name),
+    })
+  })
+
   router.post('/:agent', async (req, res) => {
     const agent = AGENTS[req.params.agent as AgentName]
     if (!agent) {

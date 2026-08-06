@@ -151,8 +151,15 @@ networks:
 # ls` ran unprompted; `touch /work/app/probe-file` raised a card and was blocked. The card
 # covers commands that change things, not every command.
 #
-# WHAT IS LEFT. Express still runs @coder in-process for the chat panel; nothing routes a
-# turn to CODER_URL yet. So the containers are proven, and the UI does not use them.
+# The chat panel uses this. Messaging @coder relays the turn to the container and writes
+# every event back into the same transcript rows the in-process path writes, so the UI needs
+# no idea which side ran it. @spec still runs in express, because it has no filesystem and
+# no shell and there is nothing to contain.
+#
+# There is no fallback. If CODER_URL is set and the container is down, the turn does not run
+# and says so. Running unsandboxed under a UI that says "sandboxed" would be worse than
+# stopping. An unset CODER_URL is a different thing — a deliberate choice to run without a
+# sandbox, which is what plain `npm run dev` does.
 #
 # docker-compose.open.yml drops `internal` and is no longer needed for a turn to work. It
 # stays for debugging from the host, where the sandbox is otherwise unreachable.
