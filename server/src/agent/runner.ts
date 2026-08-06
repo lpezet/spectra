@@ -56,9 +56,13 @@ export class AgentRunner {
    * `claude setup-token` (`sk-ant-oat...`) goes in CLAUDE_CODE_OAUTH_TOKEN. Putting an
    * OAuth token in the API-key variable loads cleanly and then fails at the first call
    * with "Invalid API key", which is a confusing way to find out.
+   *
+   * `||` and not `??`: docker compose's `${VAR:-}` sets the variable to an empty string
+   * rather than leaving it absent, and `??` treats "" as a present value — so the API-key
+   * slot being empty would mask a perfectly good OAuth token sitting next to it.
    */
   static get configured(): boolean {
-    return Boolean(process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_CODE_OAUTH_TOKEN)
+    return Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN)
   }
 
   /** Null when the credential looks like it is in the wrong variable. */

@@ -19,9 +19,14 @@ RUN apt-get update \
 
 # The agent's own dependencies live in the image, separate from the app's. Installing them
 # here rather than in the mount means the app's node_modules stays entirely the app's.
+#
+# `npm ci` and not `npm install`: the lockfile is what makes two builds of the same commit
+# the same image. `install` floats to whatever published since, which is how this first
+# failed — a patch release of the Agent SDK tightened its zod peer and the build broke
+# without a line of this repo changing.
 WORKDIR /agent
-COPY coder/package.json ./
-RUN npm install --omit=dev
+COPY coder/package.json coder/package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY coder/ ./
 

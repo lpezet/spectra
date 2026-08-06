@@ -1,0 +1,16 @@
+# The escape hatch, kept explicit so nobody reaches it by accident.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.open.yml up -d coder
+#
+# This gives the sandbox network a route out, which restores two things at once: the
+# published port on 127.0.0.1:5177 (docker does not route published ports on an internal
+# network), and the container's ability to reach api.anthropic.com. Both are needed to
+# drive a real turn today, and both are exactly what the sandbox exists to remove.
+#
+# Use it to see @coder work end-to-end. Do not leave it on: with egress restored, a shell
+# in the container can fetch and run whatever it likes, and the approval card goes back to
+# being the only thing in the way. When the proxy in docker-compose.yml's closing note
+# lands, this file stops having a reason to exist.
+networks:
+  sandbox:
+    internal: false

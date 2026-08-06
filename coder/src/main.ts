@@ -191,7 +191,9 @@ app.get('/health', (_req, res) => {
     glossaryReachable: reachable(),
     // Says plainly what this box cannot do, so the caller need not infer it.
     canWriteSpecs: false,
-    configured: Boolean(process.env.ANTHROPIC_API_KEY ?? process.env.CLAUDE_CODE_OAUTH_TOKEN),
+    // `||`, not `??` — compose passes an unset variable through as "", which `??` accepts
+    // as a value and which would then hide the credential in the other slot.
+    configured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN),
   })
 })
 

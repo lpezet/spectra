@@ -37,6 +37,12 @@ services:
     # at the bottom.
     networks:
       - sandbox
+
+    # Inert while the network is internal — verified: with `internal: true` docker does not
+    # route published ports either, so the host gets "connection refused" even though the
+    # service inside is healthy. It is left here for the non-internal mode below, and as the
+    # reminder that reaching this container means *joining the network*, not publishing a
+    # port. Express has to become a service on `sandbox` for that reason alone.
     ports:
       - '127.0.0.1:5177:5177'
 
@@ -63,11 +69,27 @@ networks:
   sandbox:
     internal: true
 
-# KNOWN, UNRESOLVED: `internal: true` blocks egress, and the Agent SDK needs to reach
-# api.anthropic.com. Both cannot hold. The options, none of them free:
-#   - allow egress and lose the strongest property this file has;
-#   - proxy API calls through the spec tool, so the container talks only to it;
-#   - run the model loop in express and ship only tool *execution* into the container.
-# The third is probably right and is the biggest change. Until it is decided, bring the
-# container up without `internal: true` to see it work, and know that you have traded away
-# the containment while you do.
+# DECIDED — proxy the model API through the spec tool. What was unresolved here was whether
+# a proxy could work at all; it can. `ANTHROPIC_BASE_URL` was tested against a local server
+# and the SDK's first outbound call landed on it, so pointing the container at express is a
+# real option rather than a hopeful one. That makes the container need zero egress: it talks
+# to express, express talks to the world, and the credential stops entering this file at all.
+#
+# Not built yet. It needs two things, in this order:
+#   1. express joins `sandbox` as a compose service — see the note on `ports` above; nothing
+#      on the host can reach an internal network, so express must be on it.
+#   2. express serves the glossary tools over MCP and proxies /anthropic, and the container
+#      gets ANTHROPIC_BASE_URL pointing at it. coder/src/glossary.ts and the ./specs mount
+#      both go away at that point.
+#
+# What is verified today, with `internal: true` exactly as it stands: the image builds, the
+# service is healthy, /work/app is writable, /work/specs is read-only at the kernel, and
+# egress fails. What cannot be verified with it: a turn, because the SDK cannot reach the
+# API and express cannot reach the container. To exercise it end-to-end meanwhile, run
+#
+#   docker compose -f docker-compose.yml -f docker-compose.open.yml up -d coder
+#
+# which drops `internal` and gives back both the published port and egress. That mode has
+# been exercised: tools, streaming, and the approval card all behave as they do in-process,
+# and a declined Edit left the file byte-identical. It is also the mode with no containment
+# left worth the name, so it is a thing you turn on deliberately and turn back off.
