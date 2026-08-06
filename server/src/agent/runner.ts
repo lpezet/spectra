@@ -18,12 +18,21 @@ import { AGENTS } from './agents.js'
 import type { AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
 
+/** How long a pending approval waits before giving up, so a run cannot hang forever. */
+const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
+
+interface PendingApproval {
+  resolve: (decision: { allow: boolean; note: string | null }) => void
+  timer: NodeJS.Timeout
+}
+
 export interface RunnerEvent {
   /** `update` re-sends a row that already streamed — a tool call that has now settled. */
-  kind: 'append' | 'update' | 'delta' | 'done'
+  kind: 'append' | 'update' | 'delta' | 'done' | 'approval'
   /** Durable events carry their transcript id; deltas do not. */
   id?: number
   toolCallId?: string
+  approvalId?: string
   text?: string
 }
 
@@ -36,6 +45,8 @@ export class AgentRunner {
   private readonly sdkSessions = new Map<string, string>()
   /** Keyed the same way: @spec working does not block you from messaging @coder. */
   private readonly active = new Set<string>()
+  /** Tool calls waiting on a human decision, keyed by the approval id shown in the card. */
+  private readonly awaiting = new Map<string, PendingApproval>()
 
   constructor(private readonly transcripts: TranscriptStore) {}
 
@@ -144,7 +155,10 @@ export class AgentRunner {
           // @spec gets none of these, so it reaches the repo only through domain tools.
           // @coder gets file access, rooted at app/ by cwd below.
           tools: agent.builtins,
-          allowedTools: [...qualified(agent.domainTools), ...agent.builtins],
+          // Only the auto-approved builtins go here. A tool named bare in allowedTools
+          // never reaches canUseTool, so listing Edit would silently skip its card.
+          allowedTools: [...qualified(agent.domainTools), ...agent.autoApprove],
+          canUseTool: this.askPermission(sessionId, to),
           ...(agent.disallowedTools ? { disallowedTools: agent.disallowedTools } : {}),
           // Do not inherit the machine's Claude Code settings. Without this the spec agent
           // picks up whatever MCP servers the user has configured globally — Gmail, Drive,
@@ -242,6 +256,73 @@ export class AgentRunner {
 
   newSessionId(): string {
     return randomUUID()
+  }
+
+  /**
+   * Answers a pending approval. Returns false when nothing is waiting — the run was
+   * abandoned, or the server restarted and the promise went with it. The transcript row
+   * still says `started` in that case, which is the honest record.
+   */
+  decide(approvalId: string, allow: boolean, note: string | null): boolean {
+    const pending = this.awaiting.get(approvalId)
+    if (!pending) return false
+
+    clearTimeout(pending.timer)
+    this.awaiting.delete(approvalId)
+    this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
+    this.events(this.sessionOf(approvalId)).emit('event', {
+      kind: 'approval',
+      approvalId,
+    } satisfies RunnerEvent)
+    pending.resolve({ allow, note })
+    return true
+  }
+
+  private sessionOf(approvalId: string): string {
+    return this.transcripts.readApproval(approvalId)?.sessionId ?? ''
+  }
+
+  /**
+   * The SDK calls this before any tool that is not auto-approved. It records the request,
+   * pushes it to the UI, and blocks — the run genuinely waits here, which is the point.
+   */
+  private askPermission(sessionId: string, to: AgentName) {
+    return async (
+      toolName: string,
+      input: Record<string, unknown>,
+    ): Promise<
+      | { behavior: 'allow'; updatedInput: Record<string, unknown> }
+      | { behavior: 'deny'; message: string }
+    > => {
+      const approvalId = randomUUID()
+      this.record(sessionId, {
+        author: to,
+        kind: 'approval',
+        text: toolName,
+        payload: { input },
+        toolCallId: approvalId,
+        status: 'started',
+      })
+
+      const decision = await new Promise<{ allow: boolean; note: string | null }>((resolve) => {
+        const timer = setTimeout(() => {
+          this.awaiting.delete(approvalId)
+          this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
+          resolve({ allow: false, note: 'no answer' })
+        }, APPROVAL_TIMEOUT_MS)
+
+        this.awaiting.set(approvalId, { resolve, timer })
+      })
+
+      return decision.allow
+        ? { behavior: 'allow', updatedInput: input }
+        : {
+            behavior: 'deny',
+            message: decision.note
+              ? `The human declined this: ${decision.note}`
+              : 'The human declined this. Do not retry it; ask what they would prefer instead.',
+          }
+    }
   }
 }
 

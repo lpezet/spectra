@@ -1275,3 +1275,95 @@ button.option:hover {
 .mention-agent {
   color: var(--modify);
 }
+
+/* ---- approval card ---- */
+
+.approval {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 8px 11px 10px;
+}
+
+/* Pending is amber because the run is stopped until you answer. */
+.approval-pending {
+  border-left-color: var(--modify);
+}
+.approval-allowed {
+  border-left-color: var(--add);
+  opacity: 0.75;
+}
+.approval-denied {
+  border-left-color: var(--remove);
+  opacity: 0.75;
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.approval-head .muted {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.approval-file {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.approval-diff {
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.approval-old {
+  border-left: 2px solid var(--remove);
+  opacity: 0.7;
+}
+.approval-new {
+  border-left: 2px solid var(--add);
+}
+
+.approval-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.approval-actions input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.approval-actions .action {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.approval-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+}

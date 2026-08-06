@@ -13,6 +13,7 @@ import { Markdown } from './Markdown.js'
 import {
   addresseeOf,
   createSession,
+  decideApproval,
   deleteSession,
   fetchChatStatus,
   listAgents,
@@ -219,7 +220,19 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
         )}
 
         {events.map((event) => (
-          <Bubble key={event.id} event={event} known={known} onSelectTerm={onSelectTerm} />
+          <Bubble
+            key={event.id}
+            event={event}
+            known={known}
+            onSelectTerm={onSelectTerm}
+            onDecide={(decision, note) => {
+              if (event.toolCallId && sessionId) {
+                void decideApproval(sessionId, event.toolCallId, decision, note).catch((cause: Error) =>
+                  setError(cause.message),
+                )
+              }
+            }}
+          />
         ))}
 
         {streaming && (
@@ -296,11 +309,14 @@ function Bubble({
   event,
   known,
   onSelectTerm,
+  onDecide,
 }: {
   event: ChatEvent
   known: Set<string>
   onSelectTerm: (name: string) => void
+  onDecide: (decision: 'allow' | 'deny', note?: string) => void
 }) {
+  if (event.kind === 'approval') return <Approval event={event} onDecide={onDecide} />
   if (event.kind === 'tool_call') return <ToolCall event={event} />
 
   if (event.kind === 'error') {
@@ -321,6 +337,73 @@ function Bubble({
     <div className={`bubble bubble-${event.kind} bubble-from-${event.author}`}>
       <span className={`author author-${event.author}`}>@{event.author}</span>
       <Markdown text={event.text ?? ''} known={known} onSelectTerm={onSelectTerm} />
+    </div>
+  )
+}
+
+/**
+ * The agent is genuinely blocked while this is on screen — the run is suspended inside the
+ * SDK's permission callback until one of these buttons is pressed. It renders from the
+ * transcript rather than a live message, so reloading the page does not strand the run.
+ */
+function Approval({
+  event,
+  onDecide,
+}: {
+  event: ChatEvent
+  onDecide: (decision: 'allow' | 'deny', note?: string) => void
+}) {
+  const [note, setNote] = useState('')
+  const detail = event.payload as { input?: Record<string, unknown>; decision?: string; note?: string } | null
+  const settled = event.status === 'completed'
+  const allowed = detail?.decision === 'allow'
+
+  return (
+    <div className={`approval ${settled ? (allowed ? 'approval-allowed' : 'approval-denied') : 'approval-pending'}`}>
+      <div className="approval-head">
+        <span className={`author author-${event.author}`}>@{event.author}</span>
+        <strong>{event.text}</strong>
+        <span className="muted">
+          {settled ? (allowed ? 'approved' : 'declined') : 'waiting on you'}
+        </span>
+      </div>
+
+      <Input input={detail?.input} />
+
+      {settled ? (
+        detail?.note && <p className="muted approval-note">{detail.note}</p>
+      ) : (
+        <div className="approval-actions">
+          <input
+            value={note}
+            onChange={(input) => setNote(input.target.value)}
+            placeholder="Why (optional) — sent back either way"
+            aria-label="Reason"
+          />
+          <button type="button" className="action action-apply" onClick={() => onDecide('allow', note)}>
+            Approve
+          </button>
+          <button type="button" className="action" onClick={() => onDecide('deny', note)}>
+            Decline
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** File tools carry the whole new content, which is the part worth actually reading. */
+function Input({ input }: { input?: Record<string, unknown> }) {
+  if (!input) return null
+  const { file_path: file, content, new_string: next, old_string: previous, ...rest } = input
+
+  return (
+    <div className="approval-input">
+      {typeof file === 'string' && <code className="approval-file">{file}</code>}
+      {typeof previous === 'string' && <pre className="approval-diff approval-old">{previous}</pre>}
+      {typeof next === 'string' && <pre className="approval-diff approval-new">{next}</pre>}
+      {typeof content === 'string' && <pre className="approval-diff approval-new">{content}</pre>}
+      {Object.keys(rest).length > 0 && <pre className="approval-diff">{JSON.stringify(rest, null, 2)}</pre>}
     </div>
   )
 }

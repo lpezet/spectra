@@ -93,6 +93,21 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
     res.status(outcome.ok ? 202 : 409).json(outcome)
   })
 
+  router.post('/sessions/:id/approvals/:approvalId', (req, res) => {
+    const allow = req.body?.decision === 'allow'
+    const note = typeof req.body?.note === 'string' && req.body.note.trim() ? req.body.note.trim() : null
+
+    if (!runner.decide(req.params.approvalId, allow, note)) {
+      res.status(409).json({
+        ok: false,
+        error: 'Nothing is waiting on that any more — the run ended, or the server restarted.',
+      })
+      return
+    }
+
+    res.json({ ok: true })
+  })
+
   router.get('/sessions/:id/stream', (req, res) => {
     const sessionId = req.params.id
     if (!transcripts.getSession(sessionId)) {
@@ -127,11 +142,15 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
     send('ready', { cursor, running: runner.isRunning(sessionId) })
 
     const emitter = runner.events(sessionId)
-    const onEvent = (event: { kind: string; text?: string; toolCallId?: string }) => {
+    const onEvent = (event: { kind: string; text?: string; toolCallId?: string; approvalId?: string }) => {
       if (event.kind === 'delta') {
         send('delta', { text: event.text ?? '' })
       } else if (event.kind === 'append') {
         flush()
+      } else if (event.kind === 'approval' && event.approvalId) {
+        // A settled approval mutates a row the cursor has already passed.
+        const settled = transcripts.readApproval(event.approvalId)
+        if (settled) send('update', settled)
       } else if (event.kind === 'update' && event.toolCallId) {
         // Settling mutates a row the cursor has already passed, so fetch it by id and
         // re-send it rather than expecting the cursor read to surface it again.

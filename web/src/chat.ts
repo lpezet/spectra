@@ -5,7 +5,7 @@
  * reload of an old conversation.
  */
 
-export type ChatEventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error'
+export type ChatEventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error' | 'approval'
 
 export type Author = 'human' | 'spec' | 'coder'
 
@@ -75,6 +75,23 @@ export function sendMessage(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, to }),
   })
+}
+
+/** Answers a pending approval. The agent is blocked until this returns. */
+export function decideApproval(
+  sessionId: string,
+  approvalId: string,
+  decision: 'allow' | 'deny',
+  note?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  return json(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, note }),
+    },
+  )
 }
 
 export interface StreamHandlers {

@@ -27,7 +27,7 @@ export const TRANSCRIPTS_DB = process.env.TRANSCRIPTS_DB ?? path.join(DATA_DIR, 
  * later — on resume, a call left `started` may or may not have taken effect. Nothing uses
  * that yet; recording it now is what lets restart-resume be added without a migration.
  */
-export type EventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error'
+export type EventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error' | 'approval'
 export type ToolStatus = 'started' | 'completed' | 'failed'
 
 /** Who produced an event. `kind` says what it is; this says who said it. */
@@ -155,6 +155,28 @@ export class TranscriptStore {
 
     this.db.prepare('UPDATE sessions SET updatedAt = ? WHERE id = ?').run(now, sessionId)
     return Number(result.lastInsertRowid)
+  }
+
+  /**
+   * Resolves an `approval` row. `status` says it is settled; the payload says how, because
+   * a denial is a completed approval, not a failed one.
+   */
+  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE events SET status = 'completed', payload = json_patch(COALESCE(payload, '{}'), ?)
+         WHERE toolCallId = ? AND kind = 'approval'`,
+      )
+      .run(JSON.stringify({ decision, note }), approvalId)
+  }
+
+  readApproval(approvalId: string): TranscriptEvent | null {
+    const row = this.db
+      .prepare("SELECT * FROM events WHERE toolCallId = ? AND kind = 'approval'")
+      .get(approvalId) as unknown as (Omit<TranscriptEvent, 'payload'> & { payload: string | null }) | undefined
+
+    if (!row) return null
+    return { ...row, payload: row.payload === null ? null : JSON.parse(row.payload) }
   }
 
   /** Closes out a `tool_call` row once the handler returns — or throws. */

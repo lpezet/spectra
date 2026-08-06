@@ -28,6 +28,12 @@ export interface AgentDefinition {
   cwd: string
   /** Built-in tools. Empty disables the filesystem entirely. */
   builtins: string[]
+  /**
+   * Built-ins that run without asking. Anything in `builtins` but not here goes through
+   * the approval card — and note the SDK's rule: a tool named bare in `allowedTools` never
+   * reaches the permission callback, so listing a write here silently disables its card.
+   */
+  autoApprove: string[]
   /** Domain tools this agent may call, by short name. */
   domainTools: string[]
   disallowedTools?: string[]
@@ -50,6 +56,7 @@ export const AGENTS: Record<AgentName, AgentDefinition> = {
     // No filesystem at all: everything it can reach goes through the domain tools, which
     // is what keeps the human write path changesets-only.
     builtins: [],
+    autoApprove: [],
     domainTools: [
       'read_glossary',
       'read_questions',
@@ -79,6 +86,8 @@ When asked what to work on first, call analyze_pending and answer from what it r
     description: 'Implements applied changesets in app/. Cannot edit specs.',
     cwd: APP_DIR,
     builtins: ['Read', 'Glob', 'Grep', 'Edit', 'Write'],
+    // Reading is free; changing a file is not. Edit and Write are deliberately absent.
+    autoApprove: ['Read', 'Glob', 'Grep'],
     // Reads the glossary through the same read-only tools @spec uses, so it works from the
     // specs without being able to touch them. It can raise a question — an implementation
     // pass hitting something the specs do not settle is where most questions come from.
@@ -101,7 +110,7 @@ Working directory is app/. You can read, search, edit and create files there. Yo
 How to run an implementation pass:
 1. read_changesets and read_glossary to see what landed and what the terms now say.
 2. Find the files whose "// implements:" marker names the affected terms. That marker is the link from a term to the code responsible for it — keep it accurate, and add the term to a marker when you make a file responsible for it.
-3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do.
+3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do. Every edit is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.
 4. Update the tests, including any the changeset committed to under "tests".
 5. Call mark_implemented with the changeset id.
 
