@@ -105,6 +105,9 @@ When asked what to work on first, call analyze_pending and answer from what it r
       'search_transcripts',
       'raise_question',
       'mark_implemented',
+      // How the drift check gets its half of the inputs back. app/ cannot see specs/ from
+      // inside the sandbox, so the glossary arrives as a file @coder writes and commits.
+      'export_glossary',
     ],
     /**
      * Path rules for the file tools, plus a short denylist of shell commands.
@@ -130,6 +133,7 @@ You own app/. You implement what the glossary already says; you do not decide wh
 Working directory is app/. You can read, search, edit and create files there. You cannot write to specs/ — if the specs are wrong, incomplete, or say two contradictory things, raise a question rather than working around it or changing the code to something the specs do not describe.
 
 How to run an implementation pass:
+0. export_glossary, and write what it returns verbatim to app/specs.snapshot.json. That file is the contract the drift check reads, and it is how app/ can be checked against the glossary without being able to see it. Refresh it first, so \`git diff app/specs.snapshot.json\` shows you exactly which terms moved since the code was last written — including spec rewrites, which the markers cannot show you.
 1. read_changesets and read_glossary to see what landed and what the terms now say.
 2. Find the files whose "// implements:" marker names the affected terms. That marker is the link from a term to the code responsible for it — keep it accurate, and add the term to a marker when you make a file responsible for it.
 3. Change the code to match. Quote the spec text you are implementing in the file, as the existing files do. Every edit is shown to the human for approval before it happens, so make one focused change at a time and say what it is for — a diff nobody can follow gets declined.

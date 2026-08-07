@@ -7,6 +7,7 @@ import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
+import { lastExport, snapshotOf } from './glossaryExport.js'
 import { SPECS_DIR, readChangesets, readQuestions, readTerms } from './store.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
@@ -73,6 +74,29 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
   try {
     const outcome = await markImplemented(req.params.id, new Date().toISOString())
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Whether the glossary has moved since @coder last took a copy of it.
+ *
+ * Express cannot see app/ — that is the sandbox working — so it cannot read the snapshot to
+ * check whether it is current. What it can know is what it last handed out, which answers
+ * the same question from the only angle available and needs no visibility into the box.
+ */
+app.get('/api/glossary/snapshot', async (_req, res, next) => {
+  try {
+    const { terms } = await readTerms()
+    const current = snapshotOf(terms)
+    const exported = lastExport()
+    res.json({
+      fingerprint: current.fingerprint,
+      exported,
+      // Never exported at all counts as stale in the sense that matters: nothing is checking.
+      stale: exported === null || exported.fingerprint !== current.fingerprint,
+    })
   } catch (error) {
     next(error)
   }

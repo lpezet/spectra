@@ -1,0 +1,70 @@
+{
+  "fingerprint": "57c11ce76dd8e416",
+  "terms": [
+    {
+      "name": "completeTask",
+      "type": "function",
+      "hash": "81e5792db98f14c0"
+    },
+    {
+      "name": "createProject",
+      "type": "function",
+      "hash": "b85b5fce76eff9ea"
+    },
+    {
+      "name": "createTask",
+      "type": "function",
+      "hash": "39be344cf7a557cb"
+    },
+    {
+      "name": "deleteProject",
+      "type": "function",
+      "hash": "6095c8213ac7ecf9"
+    },
+    {
+      "name": "deleteTask",
+      "type": "function",
+      "hash": "49d7d7959e5fba1b"
+    },
+    {
+      "name": "endRecurrence",
+      "type": "function",
+      "hash": "6397c64274f6eb60"
+    },
+    {
+      "name": "moveTask",
+      "type": "function",
+      "hash": "5a51b65928e18921"
+    },
+    {
+      "name": "Priority",
+      "type": "attribute-type",
+      "hash": "4acf1db89b94e545"
+    },
+    {
+      "name": "Project",
+      "type": "entity",
+      "hash": "ead1e5013b4eb72d"
+    },
+    {
+      "name": "RecurrenceRule",
+      "type": "attribute-type",
+      "hash": "699be6df7d3a30cc"
+    },
+    {
+      "name": "RecurringTask",
+      "type": "entity",
+      "hash": "7f1f0dea9cacb698"
+    },
+    {
+      "name": "reopenTask",
+      "type": "function",
+      "hash": "33a75900dc40ee43"
+    },
+    {
+      "name": "Task",
+      "type": "entity",
+      "hash": "e7a61e499b4da9b9"
+    }
+  ]
+}

@@ -66,11 +66,12 @@ npm test && npm run build` works with no repo around it. That is what lets a san
 `app/` and nothing else — a workspace whose dependencies are hoisted to a parent cannot be
 isolated, because half of it lives somewhere the sandbox will not have.
 
-The one thing it cannot do alone is the `implements:` drift check, which compares its
-markers against `specs/terms`. That test skips with a warning when the glossary is not
-reachable rather than passing quietly. Stopping the spec tool does not affect it, and
-the app has never heard of `specs/` at runtime — it was written from those files, and the
-files are not present at runtime in any form.
+That now includes the `implements:` drift check, which used to be the one thing `app/` could
+not do alone. It compares its markers against `specs.snapshot.json` — a committed file, not
+a directory somewhere else — so it runs anywhere the code runs, including inside a sandbox
+that cannot see `specs/` at all. See **The snapshot** below. The app has never heard of
+`specs/` at runtime: it was written from those files, and they are not present at runtime in
+any form.
 
 That separation is the point. If the app needed the spec tool running, the glossary would
 be a config format rather than a design-time vocabulary.
@@ -191,6 +192,61 @@ prompt, which had already drifted. It now fetches prompt, builtins, auto-approva
 list from `/mcp/coder/profile` at the start of every run, so `agents.ts` stays the single
 answer — and the copy an attacker in the box could edit is not the one that decides.
 
+## The snapshot
+
+The drift check needs two things that sit on opposite sides of the sandbox boundary: the
+markers, which are in `app/`, and the glossary, which is in the spec tool. When `specs/`
+stopped being mounted, the check lost half its inputs and started skipping.
+
+A tool answering the question live would work and would be wrong — `app/` has to stand alone,
+and a test that needs a service running fails for anyone who does not have one. So the
+contract arrives as a file. `@coder` calls `export_glossary` and writes the result to
+`app/specs.snapshot.json`, which is committed with the code:
+
+```json
+{
+  "fingerprint": "57c11ce76dd8e416",
+  "terms": [{ "name": "Task", "type": "entity", "hash": "e7a61e499b4da9b9" }]
+}
+```
+
+Only what the check needs. Names and kinds answer "does everything have an implementer, and
+does every marker name something real". The prose does not, so it is not here — a hash of it
+is, covering spec text, parent and attributes.
+
+**There is no timestamp, on purpose.** The file is a pure function of the glossary, so
+re-exporting when nothing changed leaves it byte-identical. Run the export; if git reports no
+change, the contract did not move. A `generatedAt` would dirty it every time and bury exactly
+the signal it exists for.
+
+**That hash closes a gap the test structurally cannot.** A changeset that *rewrites* an
+existing term's spec leaves the marker naming the term and still looking correct, so nothing
+goes red — it always has and it still does. But refreshing the snapshot makes `git diff` name
+the terms that moved:
+
+```diff
+       "name": "Task",
+       "type": "entity",
+-      "hash": "e7a61e499b4da9b9"
++      "hash": "893b1ee763ffb356"
+```
+
+The test cannot see it; review can.
+
+**The cost is staleness.** A snapshot nobody refreshed passes happily while the glossary moves
+on — green tests, wrong answer, which is worse than the skip it replaced. Express cannot read
+the snapshot to check, because not seeing into the container is the whole point. What it can
+know is what it last handed out, so `GET /api/glossary/snapshot` answers from that side alone:
+
+```json
+{ "fingerprint": "537f4815…", "exported": { "fingerprint": "57c11ce7…" }, "stale": true }
+```
+
+And `export_glossary` is step 0 of an implementation pass, so a normal pass cannot drift.
+
+Verified by adding a term to `specs/`, re-exporting, and watching the check fail with
+`DriftProbe (entity)` — inside the sandbox, with no `specs/` anywhere near it.
+
 `docker-compose.open.yml` drops `internal` and is no longer needed for a turn to work. It
 stays for debugging from the host, where the sandbox is otherwise unreachable.
 
@@ -221,8 +277,10 @@ server/src/                 express — spec files, transcripts, and the two age
   agent/tools.ts            the domain tools both agents call
   agent/mcpHttp.ts          the same tools over HTTP, for an agent in another container
   anthropicProxy.ts         the model API, relayed so the sandbox needs no egress or key
+  glossaryExport.ts         the contract as a file, so app/ can check itself offline
   sandbox.ts                whether the @coder container is up, asked from inside its network
 web/src/                    react — browse, search, review, apply, chat
+app/specs.snapshot.json     the glossary contract, committed — what the drift check reads
 app/src/                    the ToDo app, written *from* specs/terms — the output side
 coder/src/                  the sandboxed half of @coder — no history, no writes to specs/
 Dockerfile.spec             express, on both networks

@@ -70,13 +70,35 @@ export function readMarkers(root: string): Marker[] {
 export interface TermRecord {
   name: string
   type: string
+  /** Covers spec text, parent and attributes — what an implementer has to satisfy. */
+  hash: string
 }
 
-export function readGlossary(termsDir: string): TermRecord[] {
-  return readdirSync(termsDir)
-    .filter((file) => file.endsWith('.json'))
-    .sort()
-    .map((file) => JSON.parse(readFileSync(path.join(termsDir, file), 'utf8')) as TermRecord)
+export interface Snapshot {
+  /**
+   * One value for the whole glossary. There is deliberately no timestamp: the file is a
+   * pure function of the glossary, so re-exporting when nothing changed leaves it
+   * byte-identical, and any diff at all means the contract moved.
+   */
+  fingerprint: string
+  terms: TermRecord[]
+}
+
+/**
+ * The glossary as this project sees it: a committed file, not a directory somewhere else.
+ *
+ * `specs/` is not reachable from here. It never was when `app/` was copied somewhere on its
+ * own, and it is not from inside @coder's sandbox either, which is where the drift check
+ * quietly stopped running. So the contract arrives as a snapshot that @coder exports from
+ * the spec tool and commits next to the code.
+ *
+ * The payoff beyond making the check work offline: because each term carries a hash of its
+ * spec, parent and attributes, refreshing this file makes `git diff` name exactly which
+ * terms changed. That includes a spec being *rewritten* — the case the markers cannot show,
+ * because the marker still names the term and still looks correct.
+ */
+export function readSnapshot(file: string): Snapshot {
+  return JSON.parse(readFileSync(file, 'utf8')) as Snapshot
 }
 
 /** Which files claim each term. */

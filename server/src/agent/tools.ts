@@ -17,6 +17,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
+import { recordExport, snapshotOf } from '../glossaryExport.js'
 import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
 import type { RaiseRequest } from '../raise.js'
@@ -346,6 +347,21 @@ export function blueprintTools(transcripts: TranscriptStore) {
     },
   )
 
+  const exportGlossaryTool = tool(
+    'export_glossary',
+    'Get the glossary contract as a snapshot, and write the returned JSON verbatim to app/specs.snapshot.json. That file is what the `implements:` drift check reads, so it must be refreshed before an implementation pass and committed with the code. Do not hand-edit it.',
+    {},
+    async () => {
+      const { terms } = await readTerms()
+      const snapshot = snapshotOf(terms)
+      // Recorded before returning, so "the glossary moved since the last export" stays
+      // answerable from this side without ever seeing app/.
+      recordExport(snapshot, new Date().toISOString())
+      return say(snapshot)
+    },
+    { annotations: { readOnlyHint: true } },
+  )
+
   return [
     readGlossary,
     readQuestionsTool,
@@ -355,6 +371,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     raiseQuestionTool,
     proposeChangesetTool,
     markImplementedTool,
+    exportGlossaryTool,
   ]
 }
 
