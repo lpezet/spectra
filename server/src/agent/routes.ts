@@ -44,6 +44,21 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
     res.status(201).json({ session })
   })
 
+  /**
+   * Whether @coder may work without an approval card in this conversation.
+   *
+   * A POST rather than a client-side preference, because the answer depends on something
+   * only this side knows: whether there is a sandbox and whether it is up. Enabling can be
+   * refused; disabling never is.
+   */
+  router.post('/sessions/:id/unattended', async (req, res) => {
+    const outcome = await runner.setUnattended(req.params.id, req.body?.enabled === true)
+    res.status(outcome.ok ? 200 : 409).json({
+      ...outcome,
+      unattended: runner.isUnattended(req.params.id),
+    })
+  })
+
   router.delete('/sessions/:id', (req, res) => {
     transcripts.deleteSession(req.params.id)
     res.json({ ok: true })
@@ -61,6 +76,9 @@ export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): e
       session,
       events: transcripts.read(req.params.id, Number.isFinite(after) ? after : 0),
       running: runner.isRunning(req.params.id),
+      // In memory on the server, so the browser has to be told rather than remembering —
+      // and a restart correctly shows it back off.
+      unattended: runner.isUnattended(req.params.id),
     })
   })
 

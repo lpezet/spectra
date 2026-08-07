@@ -192,6 +192,32 @@ prompt, which had already drifted. It now fetches prompt, builtins, auto-approva
 list from `/mcp/coder/profile` at the start of every run, so `agents.ts` stays the single
 answer — and the copy an attacker in the box could edit is not the one that decides.
 
+### Working unattended
+
+Approving `npm run typecheck` is ceremony. The approval card used to carry the entire
+boundary, so everything went through it; inside the container it does not — no route out, no
+credential, one writable mount holding code you can rebuild.
+
+So the card can be switched off per conversation, and the checkbox stays visible in the
+composer while it is on. Three things do not change:
+
+- **It is refused without a reachable sandbox.** Running in-process means a shell on your
+  real filesystem, where the card genuinely is the only boundary. "Skip the only boundary" is
+  not a preference to respect, so `POST /api/chat/sessions/:id/unattended` answers 409 rather
+  than warning. Turning it *off* never needs a sandbox.
+- **The denylist still holds.** `git commit`, `git push`, `rm -rf` stay refused by the SDK
+  before `canUseTool` is consulted — verified by adding a harmless command to the denylist and
+  watching it come back `Permission to use Bash … has been denied` with no approval event at
+  all. Skipping review is not granting everything.
+- **Everything is still recorded.** Each auto-allowed call lands in the transcript exactly
+  like one you answered, settled with `note: "unattended"` and shown as *ran unattended*
+  rather than *approved*. Reading a run back later, "I approved this" and "nobody was asked"
+  are different facts and the record keeps them apart.
+
+The state lives in the server's memory, not the browser's and not a file: a permission
+relaxation that survives a restart is one nobody remembers granting, and the cost of losing
+it is a single click.
+
 ## The snapshot
 
 The drift check needs two things that sit on opposite sides of the sandbox boundary: the

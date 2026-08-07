@@ -53,6 +53,13 @@ export class AgentRunner {
    * identical from the UI; the difference is where the decision has to be delivered.
    */
   private readonly remoteApprovals = new Map<string, string>()
+  /**
+   * Sessions where the human has said not to ask, by session id.
+   *
+   * Deliberately in memory. A permission relaxation that survives a restart is one nobody
+   * remembers granting, and the cost of losing it is a single click.
+   */
+  private readonly unattended = new Set<string>()
 
   constructor(private readonly transcripts: TranscriptStore) {}
 
@@ -309,7 +316,9 @@ export class AgentRunner {
       const turn = await fetch(`${CODER_URL}/sessions/${sessionId}/turn`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        // Sent per turn rather than set on the container, so the sandbox never holds its own
+        // idea of whether it may skip approvals.
+        body: JSON.stringify({ prompt, unattended: this.unattended.has(sessionId) }),
       })
       if (!turn.ok) {
         throw new Error(`The sandbox refused the turn (${turn.status}): ${await turn.text()}`)
@@ -353,6 +362,21 @@ export class AgentRunner {
             toolCallId: approvalId,
             status: 'started',
           })
+        } else if (event.kind === 'auto_approved') {
+          // Recorded exactly like one you answered, settled in the same breath. Not asking
+          // is not the same as not saying: the transcript still shows every write and every
+          // command, so an unattended run is reviewable after the fact rather than invisible.
+          const approvalId = String(event.approvalId)
+          this.record(sessionId, {
+            author: to,
+            kind: 'approval',
+            text: String(event.tool),
+            payload: { input: event.input },
+            toolCallId: approvalId,
+            status: 'started',
+          })
+          this.transcripts.settleApproval(approvalId, 'allow', 'unattended')
+          this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
         } else if (event.kind === 'approval_expired') {
           const approvalId = String(event.approvalId)
           this.remoteApprovals.delete(approvalId)
@@ -372,6 +396,45 @@ export class AgentRunner {
         this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
       }
     }
+  }
+
+  isUnattended(sessionId: string): boolean {
+    return this.unattended.has(sessionId)
+  }
+
+  /**
+   * Lets @coder work without a card for this session — and only where that is defensible.
+   *
+   * Refused outright when there is no reachable sandbox, rather than warned about. Running
+   * in-process means the agent has a shell on your actual filesystem and the card is the
+   * only boundary there is; "skip the only boundary" is not a preference to be respected.
+   * The permission is a property of running in a box, so no box means no permission.
+   *
+   * Turning it *off* never needs a sandbox — you can always ask to be asked again.
+   */
+  async setUnattended(sessionId: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+    if (!enabled) {
+      this.unattended.delete(sessionId)
+      return { ok: true }
+    }
+
+    if (!CODER_URL) {
+      return {
+        ok: false,
+        error: 'No sandbox is configured, so @coder runs in this process with a shell on your filesystem. The approval card is the only boundary there — it cannot be turned off.',
+      }
+    }
+
+    const status = await probeSandbox()
+    if (!status.reachable) {
+      return {
+        ok: false,
+        error: `The sandbox is not reachable${status.error ? ` (${status.error})` : ''}, so nothing can run unattended. Start it with \`docker compose up -d\`.`,
+      }
+    }
+
+    this.unattended.add(sessionId)
+    return { ok: true }
   }
 
   newSessionId(): string {

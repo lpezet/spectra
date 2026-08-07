@@ -77,6 +77,35 @@ export function sendMessage(
   })
 }
 
+/**
+ * Session state without the transcript.
+ *
+ * Reuses the events endpoint with a cursor past the end, so it returns the flags and an
+ * empty list. `unattended` lives in the server's memory, so the browser has to ask — and a
+ * server restart correctly reports it back off rather than the UI insisting it is still on.
+ */
+export function fetchSessionState(id: string): Promise<{ running: boolean; unattended: boolean }> {
+  return json(`/api/chat/sessions/${encodeURIComponent(id)}/events?after=${Number.MAX_SAFE_INTEGER}`)
+}
+
+/**
+ * Lets @coder work without a card in this conversation.
+ *
+ * The server can refuse — it only permits this where there is a reachable sandbox, since
+ * without one the card is the only boundary. So the answer comes back rather than being
+ * assumed, and the returned `unattended` is what the UI should believe.
+ */
+export function setUnattended(
+  sessionId: string,
+  enabled: boolean,
+): Promise<{ ok: boolean; error?: string; unattended: boolean }> {
+  return json(`/api/chat/sessions/${encodeURIComponent(sessionId)}/unattended`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+}
+
 /** Answers a pending approval. The agent is blocked until this returns. */
 export function decideApproval(
   sessionId: string,

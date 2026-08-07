@@ -355,6 +355,30 @@ button {
   font-size: 11px;
 }
 
+/*
+ * Quiet when off, unmistakable when on. This is a permission you granted; it should be
+ * visible from where the work happens rather than remembered.
+ */
+.unattended {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.unattended input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.unattended-on {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .mentions {
   position: absolute;
   bottom: calc(100% - 6px);

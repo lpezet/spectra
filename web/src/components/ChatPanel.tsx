@@ -16,7 +16,9 @@ import {
   decideApproval,
   deleteSession,
   fetchChatStatus,
+  fetchSessionState,
   listAgents,
+  setUnattended,
   listSessions,
   matchEntities,
   mentionAt,
@@ -32,6 +34,13 @@ interface ChatPanelProps {
   onClose: () => void
 }
 
+/**
+ * Said plainly, because the honest version is more reassuring than a scary one. The risk is
+ * low precisely because of where @coder runs, and the sentence should say why.
+ */
+const UNATTENDED_HELP =
+  'Skip the approval card for this conversation. Only available while @coder is in its sandbox: no network, no credential, and app/ the only thing it can write. Commands on the denylist stay refused, and everything it does is still recorded.'
+
 export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: ChatPanelProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -41,6 +50,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   const [configured, setConfigured] = useState(true)
   const [agents, setAgents] = useState<Agent[]>([])
   const [draft, setDraft] = useState('')
+  const [unattended, setUnattendedState] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Only terms are linkable; an `@q-004` in prose stays plain rather than becoming a
@@ -79,6 +89,10 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     if (!sessionId) return
     setEvents([])
     setStreaming('')
+    // Server-held, so ask rather than assume — after a restart it is correctly off again.
+    void fetchSessionState(sessionId)
+      .then((state) => setUnattendedState(state.unattended))
+      .catch(() => setUnattendedState(false))
 
     return streamSession(sessionId, 0, {
       onAppend: (event) => {
@@ -101,6 +115,22 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight })
   }, [events, streaming])
+
+  /**
+   * The server decides. It refuses when there is no reachable sandbox — running in-process
+   * means a shell on your real filesystem, where the card is the only boundary — so the
+   * checkbox reflects what came back rather than what was clicked.
+   */
+  async function toggleUnattended(enabled: boolean) {
+    setError(null)
+    try {
+      const outcome = await setUnattended(sessionId!, enabled)
+      setUnattendedState(outcome.unattended)
+    } catch (cause) {
+      setUnattendedState(false)
+      setError((cause as Error).message)
+    }
+  }
 
   async function start() {
     const { session } = await createSession()
@@ -296,6 +326,14 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
               'Address @spec or @coder — an unaddressed message is recorded but acted on by nobody'
             )}
           </span>
+          {/*
+            Kept visible while it is on, not tucked into a menu. A permission you cannot see
+            from where the work is happening is one you forget you granted.
+          */}
+          <label className={`unattended ${unattended ? 'unattended-on' : ''}`} title={UNATTENDED_HELP}>
+            <input type="checkbox" checked={unattended} onChange={(event) => void toggleUnattended(event.target.checked)} />
+            let @coder work unattended
+          </label>
           <button type="button" className="action" disabled={running || !draft.trim()} onClick={() => void submit()}>
             Send
           </button>
@@ -357,6 +395,9 @@ function Approval({
   const detail = event.payload as { input?: Record<string, unknown>; decision?: string; note?: string } | null
   const settled = event.status === 'completed'
   const allowed = detail?.decision === 'allow'
+  // Distinguished from a decision you made. The transcript records both, and reading back a
+  // run later, "I approved this" and "nobody was asked" are not the same fact.
+  const auto = allowed && detail?.note === 'unattended'
 
   return (
     <div className={`approval ${settled ? (allowed ? 'approval-allowed' : 'approval-denied') : 'approval-pending'}`}>
@@ -364,7 +405,7 @@ function Approval({
         <span className={`author author-${event.author}`}>@{event.author}</span>
         <strong>{event.text}</strong>
         <span className="muted">
-          {settled ? (allowed ? 'approved' : 'declined') : 'waiting on you'}
+          {settled ? (auto ? 'ran unattended' : allowed ? 'approved' : 'declined') : 'waiting on you'}
         </span>
       </div>
 

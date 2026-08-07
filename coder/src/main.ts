@@ -87,10 +87,32 @@ function emit(sessionId: string, event: Record<string, unknown>): void {
   channel(sessionId).emit('event', event)
 }
 
-/** Blocks the run until the spec tool relays a decision back in. */
-function askPermission(sessionId: string) {
+/**
+ * Blocks the run until the spec tool relays a decision back in — unless the human has said
+ * not to for this session.
+ *
+ * `unattended` is only ever reached because of where this code runs. The card used to carry
+ * the entire boundary; in here the container has no route out, no credential, and one
+ * writable mount holding code you can rebuild. Approving `npm run typecheck` under those
+ * conditions is ceremony, not safety. The spec tool refuses to turn this on for an agent
+ * that is not in a container, which is the case where the card really is the only thing.
+ *
+ * What it does not skip: `disallowedTools`. Those are refused by the SDK before this
+ * callback is consulted, so `git commit` and friends stay refused. Skipping review is not
+ * granting everything.
+ *
+ * Every auto-allowed call is still announced and still recorded. Not asking is not the same
+ * as not saying — the point is to stop interrupting you, not to work where you cannot see.
+ */
+function askPermission(sessionId: string, unattended: boolean) {
   return async (toolName: string, input: Record<string, unknown>) => {
     const approvalId = randomUUID()
+
+    if (unattended) {
+      emit(sessionId, { kind: 'auto_approved', approvalId, tool: toolName, input })
+      return { behavior: 'allow', updatedInput: input } as const
+    }
+
     emit(sessionId, { kind: 'approval', approvalId, tool: toolName, input })
 
     const decision = await new Promise<{ allow: boolean; note: string | null }>((resolve) => {
@@ -115,7 +137,7 @@ function askPermission(sessionId: string) {
   }
 }
 
-async function run(sessionId: string, prompt: string): Promise<void> {
+async function run(sessionId: string, prompt: string, unattended: boolean): Promise<void> {
   const resume = sdkSessions.get(sessionId)
 
   let who: Profile
@@ -146,7 +168,7 @@ async function run(sessionId: string, prompt: string): Promise<void> {
           ...who.autoApprove,
         ],
         ...(who.disallowedTools.length > 0 ? { disallowedTools: who.disallowedTools } : {}),
-        canUseTool: askPermission(sessionId),
+        canUseTool: askPermission(sessionId, unattended),
         settingSources: [],
         systemPrompt: who.systemPrompt,
         includePartialMessages: true,
@@ -259,7 +281,10 @@ app.post('/sessions/:id/turn', (req, res) => {
   }
 
   active.add(sessionId)
-  void run(sessionId, prompt).finally(() => {
+  // Decided by the spec tool, per turn — never remembered here. A container that kept its
+  // own "permissions off" state would be a container that could keep it on.
+  const unattended = req.body?.unattended === true
+  void run(sessionId, prompt, unattended).finally(() => {
     active.delete(sessionId)
     emit(sessionId, { kind: 'done' })
   })
