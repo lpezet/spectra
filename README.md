@@ -258,9 +258,16 @@ changeset, and if the contract copy committed beside that code predates the chan
 can verify it.
 
 ```json
-{ "refused": "The snapshot in app/ is not at the current specs version…",
+{ "refused": "The specs have moved since your snapshot was taken…",
   "snapshotVersion": "57c11ce7…", "specsVersion": "dbeba28f…", "fix": "Call export_specs…" }
 ```
+
+**The refusal names versions, never a path.** The spec tool does not know where the
+implementer keeps its code and must not act as though it does — `app/specs.snapshot.json` is
+this repo's arrangement, not part of the protocol. Git rejects a push by naming refs, not by
+telling you where your working copy lives. Same for the tool descriptions: they say "store
+it wherever your project keeps it", and the container reads its own snapshot from its own
+mount and reports the version, so this side never learns the filename at all.
 
 **No version argument, and no override.** An agent that supplied its own version could call
 `export_specs`, hold the new value, never write the file, and pass on the second try — so

@@ -342,9 +342,14 @@ export function blueprintTools(transcripts: TranscriptStore) {
   /**
    * The one refusal in this file, and it is git's non-fast-forward reject.
    *
-   * `mark_implemented` is a claim: code exists in app/ matching this changeset. If the
-   * contract copy committed alongside that code predates the change, nothing can verify the
-   * claim — so it is refused rather than recorded.
+   * `mark_implemented` is a claim: code exists matching this changeset. If the contract copy
+   * stored alongside that code predates the change, nothing can verify the claim — so it is
+   * refused rather than recorded.
+   *
+   * The message says versions and never a path. This side does not know where the
+   * implementer keeps its code and must not act as though it does — `app/` is this repo's
+   * arrangement, not part of the protocol. Git rejects a push by naming refs, not by telling
+   * you where your working copy lives.
    *
    * It takes no version argument, deliberately. An agent that passed its own would call
    * export_specs, hold the new value, never write the file, and pass this check on the
@@ -357,7 +362,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
    */
   const markImplementedTool = tool(
     'mark_implemented',
-    'Record that code has been written for an applied changeset. Call this only after the code in app/ actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI. Refused unless app/specs.snapshot.json is at the current specs version, since otherwise the code was written against a contract that has since moved.',
+    'Record that code has been written for an applied changeset. Call this only after the code actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI. Refused unless your stored specs snapshot is at the current version, since otherwise the code was written against a contract that has since moved.',
     { id: z.string().describe('The applied changeset id, e.g. "cs-001"') },
     async (args) => {
       const { terms } = await readTerms()
@@ -366,17 +371,17 @@ export function blueprintTools(transcripts: TranscriptStore) {
 
       if (deployed === null) {
         return say({
-          refused: 'No readable specs snapshot in app/.',
+          refused: 'You have no readable specs snapshot, so this claim cannot be checked.',
           specsVersion: current,
-          fix: 'Call export_specs, write the result to app/specs.snapshot.json, then try again.',
+          fix: 'Call export_specs, store the result the way your project expects, then try again.',
         })
       }
       if (deployed !== current) {
         return say({
-          refused: 'The snapshot in app/ is not at the current specs version, so this claim cannot be checked.',
+          refused: 'The specs have moved since your snapshot was taken, so this claim cannot be checked.',
           snapshotVersion: deployed,
           specsVersion: current,
-          fix: 'Call export_specs and write the result to app/specs.snapshot.json. Then read_glossary for what actually changed — the snapshot names the terms that moved, not what they now say — and make sure the code still matches before calling this again.',
+          fix: 'Call export_specs and store the result. Then read_glossary for what actually changed — the snapshot names which terms moved, not what they now say — and confirm the code still matches before calling this again.',
         })
       }
 
@@ -387,7 +392,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
 
   const exportSpecsTool = tool(
     'export_specs',
-    'Fetch the specs contract at its current version, and write the returned JSON verbatim to app/specs.snapshot.json. That file is what the `implements:` drift check reads, and its version is what mark_implemented is checked against — so refresh it before an implementation pass and commit it with the code. It carries names, kinds and hashes, not spec text: it tells you *which* terms moved, and read_glossary tells you what they now say. Do not hand-edit it.',
+    'Fetch the specs contract at its current version. Store the returned JSON verbatim wherever your project keeps it, and commit it with the code: it is what lets the code be checked against the specs offline, and its version is what mark_implemented is checked against. Refresh it before an implementation pass. It carries names, kinds and hashes, not spec text — it tells you *which* terms moved, and read_glossary tells you what they now say. Do not hand-edit it.',
     {},
     async () => {
       const { terms } = await readTerms()

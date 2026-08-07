@@ -94,8 +94,14 @@ export function specsSnapshot(terms: Term[]): Snapshot {
 }
 
 /**
- * The version actually committed in `app/`, read from the artifact rather than taken on
+ * The version the implementer actually has, read from the artifact rather than taken on
  * anyone's word.
+ *
+ * Note what this function is allowed to know. When @coder runs in a container, it reports its
+ * own snapshot version and this side never learns where that file sits — which is the
+ * arrangement the protocol is designed for. The local path below is the *co-located*
+ * fallback, used only when there is no sandbox to ask, and it is an assumption about this
+ * repo rather than about implementers in general. Hence the env override.
  *
  * This is the whole reason `mark_implemented` takes no version parameter. An agent that
  * passed its own version could call `export_specs`, hold the new value, never write the
