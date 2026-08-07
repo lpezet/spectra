@@ -80,7 +80,7 @@ export interface Snapshot {
    * pure function of the glossary, so re-exporting when nothing changed leaves it
    * byte-identical, and any diff at all means the contract moved.
    */
-  fingerprint: string
+  version: string
   terms: TermRecord[]
 }
 

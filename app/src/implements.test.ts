@@ -12,9 +12,10 @@
  * this check had started skipping. A committed file works in both; a live lookup works in
  * neither.
  *
- * The snapshot is written by @coder from the export_glossary tool and committed with the
- * code. It can go stale — that is the cost — and the spec tool answers that from its own
- * side at GET /api/glossary/snapshot, by remembering what it last handed out.
+ * The snapshot is written by @coder from the export_specs tool and committed with the code.
+ * It can go stale — that is the cost — so its `version` is checked the way git checks a
+ * push: `mark_implemented` is refused outright when it does not match what specs/ is at, and
+ * GET /api/specs/version reports both numbers without offering a verdict.
  *
  * What this still cannot catch: a changeset that *rewrites* an existing term's spec. The
  * marker still names the term and still looks correct. But each snapshot entry carries a
@@ -59,7 +60,7 @@ describe('the glossary snapshot', () => {
    * the repo, so its absence is a missing file rather than a missing service — and a green
    * run that silently checked nothing is the outcome worth refusing.
    */
-  it('is present — run export_glossary and commit the result if this fails', () => {
+  it('is present — run export_specs and commit the result if this fails', () => {
     expect(present, `no snapshot at ${SNAPSHOT}`).toBe(true)
     expect(snapshot?.terms.length ?? 0).toBeGreaterThan(0)
   })

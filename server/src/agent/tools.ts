@@ -17,7 +17,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
-import { recordExport, snapshotOf } from '../glossaryExport.js'
+import { deployedVersion, recordExport, specsSnapshot } from '../specsExport.js'
 import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
 import type { RaiseRequest } from '../raise.js'
@@ -66,8 +66,10 @@ const proposalInput = z.object({
   tests: z.array(z.string()).describe('Plain-language behaviours this change commits to'),
 })
 
+type CallResult = { content: Array<{ type: 'text'; text: string }> }
+
 /** MCP tools return content blocks; every tool here answers with one JSON or text block. */
-function say(value: unknown): { content: Array<{ type: 'text'; text: string }> } {
+function say(value: unknown): CallResult {
   return {
     content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
   }
@@ -337,31 +339,76 @@ export function blueprintTools(transcripts: TranscriptStore) {
     },
   )
 
+  /**
+   * The one refusal in this file, and it is git's non-fast-forward reject.
+   *
+   * `mark_implemented` is a claim: code exists in app/ matching this changeset. If the
+   * contract copy committed alongside that code predates the change, nothing can verify the
+   * claim — so it is refused rather than recorded.
+   *
+   * It takes no version argument, deliberately. An agent that passed its own would call
+   * export_specs, hold the new value, never write the file, and pass this check on the
+   * second try; that is the obvious way round it and so it is not offered. The version is
+   * read from the artifact instead — see deployedVersion.
+   *
+   * No override, for the same reason. A `force` flag would be a thing @coder could reach
+   * for, and refreshing costs a tool call, so there is no case where anyone legitimately
+   * knows better.
+   */
   const markImplementedTool = tool(
     'mark_implemented',
-    'Record that code has been written for an applied changeset. Call this only after the code in app/ actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI.',
+    'Record that code has been written for an applied changeset. Call this only after the code in app/ actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI. Refused unless app/specs.snapshot.json is at the current specs version, since otherwise the code was written against a contract that has since moved.',
     { id: z.string().describe('The applied changeset id, e.g. "cs-001"') },
     async (args) => {
+      const { terms } = await readTerms()
+      const current = specsSnapshot(terms).version
+      const deployed = await deployedVersion()
+
+      if (deployed === null) {
+        return say({
+          refused: 'No readable specs snapshot in app/.',
+          specsVersion: current,
+          fix: 'Call export_specs, write the result to app/specs.snapshot.json, then try again.',
+        })
+      }
+      if (deployed !== current) {
+        return say({
+          refused: 'The snapshot in app/ is not at the current specs version, so this claim cannot be checked.',
+          snapshotVersion: deployed,
+          specsVersion: current,
+          fix: 'Call export_specs and write the result to app/specs.snapshot.json. Then read_glossary for what actually changed — the snapshot names the terms that moved, not what they now say — and make sure the code still matches before calling this again.',
+        })
+      }
+
       const outcome = await markImplemented(args.id, new Date().toISOString())
       return say(outcome.ok ? { marked: args.id, file: outcome.file } : { error: outcome.error })
     },
   )
 
-  const exportGlossaryTool = tool(
-    'export_glossary',
-    'Get the glossary contract as a snapshot, and write the returned JSON verbatim to app/specs.snapshot.json. That file is what the `implements:` drift check reads, so it must be refreshed before an implementation pass and committed with the code. Do not hand-edit it.',
+  const exportSpecsTool = tool(
+    'export_specs',
+    'Fetch the specs contract at its current version, and write the returned JSON verbatim to app/specs.snapshot.json. That file is what the `implements:` drift check reads, and its version is what mark_implemented is checked against — so refresh it before an implementation pass and commit it with the code. It carries names, kinds and hashes, not spec text: it tells you *which* terms moved, and read_glossary tells you what they now say. Do not hand-edit it.',
     {},
     async () => {
       const { terms } = await readTerms()
-      const snapshot = snapshotOf(terms)
-      // Recorded before returning, so "the glossary moved since the last export" stays
-      // answerable from this side without ever seeing app/.
+      const snapshot = specsSnapshot(terms)
       recordExport(snapshot, new Date().toISOString())
       return say(snapshot)
     },
     { annotations: { readOnlyHint: true } },
   )
 
+  /**
+   * Every result carries the current specs version.
+   *
+   * A `stale: true` flag would be this process's opinion, computed from a definition of
+   * stale the caller then has to trust or ignore. A version is a fact: both sides hold one
+   * and whoever needs to act compares them — the same reason git prints `abc123..def456`
+   * rather than "you are behind".
+   *
+   * It rides in a second content block instead of being merged into the payload, because the
+   * payloads have unrelated shapes and one of them is already a versioned snapshot.
+   */
   return [
     readGlossary,
     readQuestionsTool,
@@ -371,8 +418,22 @@ export function blueprintTools(transcripts: TranscriptStore) {
     raiseQuestionTool,
     proposeChangesetTool,
     markImplementedTool,
-    exportGlossaryTool,
-  ]
+    exportSpecsTool,
+  ].map((entry) => ({
+    ...entry,
+    handler: async (args: Record<string, unknown>, extra: unknown) => {
+      const call = entry.handler as (a: unknown, e: unknown) => Promise<CallResult>
+      const result = await call(args, extra)
+      const { terms } = await readTerms()
+      return {
+        ...result,
+        content: [
+          ...result.content,
+          { type: 'text' as const, text: JSON.stringify({ specsVersion: specsSnapshot(terms).version }) },
+        ],
+      }
+    },
+  }))
 }
 
 /** The subset a given agent may call, resolved from its definition. */

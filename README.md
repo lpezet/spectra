@@ -195,17 +195,17 @@ answer — and the copy an attacker in the box could edit is not the one that de
 ## The snapshot
 
 The drift check needs two things that sit on opposite sides of the sandbox boundary: the
-markers, which are in `app/`, and the glossary, which is in the spec tool. When `specs/`
-stopped being mounted, the check lost half its inputs and started skipping.
+markers, which are in `app/`, and the specs, which are in the spec tool. When `specs/` stopped
+being mounted, the check lost half its inputs and started skipping.
 
 A tool answering the question live would work and would be wrong — `app/` has to stand alone,
 and a test that needs a service running fails for anyone who does not have one. So the
-contract arrives as a file. `@coder` calls `export_glossary` and writes the result to
+contract arrives as a file. `@coder` calls `export_specs` and writes the result to
 `app/specs.snapshot.json`, which is committed with the code:
 
 ```json
 {
-  "fingerprint": "57c11ce76dd8e416",
+  "version": "57c11ce76dd8e416",
   "terms": [{ "name": "Task", "type": "entity", "hash": "e7a61e499b4da9b9" }]
 }
 ```
@@ -214,7 +214,7 @@ Only what the check needs. Names and kinds answer "does everything have an imple
 does every marker name something real". The prose does not, so it is not here — a hash of it
 is, covering spec text, parent and attributes.
 
-**There is no timestamp, on purpose.** The file is a pure function of the glossary, so
+**There is no timestamp, on purpose.** The file is a pure function of the specs, so
 re-exporting when nothing changed leaves it byte-identical. Run the export; if git reports no
 change, the contract did not move. A `generatedAt` would dirty it every time and bury exactly
 the signal it exists for.
@@ -233,32 +233,56 @@ the terms that moved:
 
 The test cannot see it; review can.
 
-**The cost is staleness.** A snapshot nobody refreshed passes happily while the glossary moves
-on — green tests, wrong answer, which is worse than the skip it replaced. Express cannot read
-the snapshot to check, because not seeing into the container is the whole point. What it can
-know is what it last handed out, so `GET /api/glossary/snapshot` answers from that side alone:
+### Versions, the way git does it
+
+A snapshot nobody refreshed passes happily while the specs move on — green tests, wrong
+answer. The model for guarding that is `git push`:
+
+| git | here |
+|---|---|
+| remote `HEAD` | `specsVersion` — what `specs/` is at now |
+| local ref | `version` inside the committed snapshot |
+| `git fetch` | `export_specs`, then writing the file |
+| non-fast-forward reject | `mark_implemented` refused on mismatch |
+
+Every tool result carries `specsVersion` in a trailing block. Not a `stale` flag: a flag is
+this process's *opinion*, computed from a definition the caller then has to trust or ignore.
+A version is a fact — both sides hold one and whoever needs to act compares them, which is
+why git prints `abc123..def456` rather than "you are behind". `GET /api/specs/version` reports
+both numbers and offers no verdict.
+
+**One refusal, and it is `mark_implemented`.** Reads are never blocked — `read_glossary`
+returns current truth, so reading it while holding an old snapshot is harmless and often the
+point. What becomes false is the *claim*: `mark_implemented` asserts code exists matching a
+changeset, and if the contract copy committed beside that code predates the change, nothing
+can verify it.
 
 ```json
-{ "fingerprint": "537f4815…", "exported": { "fingerprint": "57c11ce7…" }, "stale": true }
+{ "refused": "The snapshot in app/ is not at the current specs version…",
+  "snapshotVersion": "57c11ce7…", "specsVersion": "dbeba28f…", "fix": "Call export_specs…" }
 ```
 
-And `export_glossary` is step 0 of an implementation pass, so a normal pass cannot drift.
+**No version argument, and no override.** An agent that supplied its own version could call
+`export_specs`, hold the new value, never write the file, and pass on the second try — so
+nothing is passed. The version is read from the artifact: directly when `@coder` runs
+in-process, or from the sandbox reporting what it finds at its own mount, since only the
+process holding the mount can say what is actually on disk. Verified by doing exactly that
+cheat — `export_specs` called, file not written, `mark_implemented` still refused. A `force`
+flag would be defeated the same way, so there is not one; refreshing costs a tool call, so
+nobody legitimately knows better.
+
+**Catching up is two steps.** The snapshot carries hashes, not spec text — it names *which*
+terms moved and never what they now say. `read_glossary` is still required, and the prompt
+says so, or the agent refreshes and assumes it knows the requirement.
+
+**What this is and is not.** It is a correctness guard against forgetting. It is not a
+security boundary: `@coder` could refresh the snapshot without touching the code and get
+through. What makes that survivable is that the snapshot is *committed*, so cheating leaves a
+specific artifact — a refresh with no corresponding code change, in the history you already
+review. The security boundary remains the sandbox and the approval card.
 
 Verified by adding a term to `specs/`, re-exporting, and watching the check fail with
 `DriftProbe (entity)` — inside the sandbox, with no `specs/` anywhere near it.
-
-`docker-compose.open.yml` drops `internal` and is no longer needed for a turn to work. It
-stays for debugging from the host, where the sandbox is otherwise unreachable.
-
-**Switching modes needs `down`, not `restart`.** Toggling `internal` recreates the network,
-and a container merely restarted onto a recreated network comes back *without its DNS
-aliases* — `spec` then fails to resolve from `coder`, which looks exactly like the spec tool
-being down. It cost time here.
-
-**One footgun.** `npm run dev` and the `spec` container both want `:5174`, and the host wins
-silently — docker publishes by DNAT, so there is no bind conflict and `ss -ltn` shows a
-single listener. The tell is `GET /api/sandbox` answering `configured: false`: only a server
-with no `CODER_URL` says that, and that is the host one.
 
 ## Layout
 

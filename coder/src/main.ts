@@ -12,6 +12,8 @@
 import express from 'express'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 
 const PORT = Number(process.env.PORT ?? 5177)
@@ -201,6 +203,23 @@ async function run(sessionId: string, prompt: string): Promise<void> {
 const app = express()
 app.use(express.json({ limit: '4mb' }))
 
+/**
+ * The specs version committed in app/, read from the file on this container's mount.
+ *
+ * This is why mark_implemented needs no version argument. An agent that supplied its own
+ * could fetch a fresh one, never write it down, and pass the check on the second try. Only
+ * the process holding the mount can say what is actually on disk, so it says it, and the
+ * spec tool asks rather than being told.
+ */
+function snapshotVersion(): string | null {
+  try {
+    const raw = readFileSync(path.join(APP_DIR, 'specs.snapshot.json'), 'utf8')
+    return (JSON.parse(raw) as { version?: string }).version ?? null
+  } catch {
+    return null
+  }
+}
+
 app.get('/health', async (_req, res) => {
   let tools: string[] | null = null
   let glossaryError: string | null = null
@@ -214,6 +233,9 @@ app.get('/health', async (_req, res) => {
     ok: true,
     appDir: APP_DIR,
     glossary: MCP_URL,
+    // Read from the mount on every request, never cached — a cached copy would survive the
+    // file being reverted underneath it, which is precisely the case this exists to catch.
+    snapshotVersion: snapshotVersion(),
     // The honest answer to "what can this box do to the glossary?", and it comes from the
     // spec tool rather than from here — so it cannot be flattering.
     tools,
