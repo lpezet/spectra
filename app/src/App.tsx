@@ -1,20 +1,22 @@
 /**
- * implements: Project, Task, RecurringTask, Priority, completeTask, reopenTask, deleteProject, endRecurrence, createProject, createTask, deleteTask, moveTask
+ * implements: Project, Task, RecurringTask, Priority, completeTask, reopenTask, deleteProject, endRecurrence, createProject, createTask, deleteTask, moveTask, archiveProject, unarchiveProject
  *
  * Intentionally bare. The point is to exercise the spec'd behaviour, not to be a good
  * ToDo app — so every spec'd function reports what it did into the log at the bottom,
  * including the no-ops the specs require and the refusal deleteProject can return.
  */
 import { useMemo, useState } from 'react'
+import { archiveProject, recurrencesEndedByArchiving } from './domain/archiveProject.js'
 import { completeTask } from './domain/completeTask.js'
 import { deleteProject } from './domain/deleteProject.js'
+import { unarchiveProject } from './domain/unarchiveProject.js'
 import { deleteTask } from './domain/deleteTask.js'
 import { moveTask } from './domain/moveTask.js'
 import { endRecurrence } from './domain/endRecurrence.js'
 import { reopenTask } from './domain/reopenTask.js'
 import type { AnyTask, Project, Result, World } from './domain/types.js'
 import { PRIORITIES, isRecurring } from './domain/types.js'
-import { createProject, createTask, seedWorld, tasksOf } from './domain/world.js'
+import { activeProjects, createProject, createTask, seedWorld, tasksOf } from './domain/world.js'
 import { describeRule } from './describeRule.js'
 
 interface LogEntry {
@@ -37,6 +39,14 @@ export function App() {
   const [world, setWorld] = useState<World>(seedWorld)
   const [log, setLog] = useState<LogEntry[]>([])
   const [openProject, setOpenProject] = useState<string | null>(null)
+  /** Archived Projects are "hidden from default listings" — this is what opts out of the default. */
+  const [showArchived, setShowArchived] = useState(false)
+  /**
+   * The Project whose Archive click is waiting to be confirmed, if any. Held as an id
+   * rather than a boolean so selecting a different Project cannot leave a stale
+   * confirmation armed against the wrong one.
+   */
+  const [confirmingArchive, setConfirmingArchive] = useState<string | null>(null)
 
   const [projectName, setProjectName] = useState('')
   const [title, setTitle] = useState('')
@@ -44,8 +54,31 @@ export function App() {
   const [rule, setRule] = useState('')
   const [priority, setPriority] = useState('normal')
 
-  const selected = world.projects.find((project) => project.id === openProject) ?? world.projects[0] ?? null
+  const listed = useMemo(() => (showArchived ? world.projects : activeProjects(world)), [world, showArchived])
+  const selected = world.projects.find((project) => project.id === openProject) ?? listed[0] ?? null
   const tasks = useMemo(() => (selected ? tasksOf(world, selected.id) : []), [world, selected])
+
+  /**
+   * archiveProject "ends every RecurringTask it holds ... so none schedule a further
+   * occurrence", and unarchiveProject "does not re-enable any RecurringTask that archiving
+   * ended". That is a one-way cost, so it is said out loud before the click, not after.
+   */
+  const willEnd = selected ? recurrencesEndedByArchiving(world, selected.id) : []
+  const confirming = selected !== null && confirmingArchive === selected.id
+
+  /**
+   * Archiving with nothing to lose goes straight through. Archiving that would end a
+   * recurrence asks first, because that half cannot be undone.
+   */
+  function askToArchive() {
+    if (!selected) return
+    if (willEnd.length > 0 && !confirming) {
+      setConfirmingArchive(selected.id)
+      return
+    }
+    setConfirmingArchive(null)
+    run(archiveProject(world, selected.id))
+  }
 
   /** Runs a spec'd function and records what it said. */
   function run(result: Result) {
@@ -105,21 +138,28 @@ export function App() {
             <button type="submit">Add</button>
           </form>
 
-          {world.projects.length === 0 ? (
-            <p className="muted">No Projects. Create one to start.</p>
+          {listed.length === 0 ? (
+            <p className="muted">
+              {world.projects.length === 0 ? 'No Projects. Create one to start.' : 'No active Projects.'}
+            </p>
           ) : (
             <ul className="list">
-              {world.projects.map((project) => {
+              {listed.map((project) => {
                 const held = tasksOf(world, project.id)
                 const open = held.filter((task) => !task.done).length
                 return (
                   <li key={project.id}>
                     <button
                       type="button"
-                      className={`project ${project.id === selected?.id ? 'on' : ''}`}
+                      className={`project ${project.id === selected?.id ? 'on' : ''} ${
+                        project.archived ? 'archived' : ''
+                      }`}
                       onClick={() => setOpenProject(project.id)}
                     >
-                      <span>{project.name}</span>
+                      <span>
+                        {project.name}
+                        {project.archived && <span className="badge badge-ended">archived</span>}
+                      </span>
                       <span className="muted count">
                         {held.length === 0 ? 'empty' : `${open}/${held.length} open`}
                       </span>
@@ -129,17 +169,90 @@ export function App() {
               })}
             </ul>
           )}
+
+          {/* Archived Projects are not gone — deleteProject is what removes them for good. */}
+          <label className="row muted">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+            />
+            Show archived
+          </label>
         </section>
 
         <section className="pane">
           {selected ? (
             <>
               <div className="pane-header">
-                <h2>{selected.name}</h2>
-                <button type="button" className="danger" onClick={() => run(deleteProject(world, selected.id))}>
+                <h2>
+                  {selected.name}
+                  {selected.archived && <span className="badge badge-ended">archived</span>}
+                </h2>
+
+                {selected.archived ? (
+                  <button type="button" onClick={() => run(unarchiveProject(world, selected.id))}>
+                    Restore
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={askToArchive}
+                    aria-expanded={confirming}
+                    title="Hide it from the list and stop its recurring Tasks — reversible"
+                  >
+                    Archive
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => run(deleteProject(world, selected.id))}
+                  title={
+                    selected.archived
+                      ? 'Deletes permanently, whatever state its Tasks are in'
+                      : 'Blocked while it holds incomplete Tasks — archive it first'
+                  }
+                >
                   Delete project
                 </button>
               </div>
+
+              {/* Only once you have actually asked to archive. A warning that is always on
+                  screen is describing a consequence of something you have not done, and it
+                  is on every Project with a live recurrence — so it reads as decoration and
+                  gets skipped, which is exactly what you cannot afford here. The recurring
+                  Tasks carry a ↻ badge of their own; that is the standing signal. */}
+              {confirming && (
+                <div className="warning asking" role="alertdialog">
+                  <p>
+                    Archiving will also end {willEnd.length} recurring{' '}
+                    {willEnd.length === 1 ? 'Task' : 'Tasks'} ({willEnd.join(', ')}). Restoring the Project later
+                    does not start {willEnd.length === 1 ? 'it' : 'them'} repeating again.
+                  </p>
+
+                  <p className="confirm">
+                    <strong>Archive anyway?</strong>
+                    <button type="button" className="danger" onClick={askToArchive} autoFocus>
+                      End {willEnd.length === 1 ? 'it' : 'them'} and archive
+                    </button>
+                    <button type="button" onClick={() => setConfirmingArchive(null)}>
+                      Cancel
+                    </button>
+                  </p>
+                </div>
+              )}
+
+              {selected.archived && (
+                <div className="warning">
+                  <p>
+                    Archived: hidden from the default list, and any recurring Tasks it held have been ended.
+                    Deleting it now is permanent and takes its {tasks.length}{' '}
+                    {tasks.length === 1 ? 'Task' : 'Tasks'} with it.
+                  </p>
+                </div>
+              )}
 
               <form className="row wrap" onSubmit={addTask}>
                 <input

@@ -38,6 +38,12 @@ export interface Project {
   id: string
   /** Project.name — string */
   name: string
+  /**
+   * Project.archived — boolean, default false. Set by archiveProject: "marks it archived so
+   * it is hidden from default listings". Also the switch deleteProject reads — an archived
+   * Project "is deleted unconditionally", an unarchived one is blocked by incomplete Tasks.
+   */
+  archived: boolean
 }
 
 /** Task: "either done or not done — there is no in-progress state." */

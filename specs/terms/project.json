@@ -6,6 +6,7 @@
   "tags": [],
   "attributes": [
     { "name": "name", "valueType": "string" },
-    { "name": "tasks", "valueType": "ref:Task[]" }
+    { "name": "tasks", "valueType": "ref:Task[]" },
+    { "name": "archived", "valueType": "boolean", "default": false }
   ]
 }

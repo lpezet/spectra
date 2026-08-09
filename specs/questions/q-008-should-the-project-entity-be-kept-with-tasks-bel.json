@@ -27,5 +27,9 @@
       "proposal": null
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": null,
+    "note": "I would use cs-002 but with a twist: archive project and disable any recurring tasks in the project. On the frontend, I would have some warning for the end-user that the project contains recurring tasks and those will be disabled/canceled as well.\nAn archived project can then be deleted forever (so the first delete is undo-able).",
+    "answeredAt": "2026-08-07T02:58:43.113Z"
+  }
 }

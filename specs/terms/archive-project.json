@@ -1,0 +1,10 @@
+{
+  "name": "archiveProject",
+  "type": "function",
+  "spec": "Archives a Project: marks it archived so it is hidden from default listings, and ends every RecurringTask it holds (per endRecurrence) so none schedule a further occurrence. Does not delete the Project or any of its Tasks, and is reversible via unarchiveProject.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Project" }
+  ]
+}

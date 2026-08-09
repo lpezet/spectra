@@ -1,0 +1,10 @@
+{
+  "name": "unarchiveProject",
+  "type": "function",
+  "spec": "Restores an archived Project to active status, making it visible in default listings again. Does not re-enable any RecurringTask that archiving ended — there is no function in this vocabulary that resumes a recurrence once ended.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:Project" }
+  ]
+}

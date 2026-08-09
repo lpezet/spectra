@@ -5,7 +5,11 @@
     {
       "op": "add_attribute",
       "term": "Project",
-      "attribute": { "name": "archived", "valueType": "boolean", "default": false }
+      "attribute": {
+        "name": "archived",
+        "valueType": "boolean",
+        "default": false
+      }
     },
     {
       "op": "modify_spec",

@@ -1,6 +1,11 @@
 {
-  "version": "57c11ce76dd8e416",
+  "version": "a4da54dbffd1f433",
   "terms": [
+    {
+      "name": "archiveProject",
+      "type": "function",
+      "hash": "5ae6e9bb37f702e1"
+    },
     {
       "name": "completeTask",
       "type": "function",
@@ -19,7 +24,7 @@
     {
       "name": "deleteProject",
       "type": "function",
-      "hash": "6095c8213ac7ecf9"
+      "hash": "1ab147937a42ed06"
     },
     {
       "name": "deleteTask",
@@ -44,7 +49,7 @@
     {
       "name": "Project",
       "type": "entity",
-      "hash": "ead1e5013b4eb72d"
+      "hash": "e3e41f350fb51b21"
     },
     {
       "name": "RecurrenceRule",
@@ -65,6 +70,11 @@
       "name": "Task",
       "type": "entity",
       "hash": "e7a61e499b4da9b9"
+    },
+    {
+      "name": "unarchiveProject",
+      "type": "function",
+      "hash": "76efab2bd5eeb82b"
     }
   ]
 }

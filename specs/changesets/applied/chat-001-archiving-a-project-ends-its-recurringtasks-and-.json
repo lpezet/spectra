@@ -1,0 +1,56 @@
+{
+  "id": "chat-001",
+  "summary": "Archiving a Project ends its RecurringTasks and makes it permanently deletable; supersedes cs-002/cs-003",
+  "ops": [
+    {
+      "op": "add_attribute",
+      "term": "Project",
+      "attribute": {
+        "name": "archived",
+        "valueType": "boolean",
+        "default": false
+      }
+    },
+    {
+      "op": "add_entity",
+      "term": "archiveProject",
+      "termType": "function",
+      "parent": null,
+      "spec": "Archives a Project: marks it archived so it is hidden from default listings, and ends every RecurringTask it holds (per endRecurrence) so none schedule a further occurrence. Does not delete the Project or any of its Tasks, and is reversible via unarchiveProject.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:Project"
+        }
+      ]
+    },
+    {
+      "op": "add_entity",
+      "term": "unarchiveProject",
+      "termType": "function",
+      "parent": null,
+      "spec": "Restores an archived Project to active status, making it visible in default listings again. Does not re-enable any RecurringTask that archiving ended — there is no function in this vocabulary that resumes a recurrence once ended.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:Project"
+        }
+      ]
+    },
+    {
+      "op": "modify_spec",
+      "term": "deleteProject",
+      "spec": "Deletes a Project. If the Project is not archived, deletion is blocked while it still holds any Task that is not done, and the caller is told how many incomplete Tasks remain; a RecurringTask counts as done only once it has been ended and then completed. An archived Project is deleted unconditionally — regardless of any Task's done state — taking all its Tasks with it. This deletion is permanent."
+    }
+  ],
+  "tests": [
+    "archiving a Project hides it from default listings but keeps its Tasks intact",
+    "archiving a Project ends every RecurringTask it holds, so none schedule a further occurrence",
+    "deleting a non-archived Project with incomplete Tasks is refused and reports the incomplete count",
+    "deleting an archived Project succeeds even if it still holds incomplete Tasks, and removes them permanently",
+    "unarchiving a Project restores it to default listings without restarting any RecurringTask that archiving had ended"
+  ],
+  "fromQuestion": "q-008",
+  "appliedAt": "2026-08-07T03:02:16.154Z",
+  "implementedAt": "2026-08-07T03:42:07.972Z"
+}

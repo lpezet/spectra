@@ -1,7 +1,10 @@
 /**
- * implements: Project, Task, RecurringTask, createProject, createTask
+ * implements: Project, Task, RecurringTask, createProject, createTask, archiveProject, unarchiveProject
  *
- * Storage and derived relationships, plus the two creation functions.
+ * Storage and derived relationships, plus the two creation functions. archiveProject and
+ * unarchiveProject are named because `activeProjects` below is where their shared
+ * "default listings" clause is actually decided; the functions themselves live in their
+ * own files.
  *
  * Those two used to be invented by this implementation, which is what q-001 was raised
  * about. Answering it put them in the glossary, so they are now spec'd like anything else
@@ -30,13 +33,28 @@ export function projectOf(world: World, task: AnyTask): Project | undefined {
 }
 
 /**
+ * The "default listing" archiveProject means when it says an archived Project is "hidden
+ * from default listings", and unarchiveProject means by "visible in default listings
+ * again". Defined once here so both specs point at the same thing, and so a caller that
+ * wants every Project has to say so by not calling it.
+ */
+export function activeProjects(world: World): Project[] {
+  return world.projects.filter((project) => !project.archived)
+}
+
+export function archivedProjects(world: World): Project[] {
+  return world.projects.filter((project) => project.archived)
+}
+
+/**
  * createProject: "Creates a Project with the given name. The new Project holds no Tasks.
  * The name is not required to be unique — two Projects may share a name and remain
  * distinct." Identity comes from `id`, never the name, which is what makes that last
  * clause hold without any extra work.
  */
 export function createProject(world: World, name: string): { world: World; project: Project } {
-  const project: Project = { id: nextId('project'), name }
+  // Project.archived carries `"default": false` — a new Project is active.
+  const project: Project = { id: nextId('project'), name, archived: false }
   return { world: { ...world, projects: [...world.projects, project] }, project }
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "deleteProject",
   "type": "function",
-  "spec": "Deletes a Project. Blocks rather than cascades: if the Project still holds any Task that is not done, the deletion is refused and the caller is told how many incomplete Tasks remain. A RecurringTask counts as done only once it has been ended and then completed. A Project whose Tasks are all done is deleted together with those Tasks.",
+  "spec": "Deletes a Project. If the Project is not archived, deletion is blocked while it still holds any Task that is not done, and the caller is told how many incomplete Tasks remain; a RecurringTask counts as done only once it has been ended and then completed. An archived Project is deleted unconditionally — regardless of any Task's done state — taking all its Tasks with it. This deletion is permanent.",
   "parent": null,
   "tags": [],
   "attributes": [

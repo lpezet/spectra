@@ -232,6 +232,58 @@ button.danger:hover {
   color: var(--muted);
 }
 
+/* An archived Project is still there, just not in the way — hence dimmed, not hidden. */
+.project.archived {
+  opacity: 0.55;
+}
+
+.project.archived .badge,
+.pane-header .badge {
+  margin-left: 6px;
+}
+
+/*
+ * Where archiving says what it costs. Archiving ends recurrences and unarchiveProject
+ * cannot restore them, and deleting an archived Project is permanent — both worth reading
+ * before the click rather than in the log after it.
+ */
+.warning {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--bad);
+  background: rgb(0 0 0 / 12%);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.warning p {
+  margin: 0;
+}
+
+/*
+ * The armed state. Deliberately not an overlay: the sentence saying which recurrences are
+ * about to end stays readable directly above the button that ends them, which is the one
+ * thing a system dialog cannot manage.
+ */
+.warning.asking {
+  border-left-color: var(--bad);
+  background: rgb(0 0 0 / 22%);
+  color: var(--text);
+}
+
+.warning .confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.warning .confirm strong {
+  margin-right: auto;
+  color: var(--text);
+}
+
 .priority {
   font-size: 10px;
   letter-spacing: 0.06em;

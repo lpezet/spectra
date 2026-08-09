@@ -2,7 +2,10 @@
   "id": "cs-003",
   "summary": "Flatten the model — drop Project entirely",
   "ops": [
-    { "op": "remove_entity", "term": "Project" }
+    {
+      "op": "remove_entity",
+      "term": "Project"
+    }
   ],
   "tests": [
     "a Task can exist without belonging to any Project"

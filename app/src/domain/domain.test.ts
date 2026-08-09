@@ -3,15 +3,17 @@
  * from M5 written down where they can be re-run, rather than only clicked through.
  */
 import { describe, expect, it } from 'vitest'
+import { archiveProject } from './archiveProject.js'
 import { completeTask } from './completeTask.js'
 import { deleteProject } from './deleteProject.js'
+import { unarchiveProject } from './unarchiveProject.js'
 import { reopenTask } from './reopenTask.js'
 import { endRecurrence } from './endRecurrence.js'
 import { deleteTask } from './deleteTask.js'
 import { moveTask } from './moveTask.js'
 import { PRIORITIES, isPriority, isRecurring } from './types.js'
 import type { World } from './types.js'
-import { createProject, createTask, emptyWorld, tasksOf } from './world.js'
+import { activeProjects, archivedProjects, createProject, createTask, emptyWorld, tasksOf } from './world.js'
 
 const TODAY = '2026-08-04'
 
@@ -222,6 +224,8 @@ describe('reopenTask', () => {
 
 describe('deleteProject', () => {
   it('refuses while incomplete Tasks remain, and reports how many', () => {
+    // "If the Project is not archived, deletion is blocked while it still holds any Task
+    // that is not done, and the caller is told how many incomplete Tasks remain."
     let { world, projectId } = scenario()
     world = createTask(world, { title: 'Second', project: projectId }).world
 
@@ -310,6 +314,203 @@ describe('deleteProject', () => {
     expect(result.ok).toBe(true)
     expect(result.world.projects.map((project) => project.name)).toEqual(['Work'])
     expect(result.world.tasks.map((task) => task.title)).toEqual(['Untouched'])
+  })
+
+  // "An archived Project is deleted unconditionally — regardless of any Task's done state —
+  // taking all its Tasks with it. This deletion is permanent."
+  it('deletes an archived Project even though its Tasks are incomplete', () => {
+    const { world, projectId } = scenario()
+    const archived = archiveProject(world, projectId)
+
+    expect(archived.world.tasks[0]!.done).toBe(false)
+
+    const result = deleteProject(archived.world, projectId)
+    expect(result.ok).toBe(true)
+    expect(result.world.projects).toEqual([])
+    expect(result.world.tasks).toEqual([])
+    expect(result.message).toMatch(/permanently deleted/)
+  })
+
+  it('deletes an archived Project holding a RecurringTask that was never completed', () => {
+    const { world, projectId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const result = deleteProject(archiveProject(world, projectId).world, projectId)
+
+    expect(result.ok).toBe(true)
+    expect(result.world.projects).toEqual([])
+  })
+
+  // The two doors, back to back: the same Project, refused and then permitted.
+  it('archiving is what turns a refusal into a deletion', () => {
+    const { world, projectId } = scenario()
+
+    expect(deleteProject(world, projectId).ok).toBe(false)
+    expect(deleteProject(archiveProject(world, projectId).world, projectId).ok).toBe(true)
+  })
+
+  it('unarchiving puts the block back', () => {
+    const { world, projectId } = scenario()
+    const archived = archiveProject(world, projectId)
+    const restored = unarchiveProject(archived.world, projectId)
+
+    expect(deleteProject(restored.world, projectId).ok).toBe(false)
+  })
+
+  it('leaves other Projects alone when deleting an archived one', () => {
+    let { world, projectId } = scenario()
+    const other = createProject(world, 'Work')
+    world = other.world
+    world = createTask(world, { title: 'Untouched', project: other.project.id }).world
+
+    const result = deleteProject(archiveProject(world, projectId).world, projectId)
+
+    expect(result.world.projects.map((project) => project.name)).toEqual(['Work'])
+    expect(result.world.tasks.map((task) => task.title)).toEqual(['Untouched'])
+  })
+})
+
+describe('archiveProject', () => {
+  it('defaults a new Project to not archived', () => {
+    const project = createProject(emptyWorld(), 'Home')
+    expect(project.project.archived).toBe(false)
+  })
+
+  // "marks it archived so it is hidden from default listings"
+  it('marks the Project archived and drops it from the default listing', () => {
+    const { world, projectId } = scenario()
+    const result = archiveProject(world, projectId)
+
+    expect(result.ok).toBe(true)
+    expect(result.world.projects[0]!.archived).toBe(true)
+    expect(activeProjects(result.world)).toEqual([])
+    expect(archivedProjects(result.world).map((project) => project.id)).toEqual([projectId])
+  })
+
+  // "ends every RecurringTask it holds (per endRecurrence) so none schedule a further occurrence"
+  it('ends every RecurringTask it holds', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    world = project.world
+    world = createTask(world, { title: 'Plants', project: project.project.id, recurrenceRule: 'FREQ=WEEKLY' }).world
+    world = createTask(world, { title: 'Bins', project: project.project.id, recurrenceRule: 'FREQ=DAILY' }).world
+    world = createTask(world, { title: 'Plain', project: project.project.id }).world
+
+    const result = archiveProject(world, project.project.id)
+    const repeating = result.world.tasks.filter(isRecurring)
+
+    expect(repeating).toHaveLength(2)
+    expect(repeating.every((task) => task.ended)).toBe(true)
+    expect(result.message).toMatch(/ending 2 recurring Tasks/)
+  })
+
+  it('makes those ended Tasks stay done when completed, like any plain Task', () => {
+    const { world, taskId, projectId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const archived = archiveProject(world, projectId)
+    const done = completeTask(archived.world, taskId, TODAY)
+
+    expect(done.world.tasks[0]!.done).toBe(true)
+    expect(done.world.tasks[0]!.dueDate).toBe('2026-08-05')
+  })
+
+  it('leaves plain Tasks untouched', () => {
+    const { world, projectId } = scenario()
+    const result = archiveProject(world, projectId)
+
+    expect(result.world.tasks[0]!.done).toBe(false)
+    expect(isRecurring(result.world.tasks[0]!)).toBe(false)
+  })
+
+  // "Does not delete the Project or any of its Tasks"
+  it('deletes nothing', () => {
+    const { world, projectId } = scenario()
+    const result = archiveProject(world, projectId)
+
+    expect(result.world.projects).toHaveLength(1)
+    expect(tasksOf(result.world, projectId)).toHaveLength(1)
+  })
+
+  it('does not touch other Projects or their recurring Tasks', () => {
+    let { world, projectId } = scenario()
+    const other = createProject(world, 'Work')
+    world = other.world
+    const elsewhere = createTask(world, {
+      title: 'Standup',
+      project: other.project.id,
+      recurrenceRule: 'FREQ=WEEKLY',
+    })
+    world = elsewhere.world
+
+    const result = archiveProject(world, projectId)
+    const untouched = result.world.tasks.find((task) => task.id === elsewhere.task!.id)!
+
+    expect(result.world.projects.find((project) => project.id === other.project.id)!.archived).toBe(false)
+    expect(isRecurring(untouched) && untouched.ended).toBe(false)
+  })
+
+  it('is a no-op on an already-archived Project and does not error', () => {
+    const { world, projectId } = scenario()
+    const once = archiveProject(world, projectId)
+    const twice = archiveProject(once.world, projectId)
+
+    expect(twice.ok).toBe(true)
+    expect(twice.world).toBe(once.world)
+    expect(twice.message).toMatch(/was already archived/)
+  })
+
+  it('refuses a Project that does not exist', () => {
+    const { world } = scenario()
+    const result = archiveProject(world, 'project-999')
+
+    expect(result.ok).toBe(false)
+    expect(result.world).toBe(world)
+  })
+})
+
+describe('unarchiveProject', () => {
+  // "Restores an archived Project to active status, making it visible in default listings again."
+  it('clears archived and returns the Project to the default listing', () => {
+    const { world, projectId } = scenario()
+    const restored = unarchiveProject(archiveProject(world, projectId).world, projectId)
+
+    expect(restored.ok).toBe(true)
+    expect(restored.world.projects[0]!.archived).toBe(false)
+    expect(activeProjects(restored.world).map((project) => project.id)).toEqual([projectId])
+  })
+
+  // "Does not re-enable any RecurringTask that archiving ended — there is no function in
+  // this vocabulary that resumes a recurrence once ended."
+  it('leaves a recurrence archiving ended still ended', () => {
+    const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const restored = unarchiveProject(archiveProject(world, projectId).world, projectId)
+    const task = restored.world.tasks[0]!
+
+    expect(isRecurring(task) && task.ended).toBe(true)
+
+    // And so completing it finishes it, rather than scheduling another occurrence.
+    const done = completeTask(restored.world, taskId, TODAY)
+    expect(done.world.tasks[0]!.done).toBe(true)
+    expect(done.world.tasks[0]!.dueDate).toBe('2026-08-05')
+  })
+
+  it('keeps the Project and its Tasks intact across archive and restore', () => {
+    const { world, projectId } = scenario()
+    const restored = unarchiveProject(archiveProject(world, projectId).world, projectId)
+
+    expect(restored.world.projects).toHaveLength(1)
+    expect(tasksOf(restored.world, projectId)).toHaveLength(1)
+  })
+
+  it('is a no-op on a Project that is not archived and does not error', () => {
+    const { world, projectId } = scenario()
+    const result = unarchiveProject(world, projectId)
+
+    expect(result.ok).toBe(true)
+    expect(result.world).toBe(world)
+    expect(result.message).toMatch(/was not archived/)
+  })
+
+  it('refuses a Project that does not exist', () => {
+    const { world } = scenario()
+    expect(unarchiveProject(world, 'project-999').ok).toBe(false)
   })
 })
 
