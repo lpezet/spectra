@@ -1,8 +1,22 @@
+import { useState } from 'react'
 import type { Attribute, Backlinks, Coverage, Expectation, Term } from '@tb/shared'
 import { parseValueType } from '@tb/shared'
 import type { TermStatus } from '../review.js'
 import { BacklinkPanel } from './BacklinkHighlight.js'
+import { ExpectationFields } from './CoveragePanel.js'
 import { TermRef } from './TermRef.js'
+
+/**
+ * What a supersede sends: the reason, and the replacement (null retires outright).
+ *
+ * The replacement carries the original's `kind` rather than defaulting to functional — a
+ * reworded non-functional expectation is still non-functional, and silently promoting one
+ * would put it on the coverage board where it does not belong.
+ */
+export interface SupersedeDraft {
+  note: string
+  replacement: { kind: Expectation['kind']; terms: string[]; given: string; expect: string } | null
+}
 
 /** Walks `parent` up to the root, guarding against a cycle a hand-edit could introduce. */
 export function ancestorsOf(term: Term, termsByName: Map<string, Term>): Term[] {
@@ -59,6 +73,8 @@ interface TermDetailProps {
   /** Live expectations, unfiltered — this picks out the ones naming this term. */
   expectations: Expectation[]
   coverage: Coverage
+  onSupersede: (id: string, draft: SupersedeDraft) => void
+  busy: boolean
 }
 
 export function TermDetail({
@@ -70,6 +86,8 @@ export function TermDetail({
   review,
   expectations,
   coverage,
+  onSupersede,
+  busy,
 }: TermDetailProps) {
   const ancestors = ancestorsOf(term, termsByName)
   const outgoing = backlinks.bySource[term.name] ?? []
@@ -205,6 +223,8 @@ export function TermDetail({
         coverage={coverage}
         known={known}
         onSelect={onSelect}
+        onSupersede={onSupersede}
+        busy={busy}
       />
 
       <BacklinkPanel name={term.name} backlinks={backlinks} known={known} onSelect={onSelect} />
@@ -225,13 +245,18 @@ function ExpectationSection({
   coverage,
   known,
   onSelect,
+  onSupersede,
+  busy,
 }: {
   term: Term
   expectations: Expectation[]
   coverage: Coverage
   known: Set<string>
   onSelect: (name: string) => void
+  onSupersede: (id: string, draft: SupersedeDraft) => void
+  busy: boolean
 }) {
+  const [openId, setOpenId] = useState<string | null>(null)
   const mine = expectations.filter((expectation) => expectation.terms.includes(term.name))
   const gaps = coverage.gaps.filter((pair) => pair.entity === term.name || pair.action === term.name)
 
@@ -245,19 +270,41 @@ function ExpectationSection({
         <ul className="expectations">
           {mine.map((expectation) => (
             <li key={expectation.id} className={`expectation kind-${expectation.kind}`}>
-              <code className="expectation-id">{expectation.id}</code>
-              <span className="expectation-body">
-                {expectation.given && (
-                  <>
-                    <span className="muted">Given </span>
-                    {expectation.given}
-                    <span className="muted"> — </span>
-                  </>
+              <div className="expectation-line">
+                <code className="expectation-id">{expectation.id}</code>
+                <span className="expectation-body">
+                  {expectation.given && (
+                    <>
+                      <span className="muted">Given </span>
+                      {expectation.given}
+                      <span className="muted"> — </span>
+                    </>
+                  )}
+                  {expectation.expect}
+                </span>
+                {expectation.kind === 'non-functional' && (
+                  <span className="muted expectation-kind">non-functional</span>
                 )}
-                {expectation.expect}
-              </span>
-              {expectation.kind === 'non-functional' && (
-                <span className="muted expectation-kind">non-functional</span>
+                <button
+                  type="button"
+                  className="expectation-retire"
+                  disabled={busy}
+                  title="This has stopped being true"
+                  onClick={() => setOpenId(openId === expectation.id ? null : expectation.id)}
+                >
+                  {openId === expectation.id ? 'cancel' : 'supersede'}
+                </button>
+              </div>
+
+              {openId === expectation.id && (
+                <SupersedeForm
+                  expectation={expectation}
+                  busy={busy}
+                  onSubmit={(draft) => {
+                    onSupersede(expectation.id, draft)
+                    setOpenId(null)
+                  }}
+                />
               )}
             </li>
           ))}
@@ -281,5 +328,80 @@ function ExpectationSection({
         </p>
       )}
     </section>
+  )
+}
+
+/**
+ * Retiring an expectation, with the reason made mandatory.
+ *
+ * The note is required and the server enforces it too, because this is the one move that can
+ * turn a red check green without touching a line of code. An expectation that vanished with
+ * no recorded reason is indistinguishable from one somebody deleted to make a test pass, and
+ * the whole value of keeping the retired copy is that the difference stays legible.
+ *
+ * Replacing is the default and retiring outright is the opt-out, which is the right way round:
+ * most expectations move because the wording was imprecise or a decision shifted, and both of
+ * those still leave something that ought to hold. "This should never have been expected at
+ * all" is the rarer claim, so it takes the extra click.
+ */
+function SupersedeForm({
+  expectation,
+  busy,
+  onSubmit,
+}: {
+  expectation: Expectation
+  busy: boolean
+  onSubmit: (draft: SupersedeDraft) => void
+}) {
+  const [note, setNote] = useState('')
+  const [replacing, setReplacing] = useState(true)
+
+  return (
+    <div className="supersede">
+      <label className="supersede-note">
+        <span className="muted">Why has this stopped applying?</span>
+        <input
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="e.g. q-004 added RecurringTask.ended, so the condition is satisfiable after all"
+          disabled={busy}
+        />
+      </label>
+
+      <label className="supersede-toggle">
+        <input
+          type="checkbox"
+          checked={replacing}
+          onChange={(event) => setReplacing(event.target.checked)}
+          disabled={busy}
+        />
+        Replace it with a corrected one
+      </label>
+
+      {replacing ? (
+        <ExpectationFields
+          terms={expectation.terms}
+          submitLabel="Supersede"
+          busy={busy || note.trim() === ''}
+          initialGiven={expectation.given}
+          initialExpect={expectation.expect}
+          onSubmit={(given, expect) =>
+            onSubmit({
+              note: note.trim(),
+              replacement: { kind: expectation.kind, terms: expectation.terms, given, expect },
+            })
+          }
+        />
+      ) : (
+        <button
+          type="button"
+          className="action"
+          disabled={busy || note.trim() === ''}
+          onClick={() => onSubmit({ note: note.trim(), replacement: null })}
+        >
+          Retire {expectation.id} without replacing it
+        </button>
+      )}
+    </div>
   )
 }

@@ -79,16 +79,16 @@ export interface CommitOutcome {
 }
 
 /** A refused commit (409) is an expected answer, not a transport failure — it comes back as data. */
-async function post(url: string, body: unknown): Promise<CommitOutcome> {
+async function post<T = CommitOutcome>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
   try {
-    return (await response.json()) as CommitOutcome
+    return (await response.json()) as T
   } catch {
-    return { ok: false, error: `${url} — ${response.status} ${response.statusText}` }
+    return { ok: false, error: `${url} — ${response.status} ${response.statusText}` } as T
   }
 }
 
@@ -121,4 +121,50 @@ export interface AnswerOutcome extends CommitOutcome {
 
 export function answerQuestion(id: string, chose: string | null, note: string): Promise<AnswerOutcome> {
   return post(`/api/questions/${encodeURIComponent(id)}/answer`, { chose, note })
+}
+
+export interface RaiseOutcome {
+  ok: boolean
+  error?: string
+  id?: string
+  file?: string
+  expectation?: Expectation
+}
+
+export interface ExpectationDraft {
+  kind: Expectation['kind']
+  terms: string[]
+  given: string
+  expect: string
+}
+
+/**
+ * Raising goes straight in — no queue, no review. The asymmetry is the point: a new
+ * expectation cannot change what the app does, and the worst it can do is turn a check red.
+ */
+export function raiseExpectation(draft: ExpectationDraft): Promise<RaiseOutcome> {
+  return post<RaiseOutcome>('/api/expectations', { ...draft, pass: 'usage' })
+}
+
+export interface SupersedeOutcome {
+  ok: boolean
+  error?: string
+  retired?: string
+  replacement?: Expectation | null
+}
+
+/**
+ * Retiring, optionally replacing. `note` is mandatory server-side, because an expectation
+ * that stopped applying without a recorded reason is indistinguishable from one somebody
+ * deleted to make a test pass.
+ */
+export function supersedeExpectation(
+  id: string,
+  note: string,
+  replacement: ExpectationDraft | null,
+): Promise<SupersedeOutcome> {
+  return post<SupersedeOutcome>(`/api/expectations/${encodeURIComponent(id)}/supersede`, {
+    note,
+    ...(replacement ? { replacement } : {}),
+  })
 }

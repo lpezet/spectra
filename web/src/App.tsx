@@ -10,7 +10,9 @@ import {
   fetchGlossary,
   fetchQuestions,
   markImplemented,
+  raiseExpectation,
   rejectChangeset,
+  supersedeExpectation,
 } from './api.js'
 import type { Entity } from './chat.js'
 import { HighlightLegend } from './components/BacklinkHighlight.js'
@@ -19,6 +21,7 @@ import { ChangesetReview } from './components/ChangesetReview.js'
 import { ChatPanel } from './components/ChatPanel.js'
 import { CoveragePanel } from './components/CoveragePanel.js'
 import { QuestionPanel } from './components/QuestionPanel.js'
+import type { SupersedeDraft } from './components/TermDetail.js'
 import { SearchBar, filterTerms } from './components/SearchBar.js'
 import { TermDetail } from './components/TermDetail.js'
 import { TermList } from './components/TermList.js'
@@ -220,6 +223,50 @@ export function App() {
     }
   }
 
+  /**
+   * Both writes reload and report, and neither goes through `commit` — that helper speaks in
+   * ops applied and files written, which is the vocabulary of changing the glossary. These do
+   * not change it; they change what is expected of it.
+   */
+  async function recordExpectation<T extends { ok: boolean; error?: string }>(
+    action: () => Promise<T>,
+    describe: (outcome: T) => string,
+  ) {
+    setBusy(true)
+    setNotice(null)
+    try {
+      const outcome = await action()
+      if (!outcome.ok) {
+        setNotice({ tone: 'bad', message: outcome.error ?? 'Refused.' })
+        return
+      }
+      setNotice({ tone: 'ok', message: describe(outcome) })
+      await load()
+    } catch (cause) {
+      setNotice({ tone: 'bad', message: (cause as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function raise(draft: { terms: string[]; given: string; expect: string }) {
+    void recordExpectation(
+      () => raiseExpectation({ kind: 'functional', ...draft }),
+      (outcome) =>
+        `raised ${outcome.id} · live now — specsVersion has moved, so mark_implemented is refused until the snapshot is refreshed`,
+    )
+  }
+
+  function supersede(id: string, draft: SupersedeDraft) {
+    void recordExpectation(
+      () => supersedeExpectation(id, draft.note, draft.replacement),
+      (outcome) =>
+        outcome.replacement
+          ? `${id} retired to expectations/retired · replaced by ${outcome.replacement.id}`
+          : `${id} retired to expectations/retired · nothing replaces it`,
+    )
+  }
+
   if (error) return <p className="error">Could not load the glossary: {error}</p>
   if (!glossary || !feed || !questionFeed || !expectationFeed)
     return <p className="muted empty">Loading…</p>
@@ -275,6 +322,8 @@ export function App() {
         expectations={expectations}
         known={known}
         onSelectTerm={setSelected}
+        onRaise={raise}
+        busy={busy}
       />
 
       <ChangesetBar
@@ -335,6 +384,8 @@ export function App() {
               review={detailReview}
               expectations={expectations}
               coverage={coverage}
+              onSupersede={supersede}
+              busy={busy}
             />
           ) : (
             <p className="muted empty">Pick a term to see its spec, attributes and backlinks.</p>

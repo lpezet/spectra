@@ -8,6 +8,8 @@ interface CoveragePanelProps {
   expectations: Expectation[]
   known: Set<string>
   onSelectTerm: (name: string) => void
+  onRaise: (draft: { terms: string[]; given: string; expect: string }) => void
+  busy: boolean
 }
 
 /**
@@ -27,8 +29,16 @@ const DEFAULT_FILTERS = new Set(['gaps'])
  * present as a quality measure. So this counts and lists, and leaves the judgement where
  * `/api/specs/version` leaves it: with the person reading two numbers.
  */
-export function CoveragePanel({ coverage, expectations, known, onSelectTerm }: CoveragePanelProps) {
+export function CoveragePanel({
+  coverage,
+  expectations,
+  known,
+  onSelectTerm,
+  onRaise,
+  busy,
+}: CoveragePanelProps) {
   const [filters, setFilters] = useState<ReadonlySet<string>>(DEFAULT_FILTERS)
+  const [writingFor, setWritingFor] = useState<string | null>(null)
 
   const pairs = coverage.entities.flatMap((entry) => entry.pairs)
   const covered = pairs.filter((pair) => pair.expectations.length > 0)
@@ -82,15 +92,25 @@ export function CoveragePanel({ coverage, expectations, known, onSelectTerm }: C
         </p>
       ) : (
         <ul className="coverage-list">
-          {shown.map((pair) => (
-            <PairRow
-              key={`${pair.entity}.${pair.action}`}
-              pair={pair}
-              byId={byId}
-              known={known}
-              onSelectTerm={onSelectTerm}
-            />
-          ))}
+          {shown.map((pair) => {
+            const key = `${pair.entity}.${pair.action}`
+            return (
+              <PairRow
+                key={key}
+                pair={pair}
+                byId={byId}
+                known={known}
+                onSelectTerm={onSelectTerm}
+                writing={writingFor === key}
+                onToggleWrite={() => setWritingFor(writingFor === key ? null : key)}
+                onRaise={(given, expect) => {
+                  onRaise({ terms: [pair.entity, pair.action], given, expect })
+                  setWritingFor(null)
+                }}
+                busy={busy}
+              />
+            )
+          })}
         </ul>
       )}
 
@@ -113,45 +133,132 @@ function PairRow({
   byId,
   known,
   onSelectTerm,
+  writing,
+  onToggleWrite,
+  onRaise,
+  busy,
 }: {
   pair: CoveragePair
   byId: Map<string, Expectation>
   known: Set<string>
   onSelectTerm: (name: string) => void
+  writing: boolean
+  onToggleWrite: () => void
+  onRaise: (given: string, expect: string) => void
+  busy: boolean
 }) {
   const gap = pair.expectations.length === 0
 
   return (
-    <li className={`coverage-row ${gap ? 'coverage-gap' : 'coverage-covered'}`}>
-      <span
-        className={`distance distance-${pair.distance}`}
-        title={
-          pair.distance === 1
-            ? 'The action names this entity directly'
-            : `Reached through ${pair.distance - 1} step(s) of the entity graph — an interaction neither file mentions`
-        }
-      >
-        d{pair.distance}
-      </span>
-
-      <span className="coverage-pair">
-        <TermRef name={pair.entity} known={known} onSelect={onSelectTerm} />
-        <span className="muted"> × </span>
-        <TermRef name={pair.action} known={known} onSelect={onSelectTerm} />
-      </span>
-
-      {gap ? (
-        <span className="muted coverage-empty">nothing says what should happen</span>
-      ) : (
-        <span className="coverage-ids">
-          {pair.expectations.map((id) => (
-            <code key={id} title={summarize(byId.get(id))}>
-              {id}
-            </code>
-          ))}
+    <li className={`coverage-row ${gap ? 'coverage-gap' : 'coverage-covered'} ${writing ? 'coverage-writing' : ''}`}>
+      <div className="coverage-line">
+        <span
+          className={`distance distance-${pair.distance}`}
+          title={
+            pair.distance === 1
+              ? 'The action names this entity directly'
+              : `Reached through ${pair.distance - 1} step(s) of the entity graph — an interaction neither file mentions`
+          }
+        >
+          d{pair.distance}
         </span>
+
+        <span className="coverage-pair">
+          <TermRef name={pair.entity} known={known} onSelect={onSelectTerm} />
+          <span className="muted"> × </span>
+          <TermRef name={pair.action} known={known} onSelect={onSelectTerm} />
+        </span>
+
+        {gap ? (
+          <span className="muted coverage-empty">nothing says what should happen</span>
+        ) : (
+          <span className="coverage-ids">
+            {pair.expectations.map((id) => (
+              <code key={id} title={summarize(byId.get(id))}>
+                {id}
+              </code>
+            ))}
+          </span>
+        )}
+
+        <button type="button" className="coverage-write" onClick={onToggleWrite} disabled={busy}>
+          {writing ? 'cancel' : gap ? 'say what should happen' : 'add another'}
+        </button>
+      </div>
+
+      {writing && (
+        <ExpectationFields
+          terms={[pair.entity, pair.action]}
+          submitLabel="Raise it"
+          onSubmit={onRaise}
+          busy={busy}
+        />
       )}
     </li>
+  )
+}
+
+/**
+ * Given/expect, and nothing else.
+ *
+ * `terms` is shown but not editable here: it is prefilled from the pair being filled in, and
+ * an expectation whose terms drift away from the gap it was written for stops covering it —
+ * silently, since coverage matches on names. Editing them belongs to a form that starts from
+ * the vocabulary rather than from a hole in it.
+ */
+export function ExpectationFields({
+  terms,
+  submitLabel,
+  onSubmit,
+  busy,
+  initialGiven = '',
+  initialExpect = '',
+}: {
+  terms: string[]
+  submitLabel: string
+  onSubmit: (given: string, expect: string) => void
+  busy: boolean
+  initialGiven?: string
+  initialExpect?: string
+}) {
+  const [given, setGiven] = useState(initialGiven)
+  const [expect, setExpect] = useState(initialExpect)
+
+  return (
+    <div className="expectation-form">
+      <p className="muted expectation-form-terms">
+        about {terms.map((term) => <code key={term}>{term} </code>)}
+        <span className="expectation-form-hint">
+          — phrase it in glossary words only; if you need to name a button, it is app work
+        </span>
+      </p>
+      <label>
+        <span className="muted">Given</span>
+        <input
+          value={given}
+          onChange={(event) => setGiven(event.target.value)}
+          placeholder="the situation — leave empty if it always holds"
+          disabled={busy}
+        />
+      </label>
+      <label>
+        <span className="muted">Expect</span>
+        <input
+          value={expect}
+          onChange={(event) => setExpect(event.target.value)}
+          placeholder="what must happen"
+          disabled={busy}
+        />
+      </label>
+      <button
+        type="button"
+        className="action"
+        disabled={busy || expect.trim() === ''}
+        onClick={() => onSubmit(given.trim(), expect.trim())}
+      >
+        {submitLabel}
+      </button>
+    </div>
   )
 }
 

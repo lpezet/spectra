@@ -1525,3 +1525,152 @@ button.option:hover {
   font-size: 11px;
   flex: none;
 }
+
+/* ---------------------------------------------------------------------------------------
+   Writing an expectation, and retiring one.
+
+   The raise form opens inside the gap row that prompted it, so the pair it is about stays on
+   screen while you write — the terms are the thing you have to phrase it in, and a modal
+   would hide exactly that.
+   --------------------------------------------------------------------------------------- */
+.coverage-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.coverage-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.coverage-writing {
+  background: var(--panel-hi);
+}
+
+.coverage-write {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px dotted currentColor;
+}
+
+.coverage-write:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.coverage-write:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.expectation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 4px 34px;
+}
+
+.expectation-form-terms {
+  margin: 0;
+  font-size: 11px;
+}
+
+.expectation-form-hint {
+  opacity: 0.75;
+}
+
+.expectation-form label,
+.supersede-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.expectation-form label > span,
+.supersede-note > span {
+  flex: none;
+  width: 52px;
+}
+
+.supersede-note > span {
+  width: auto;
+}
+
+.expectation-form input,
+.supersede-note input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.expectation-form input:focus,
+.supersede-note input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.expectation-form .action {
+  align-self: flex-start;
+}
+
+/* Retiring is the one move that turns a check green without touching code, so it is styled
+   as a consequence rather than a convenience — amber, and never the primary action on a row. */
+.expectation-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.expectation-retire {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px dotted currentColor;
+}
+
+.expectation-retire:hover:not(:disabled) {
+  color: var(--modify);
+}
+
+.expectation-retire:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.supersede {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 0 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.supersede-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.supersede-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.supersede .expectation-form {
+  padding-left: 0;
+}
