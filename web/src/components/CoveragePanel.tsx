@@ -10,7 +10,7 @@ interface CoveragePanelProps {
   expectations: Expectation[]
   known: Set<string>
   onSelectTerm: (name: string) => void
-  onRaise: (draft: { terms: string[]; given: string; expect: string }) => void
+  onRaise: (draft: { terms: string[]; given: string; expect: string }, contested: CheckReport['findings']) => void
   busy: boolean
 }
 
@@ -77,6 +77,19 @@ export function CoveragePanel({
         </span>
       </h2>
 
+      {coverage.contested.length > 0 && (
+        <ul className="contested-list">
+          {coverage.contested.map((entry) => (
+            <li key={`${entry.expectation}.${entry.subject}`}>
+              <code>{entry.expectation}</code> disagrees with{' '}
+              <TermRef name={entry.subject} known={known} onSelect={onSelectTerm} /> and covers
+              nothing until someone settles which side gives.
+              {entry.quote && <q className="check-quote">{entry.quote}</q>}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {coverage.dangling.length > 0 && (
         <ul className="problems">
           {coverage.dangling.map((entry) => (
@@ -105,8 +118,8 @@ export function CoveragePanel({
                 onSelectTerm={onSelectTerm}
                 writing={writingFor === key}
                 onToggleWrite={() => setWritingFor(writingFor === key ? null : key)}
-                onRaise={(given, expect) => {
-                  onRaise({ terms: [pair.entity, pair.action], given, expect })
+                onRaise={(given, expect, contested) => {
+                  onRaise({ terms: [pair.entity, pair.action], given, expect }, contested)
                   setWritingFor(null)
                 }}
                 busy={busy}
@@ -146,7 +159,7 @@ function PairRow({
   onSelectTerm: (name: string) => void
   writing: boolean
   onToggleWrite: () => void
-  onRaise: (given: string, expect: string) => void
+  onRaise: (given: string, expect: string, contested: CheckReport['findings']) => void
   busy: boolean
 }) {
   const gap = pair.expectations.length === 0
@@ -229,7 +242,7 @@ export function ExpectationFields({
   terms: string[]
   kind?: Expectation['kind']
   submitLabel: string
-  onSubmit: (given: string, expect: string) => void
+  onSubmit: (given: string, expect: string, contested: CheckReport['findings']) => void
   busy: boolean
   initialGiven?: string
   initialExpect?: string
@@ -308,7 +321,7 @@ export function ExpectationFields({
               type="button"
               className={`action ${clashes.length > 0 ? 'action-warn' : ''}`}
               disabled={blocked}
-              onClick={() => onSubmit(given.trim(), expect.trim())}
+              onClick={() => onSubmit(given.trim(), expect.trim(), report.findings)}
             >
               {clashes.length > 0 ? `${submitLabel} anyway` : submitLabel}
             </button>

@@ -15,6 +15,7 @@ function expectation(id: string, terms: string[], extra: Partial<Expectation> = 
     expect: 'something holds',
     raisedBy: { pass: 'test' },
     supersededBy: null,
+    contested: [],
     ...extra,
   }
 }
@@ -85,6 +86,42 @@ describe('pair coverage', () => {
       expect.objectContaining({ entity: 'RecurringTask', action: 'deleteProject' }),
     )
     expect(computeCoverage(GLOSSARY, [retired]).gaps).toContainEqual(
+      expect.objectContaining({ entity: 'RecurringTask', action: 'deleteProject' }),
+    )
+  })
+
+  /**
+   * The rule that answers "how does anyone know it clashes?" — the pair stays a gap, and the
+   * disagreement is reported where it reads as work rather than as coverage. Counting it would
+   * mark the pair thought-through at the exact moment it is most in dispute.
+   */
+  it('does not let a contradicted expectation cover its pair', () => {
+    const contested = expectation('e-011', ['deleteProject', 'RecurringTask'], {
+      contested: [
+        {
+          kind: 'contradicts',
+          subject: 'deleteProject',
+          detail: 'the spec says the opposite',
+          quote: 'Blocks rather than cascades.',
+        },
+      ],
+    })
+    const report = computeCoverage(GLOSSARY, [contested])
+
+    expect(report.gaps).toContainEqual(
+      expect.objectContaining({ entity: 'RecurringTask', action: 'deleteProject' }),
+    )
+    expect(report.contested).toEqual([
+      { expectation: 'e-011', subject: 'deleteProject', quote: 'Blocks rather than cascades.' },
+    ])
+  })
+
+  it('still counts one whose only clash is a duplicate — that is noise, not disagreement', () => {
+    const noisy = expectation('e-012', ['deleteProject', 'RecurringTask'], {
+      contested: [{ kind: 'duplicate', subject: 'e-002', detail: 'says something similar' }],
+    })
+
+    expect(computeCoverage(GLOSSARY, [noisy]).gaps).not.toContainEqual(
       expect.objectContaining({ entity: 'RecurringTask', action: 'deleteProject' }),
     )
   })

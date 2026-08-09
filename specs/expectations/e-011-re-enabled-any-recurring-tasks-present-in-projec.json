@@ -10,5 +10,13 @@
   "raisedBy": {
     "pass": "usage"
   },
-  "supersededBy": null
+  "supersededBy": null,
+  "contested": [
+    {
+      "kind": "contradicts",
+      "subject": "unarchiveProject",
+      "detail": "The draft expects unarchiveProject to re-enable recurring tasks, but the spec explicitly states it does not do this.",
+      "quote": "Does not re-enable any RecurringTask that archiving ended \u2014 there is no function in this vocabulary that resumes a recurrence once ended."
+    }
+  ]
 }

@@ -15,7 +15,13 @@ import { TermRef } from './TermRef.js'
  */
 export interface SupersedeDraft {
   note: string
-  replacement: { kind: Expectation['kind']; terms: string[]; given: string; expect: string } | null
+  replacement: {
+    kind: Expectation['kind']
+    terms: string[]
+    given: string
+    expect: string
+    contested: Array<{ kind: string; subject: string; detail: string; quote?: string }>
+  } | null
 }
 
 /** Walks `parent` up to the root, guarding against a cycle a hand-edit could introduce. */
@@ -269,7 +275,14 @@ function ExpectationSection({
       {mine.length > 0 ? (
         <ul className="expectations">
           {mine.map((expectation) => (
-            <li key={expectation.id} className={`expectation kind-${expectation.kind}`}>
+            <li
+              key={expectation.id}
+              className={`expectation kind-${expectation.kind} ${
+                expectation.contested.some((clash) => clash.kind === 'contradicts')
+                  ? 'expectation-contested'
+                  : ''
+              }`}
+            >
               <div className="expectation-line">
                 <code className="expectation-id">{expectation.id}</code>
                 <span className="expectation-body">
@@ -285,6 +298,11 @@ function ExpectationSection({
                 {expectation.kind === 'non-functional' && (
                   <span className="muted expectation-kind">non-functional</span>
                 )}
+                {expectation.contested.length > 0 && (
+                  <span className="expectation-contested-pill" title="Recorded despite disagreeing with the specs">
+                    contested
+                  </span>
+                )}
                 <button
                   type="button"
                   className="expectation-retire"
@@ -295,6 +313,14 @@ function ExpectationSection({
                   {openId === expectation.id ? 'cancel' : 'supersede'}
                 </button>
               </div>
+
+              {expectation.contested.map((clash) => (
+                <p key={`${clash.kind}.${clash.subject}`} className="expectation-clash">
+                  <span className="check-kind">{clash.kind}</span>
+                  {clash.detail}
+                  {clash.quote && <q className="check-quote">{clash.quote}</q>}
+                </p>
+              ))}
 
               {openId === expectation.id && (
                 <SupersedeForm
@@ -387,10 +413,10 @@ function SupersedeForm({
           busy={busy || note.trim() === ''}
           initialGiven={expectation.given}
           initialExpect={expectation.expect}
-          onSubmit={(given, expect) =>
+          onSubmit={(given, expect, contested) =>
             onSubmit({
               note: note.trim(),
-              replacement: { kind: expectation.kind, terms: expectation.terms, given, expect },
+              replacement: { kind: expectation.kind, terms: expectation.terms, given, expect, contested },
             })
           }
         />

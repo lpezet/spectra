@@ -62,6 +62,13 @@ export interface Coverage {
    * them visible without letting them inflate a number that means something else.
    */
   nonFunctional: string[]
+  /**
+   * Expectations that disagree with a term's spec, and what they disagree with.
+   *
+   * These cover nothing and are not gaps either — they are decisions nobody has made. Whoever
+   * reads this has to settle which side gives before the pair can be covered at all.
+   */
+  contested: Array<{ expectation: string; subject: string; quote?: string }>
   /** Expectations naming a term the glossary does not have — renamed, or a typo. */
   dangling: Array<{ expectation: string; term: string }>
 }
@@ -158,7 +165,24 @@ export function computeCoverage(
   // Retired expectations are history: they record what was once expected and must not keep a
   // pair looking covered after the statement that covered it was withdrawn.
   const live = expectations.filter((expectation) => expectation.supersededBy === null)
-  const functional = live.filter((expectation) => expectation.kind === 'functional')
+
+  /**
+   * An expectation that contradicts a spec covers nothing, and this is the load-bearing line.
+   *
+   * Coverage means somebody has said what should happen *and the glossary agrees*. A
+   * contradicted expectation is not a settled answer wearing an expectation's clothes — it is
+   * an open disagreement, and counting it would mark the pair as thought-through at the exact
+   * moment it is most in dispute. So the pair stays a gap, and the disagreement shows up
+   * separately in `contested`, where it reads as work rather than as coverage.
+   */
+  const contested = live.filter((expectation) =>
+    expectation.contested.some((clash) => clash.kind === 'contradicts'),
+  )
+  const contestedIds = new Set(contested.map((expectation) => expectation.id))
+
+  const functional = live.filter(
+    (expectation) => expectation.kind === 'functional' && !contestedIds.has(expectation.id),
+  )
 
   const actions = terms.filter((term) => ACTION_TYPES.has(term.type))
   const entities = new Map<string, CoveragePair[]>(
@@ -207,6 +231,15 @@ export function computeCoverage(
     nonFunctional: live
       .filter((expectation) => expectation.kind === 'non-functional')
       .map((expectation) => expectation.id),
+    contested: contested.flatMap((expectation) =>
+      expectation.contested
+        .filter((clash) => clash.kind === 'contradicts')
+        .map((clash) => ({
+          expectation: expectation.id,
+          subject: clash.subject,
+          ...(clash.quote ? { quote: clash.quote } : {}),
+        })),
+    ),
     dangling: live.flatMap((expectation) =>
       expectation.terms
         .filter((term) => !known.has(term))

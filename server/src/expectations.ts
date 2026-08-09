@@ -22,7 +22,7 @@
 import path from 'node:path'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { parseExpectation } from '@tb/shared'
-import type { Expectation, ExpectationKind } from '@tb/shared'
+import type { Clash, Expectation, ExpectationKind } from '@tb/shared'
 import { slug, uniquePath, writeAtomic } from './files.js'
 import {
   EXPECTATIONS_DIR,
@@ -39,6 +39,14 @@ export interface RaiseExpectationRequest {
   pass: string
   from?: string
   file?: string
+  /**
+   * What the check found and the author went ahead regardless.
+   *
+   * Carried on the write rather than recomputed here. The check is a separate call — a caller
+   * that already decided should not pay for a second model round trip — and recomputing would
+   * also mean a draft could be accepted against one glossary and stored against another.
+   */
+  contested?: Clash[]
 }
 
 export type ExpectationOutcome =
@@ -86,6 +94,7 @@ export async function raiseExpectation(request: RaiseExpectationRequest): Promis
       ...(request.file ? { file: request.file } : {}),
     },
     supersededBy: null,
+    contested: request.contested ?? [],
   }
 
   // Validated before it reaches disk, not after — an invalid expectation would otherwise come

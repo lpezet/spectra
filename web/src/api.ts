@@ -162,8 +162,19 @@ export function checkExpectation(
   })
 }
 
-export function raiseExpectation(draft: ExpectationDraft): Promise<RaiseOutcome> {
-  return post<RaiseOutcome>('/api/expectations', { ...draft, pass: 'usage' })
+/**
+ * `contested` is what the check found and the author went ahead regardless.
+ *
+ * Sending it is the whole reason the gate is worth having. Without it the finding lives only
+ * in the browser for the second before the click, and the expectation lands looking exactly
+ * like one that came back clean — so nothing downstream, human or agent, can tell that the
+ * glossary disagrees with it.
+ */
+export function raiseExpectation(
+  draft: ExpectationDraft,
+  contested: CheckReport['findings'] = [],
+): Promise<RaiseOutcome> {
+  return post<RaiseOutcome>('/api/expectations', { ...draft, pass: 'usage', contested })
 }
 
 export interface SupersedeOutcome {

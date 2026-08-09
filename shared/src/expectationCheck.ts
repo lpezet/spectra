@@ -19,28 +19,17 @@
  * Splitting them this way matters: these findings are always available, instantly, with no
  * credential and no model, so the gate still does something useful when the agent cannot run.
  */
-import type { Expectation, Term } from './types.js'
+import type { Clash, Expectation, Term } from './types.js'
 
-export type FindingKind =
-  /** Names a term the glossary does not have. */
-  | 'unknown-term'
-  /** Says what a live expectation already says. */
-  | 'duplicate'
-  /** Concerns exactly the same terms as a live one, in different words. */
-  | 'overlaps'
-  /** Cannot hold at the same time as a term's spec. Only @spec can find this. */
-  | 'contradicts'
-  /** Restates a spec without adding a scenario. Only @spec can find this. */
-  | 'restates'
-
-export interface Finding {
-  kind: FindingKind
-  /** The term name or expectation id this is about. */
-  subject: string
-  detail: string
-  /** The text it clashes with, quoted rather than described. */
-  quote?: string
-}
+/**
+ * A finding and a stored conflict are the same thing on purpose.
+ *
+ * What the check reports is exactly what gets written onto the expectation when the author
+ * raises it anyway. Two shapes here would mean a translation step, and a translation step is
+ * where the quote gets dropped and the finding degrades into "there was a problem once".
+ */
+export type Finding = Clash
+export type FindingKind = Clash['kind']
 
 export interface ExpectationDraft {
   kind: Expectation['kind']

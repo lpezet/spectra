@@ -150,6 +150,27 @@ export interface Answer {
  */
 export type ExpectationKind = 'functional' | 'non-functional'
 
+export type ClashKind =
+  /** Names a term the glossary does not have. */
+  | 'unknown-term'
+  /** Says what a live expectation already says. */
+  | 'duplicate'
+  /** Concerns exactly the same terms as a live one, in different words. */
+  | 'overlaps'
+  /** Cannot hold at the same time as a term's spec. */
+  | 'contradicts'
+  /** Restates a spec without adding a scenario. */
+  | 'restates'
+
+/** Something a draft clashed with, quoted rather than described so both can be read together. */
+export interface Clash {
+  kind: ClashKind
+  /** The term name or expectation id this is about. */
+  subject: string
+  detail: string
+  quote?: string
+}
+
 export interface Expectation {
   id: string
   /**
@@ -190,6 +211,21 @@ export interface Expectation {
    * reason to record.
    */
   retiredBecause?: string
+  /**
+   * What this clashed with, and was written down anyway.
+   *
+   * The check that finds these does not refuse the write, deliberately: a draft that
+   * contradicts a spec is often a legitimate thing to want that the glossary does not allow
+   * yet, and a model deciding what you may expect from your own product is the wrong
+   * authority. But a finding that lives only in the browser for the second before you click
+   * is worse than no finding — the expectation then lands looking exactly like one that came
+   * back clean, and nothing downstream can tell the difference.
+   *
+   * So the disagreement travels with the statement. An implementer reading this knows not to
+   * go and make it true, because the glossary currently says otherwise and only a human can
+   * settle which gives. Empty means it was checked and clean, or predates the check.
+   */
+  contested: Clash[]
 }
 
 export interface ExpectationOrigin {

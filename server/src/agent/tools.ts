@@ -17,6 +17,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, computeCoverage, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
+import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
 import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
@@ -272,8 +273,16 @@ export function blueprintTools(transcripts: TranscriptStore) {
       const wanted = (list: typeof expectations) =>
         args.term ? list.filter((expectation) => expectation.terms.includes(args.term!)) : list
 
+      const live = wanted(expectations)
+      const contested = live.filter((expectation) => expectation.contested.length > 0)
+
       return say({
-        expectations: wanted(expectations),
+        expectations: live,
+        ...(contested.length > 0
+          ? {
+              warning: `${contested.map((entry) => entry.id).join(', ')} disagree with the specs and were recorded anyway. Do not write code to satisfy a contested expectation and do not change the specs to match it — which side gives is a decision only the human can make. Say what you found and leave it.`,
+            }
+          : {}),
         retired: wanted(retired).map((expectation) => ({
           id: expectation.id,
           expect: expectation.expect,
@@ -304,6 +313,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
       'A non-functional one describes a property of a running build — responsiveness, persistence, accessibility — and is exempt from that rule.',
       'This is not a question. If the outcome turns on a product decision nobody has made, raise a question instead; an expectation asserts what should happen, so writing one is claiming the answer is already settled.',
       'Check read_expectations first — a near-duplicate is worse than nothing, because two statements of the same rule drift apart.',
+      'What you write is read against the glossary before it lands. If it clashes with a spec it is still recorded, with the clash attached, and it will not count as coverage until a human settles which side gives — so read the findings that come back and say what they were.',
     ].join(' '),
     {
       kind: z.enum(['functional', 'non-functional']),
@@ -317,19 +327,40 @@ export function blueprintTools(transcripts: TranscriptStore) {
       file: z.string().optional(),
     },
     async (args) => {
-      const outcome = await raiseExpectation({
+      const draft = {
         kind: args.kind,
         terms: args.terms,
-        given: args.given,
+        given: args.given ?? '',
         expect: args.expect,
+      }
+
+      // Checked on the way in, the same as the UI's gate. Not a refusal: an agent that noticed
+      // a real disagreement should still be able to record it, and a tool that silently
+      // discarded the finding would leave the write looking clean — which is the failure this
+      // whole field exists to prevent.
+      const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+      const report = await checkExpectation(draft, terms, expectations)
+
+      const outcome = await raiseExpectation({
+        ...draft,
         pass: args.pass,
         from: args.from,
         file: args.file,
+        contested: report.findings,
       })
 
       return say(
         outcome.ok
-          ? { raised: outcome.id, file: `specs/expectations/${outcome.file}`, note: 'Live immediately. Cite this id in the test that proves it.' }
+          ? {
+              raised: outcome.id,
+              file: `specs/expectations/${outcome.file}`,
+              ...(report.findings.length > 0
+                ? {
+                    contested: report.findings,
+                    note: 'Recorded, but it clashes with what the glossary already says. It will not count as coverage until a human settles which side gives. Do not implement it and do not change the specs to match it — report the clash and stop.',
+                  }
+                : { note: 'Live immediately. Cite this id in the test that proves it.' }),
+            }
           : { error: outcome.error },
       )
     },

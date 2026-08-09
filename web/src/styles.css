@@ -1776,3 +1776,46 @@ button.option:hover {
   color: var(--muted);
   font-style: italic;
 }
+
+/* A disagreement between an expectation and a spec — not an error, and not coverage either.
+   Amber rather than red: somebody wanting something the glossary does not allow is usually a
+   change nobody has proposed yet, not a mistake. */
+.contested-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+}
+
+.contested-list li {
+  padding: 6px 9px;
+  margin-bottom: 4px;
+  border-left: 2px solid var(--modify);
+  background: var(--panel);
+  border-radius: 0 3px 3px 0;
+}
+
+.expectation-contested {
+  border-left-color: var(--modify) !important;
+}
+
+.expectation-contested-pill {
+  flex: none;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--modify);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.expectation-clash {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}

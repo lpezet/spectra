@@ -141,6 +141,18 @@ export const expectationSchema = z
       .strict(),
     supersededBy: z.string().min(1).nullable().default(null),
     retiredBecause: z.string().min(1).optional(),
+    contested: z
+      .array(
+        z
+          .object({
+            kind: z.enum(['unknown-term', 'duplicate', 'overlaps', 'contradicts', 'restates']),
+            subject: z.string().min(1),
+            detail: z.string().min(1),
+            quote: z.string().optional(),
+          })
+          .strict(),
+      )
+      .default([]),
   })
   .strict()
   .superRefine((expectation, ctx) => {

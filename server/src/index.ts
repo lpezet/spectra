@@ -191,6 +191,7 @@ app.post('/api/expectations', async (req, res, next) => {
       pass: typeof body.pass === 'string' && body.pass ? body.pass : 'usage',
       ...(typeof body.from === 'string' ? { from: body.from } : {}),
       ...(typeof body.file === 'string' ? { file: body.file } : {}),
+      ...(Array.isArray(body.contested) ? { contested: body.contested } : {}),
     })
 
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)

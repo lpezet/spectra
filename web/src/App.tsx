@@ -249,11 +249,17 @@ export function App() {
     }
   }
 
-  function raise(draft: { terms: string[]; given: string; expect: string }) {
+  function raise(
+    draft: { terms: string[]; given: string; expect: string },
+    contested: Array<{ kind: string; subject: string; detail: string; quote?: string }>,
+  ) {
+    const clashes = contested.filter((finding) => finding.kind === 'contradicts')
     void recordExpectation(
-      () => raiseExpectation({ kind: 'functional', ...draft }),
+      () => raiseExpectation({ kind: 'functional', ...draft }, contested),
       (outcome) =>
-        `raised ${outcome.id} · live now — specsVersion has moved, so mark_implemented is refused until the snapshot is refreshed`,
+        clashes.length > 0
+          ? `raised ${outcome.id}, contested — it disagrees with ${clashes.map((c) => c.subject).join(', ')}, so it covers nothing until someone settles which side gives`
+          : `raised ${outcome.id} · live now — the committed snapshot is behind, refresh it before the next implementation pass`,
     )
   }
 

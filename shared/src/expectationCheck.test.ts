@@ -24,6 +24,7 @@ function existing(id: string, terms: string[], expectText: string): Expectation 
     expect: expectText,
     raisedBy: { pass: 'test' },
     supersededBy: null,
+    contested: [],
   }
 }
 
