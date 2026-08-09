@@ -1,0 +1,14 @@
+{
+  "id": "e-010",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "moveTask"
+  ],
+  "given": "",
+  "expect": "task re-assigned to new project",
+  "raisedBy": {
+    "pass": "usage"
+  },
+  "supersededBy": null
+}

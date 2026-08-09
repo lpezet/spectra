@@ -1674,3 +1674,105 @@ button.option:hover {
 .supersede .expectation-form {
   padding-left: 0;
 }
+
+/* ---------------------------------------------------------------------------------------
+   The check that stands between a draft and the glossary.
+
+   Findings are ordered by how much they should change your mind, and none of them disable
+   the button. A contradiction is often a legitimate thing to want that the glossary does not
+   allow yet — refusing it would put a model in charge of what you may expect from your own
+   product. So the button relabels to "anyway" and stays where it was.
+   --------------------------------------------------------------------------------------- */
+.expectation-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-warn {
+  border-color: var(--modify);
+  color: var(--modify);
+}
+
+.recheck {
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px dotted currentColor;
+}
+
+.recheck:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.check-verdict {
+  margin: 0;
+  font-size: 12px;
+}
+
+.check-clear {
+  color: var(--add);
+}
+
+.check-partial {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.check-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.check-findings li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 3px;
+  background: var(--bg);
+  border-left: 2px solid var(--line);
+}
+
+.check-contradicts {
+  border-left-color: var(--remove) !important;
+}
+
+.check-duplicate {
+  border-left-color: var(--modify) !important;
+}
+
+.check-unknown-term {
+  border-left-color: var(--remove) !important;
+}
+
+.check-restates,
+.check-overlaps {
+  border-left-color: var(--muted) !important;
+}
+
+.check-kind {
+  flex: none;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  width: 76px;
+}
+
+.check-detail {
+  flex: 1;
+}
+
+/* The clashing sentence, verbatim. Paraphrasing it would defeat the purpose — the whole
+   value of the finding is that you can read the two statements side by side. */
+.check-quote {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-style: italic;
+}

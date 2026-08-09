@@ -1,0 +1,14 @@
+{
+  "id": "e-009",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "archiveProject"
+  ],
+  "given": "",
+  "expect": "end any recurring tasks present in project",
+  "raisedBy": {
+    "pass": "usage"
+  },
+  "supersededBy": null
+}

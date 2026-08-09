@@ -9,6 +9,7 @@ import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@tb/shared'
+import { checkExpectation } from './expectationCheck.js'
 import { raiseExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR, readChangesets, readExpectations, readQuestions, readTerms } from './store.js'
@@ -123,8 +124,52 @@ app.get('/api/expectations', async (_req, res, next) => {
 })
 
 /**
- * Adding goes straight in, with no review step — see `expectations.ts` for why that is safe
- * and why superseding is not.
+ * Read a draft against the glossary without writing it.
+ *
+ * Nothing here touches disk, which is the point: a draft that turns out to contradict a spec
+ * should be killable before it exists, not superseded afterwards. The mechanical findings
+ * always come back; the semantic ones need a credential and say so when they are missing.
+ */
+app.post('/api/expectations/check', async (req, res, next) => {
+  try {
+    const body = req.body as Partial<RaiseExpectationRequest>
+    if (typeof body?.expect !== 'string' || body.expect.trim() === '') {
+      res.status(400).json({ error: 'Expected { expect: string }.' })
+      return
+    }
+
+    const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+
+    // A replacement is prefilled from the expectation it replaces, so comparing it against
+    // that expectation reports a duplicate of the very thing being retired. Excluded rather
+    // than tolerated: a finding everybody learns to ignore devalues the ones that matter.
+    const superseding = (req.body as { superseding?: unknown }).superseding
+    const against =
+      typeof superseding === 'string'
+        ? expectations.filter((entry) => entry.id !== superseding)
+        : expectations
+
+    res.json(
+      await checkExpectation(
+        {
+          kind: body.kind === 'non-functional' ? 'non-functional' : 'functional',
+          terms: Array.isArray(body.terms) ? body.terms : [],
+          given: typeof body.given === 'string' ? body.given : '',
+          expect: body.expect,
+        },
+        terms,
+        against,
+      ),
+    )
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * The write itself. The check above is a separate call rather than a step inside this one —
+ * the UI gates on it, but a caller that has already decided is not made to pay for a model
+ * round trip, and a check that could not run must not become a write that cannot happen.
  */
 app.post('/api/expectations', async (req, res, next) => {
   try {

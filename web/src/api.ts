@@ -138,10 +138,30 @@ export interface ExpectationDraft {
   expect: string
 }
 
+export interface CheckReport {
+  findings: Array<{ kind: string; subject: string; detail: string; quote?: string }>
+  /** False when the semantic pass did not run — no credential, or it failed. */
+  checked: boolean
+  note?: string
+}
+
 /**
- * Raising goes straight in — no queue, no review. The asymmetry is the point: a new
- * expectation cannot change what the app does, and the worst it can do is turn a check red.
+ * Reads a draft against the glossary and writes nothing, so a bad one can be killed unborn.
+ *
+ * `superseding` names the expectation being replaced, which is then left out of the
+ * comparison — a replacement is prefilled from its original, so without this every supersede
+ * would report a duplicate of the thing it is retiring.
  */
+export function checkExpectation(
+  draft: ExpectationDraft,
+  superseding?: string,
+): Promise<CheckReport> {
+  return post<CheckReport>('/api/expectations/check', {
+    ...draft,
+    ...(superseding ? { superseding } : {}),
+  })
+}
+
 export function raiseExpectation(draft: ExpectationDraft): Promise<RaiseOutcome> {
   return post<RaiseOutcome>('/api/expectations', { ...draft, pass: 'usage' })
 }

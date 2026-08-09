@@ -381,6 +381,8 @@ function SupersedeForm({
       {replacing ? (
         <ExpectationFields
           terms={expectation.terms}
+          kind={expectation.kind}
+          superseding={expectation.id}
           submitLabel="Supersede"
           busy={busy || note.trim() === ''}
           initialGiven={expectation.given}

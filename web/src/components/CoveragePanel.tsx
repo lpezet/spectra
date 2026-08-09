@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import type { Coverage, CoveragePair, Expectation } from '@tb/shared'
+import type { CheckReport } from '../api.js'
+import { checkExpectation } from '../api.js'
 import { FilterPills, toggled } from './FilterPills.js'
 import { TermRef } from './TermRef.js'
 
@@ -199,30 +201,72 @@ function PairRow({
 }
 
 /**
- * Given/expect, and nothing else.
+ * Given/expect, checked against the glossary before it can be written.
  *
- * `terms` is shown but not editable here: it is prefilled from the pair being filled in, and
- * an expectation whose terms drift away from the gap it was written for stops covering it —
- * silently, since coverage matches on names. Editing them belongs to a form that starts from
- * the vocabulary rather than from a hole in it.
+ * The check is a gate rather than an annotation, and the reason is the one only the author
+ * knows: "I just noticed something" is very often "I forgot what we already decided". Reading
+ * the draft against the specs before it exists is what lets a contradiction be killed unborn
+ * instead of superseded later — and superseding leaves a permanent artifact, which is right
+ * for a rule that genuinely changed and pure noise for one that was never true.
+ *
+ * Editing after a check clears the verdict. A finding that survives on screen while the text
+ * it described has changed underneath it is worse than no finding at all.
+ *
+ * `terms` is shown but not editable: it is prefilled from the pair being filled in, and an
+ * expectation whose terms drift off the gap it was written for stops covering it, silently,
+ * since coverage matches on names.
  */
 export function ExpectationFields({
   terms,
+  kind = 'functional',
   submitLabel,
   onSubmit,
   busy,
   initialGiven = '',
   initialExpect = '',
+  superseding,
 }: {
   terms: string[]
+  kind?: Expectation['kind']
   submitLabel: string
   onSubmit: (given: string, expect: string) => void
   busy: boolean
   initialGiven?: string
   initialExpect?: string
+  /** Id being replaced, left out of the duplicate comparison. */
+  superseding?: string
 }) {
   const [given, setGiven] = useState(initialGiven)
   const [expect, setExpect] = useState(initialExpect)
+  const [report, setReport] = useState<CheckReport | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  // Any edit invalidates the verdict — it was about text that no longer exists.
+  function edit(set: (value: string) => void) {
+    return (event: { target: { value: string } }) => {
+      set(event.target.value)
+      setReport(null)
+    }
+  }
+
+  async function check() {
+    setChecking(true)
+    try {
+      setReport(
+        await checkExpectation({ kind, terms, given: given.trim(), expect: expect.trim() }, superseding),
+      )
+    } catch (cause) {
+      setReport({ findings: [], checked: false, note: (cause as Error).message })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const empty = expect.trim() === ''
+  const blocked = busy || checking || empty
+  const clashes = (report?.findings ?? []).filter(
+    (finding) => finding.kind === 'contradicts' || finding.kind === 'duplicate',
+  )
 
   return (
     <div className="expectation-form">
@@ -236,7 +280,7 @@ export function ExpectationFields({
         <span className="muted">Given</span>
         <input
           value={given}
-          onChange={(event) => setGiven(event.target.value)}
+          onChange={edit(setGiven)}
           placeholder="the situation — leave empty if it always holds"
           disabled={busy}
         />
@@ -245,20 +289,74 @@ export function ExpectationFields({
         <span className="muted">Expect</span>
         <input
           value={expect}
-          onChange={(event) => setExpect(event.target.value)}
+          onChange={edit(setExpect)}
           placeholder="what must happen"
           disabled={busy}
         />
       </label>
-      <button
-        type="button"
-        className="action"
-        disabled={busy || expect.trim() === ''}
-        onClick={() => onSubmit(given.trim(), expect.trim())}
-      >
-        {submitLabel}
-      </button>
+
+      {report && <CheckFindings report={report} />}
+
+      <div className="expectation-actions">
+        {report === null ? (
+          <button type="button" className="action" disabled={blocked} onClick={() => void check()}>
+            {checking ? 'Reading it against the specs…' : 'Check against the specs'}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`action ${clashes.length > 0 ? 'action-warn' : ''}`}
+              disabled={blocked}
+              onClick={() => onSubmit(given.trim(), expect.trim())}
+            >
+              {clashes.length > 0 ? `${submitLabel} anyway` : submitLabel}
+            </button>
+            <button type="button" className="recheck" disabled={blocked} onClick={() => void check()}>
+              check again
+            </button>
+          </>
+        )}
+      </div>
     </div>
+  )
+}
+
+/**
+ * Findings, ordered by how much they should change your mind.
+ *
+ * None of them refuse the write. A contradiction is often a legitimate thing to want that the
+ * glossary does not allow yet — e-011 was exactly that — and refusing it would put a model in
+ * charge of what you are allowed to expect from your own product. So it says what clashes,
+ * quotes it, and leaves the button where it was.
+ */
+function CheckFindings({ report }: { report: CheckReport }) {
+  if (report.findings.length === 0) {
+    return (
+      <p className={`check-verdict ${report.checked ? 'check-clear' : 'check-partial'}`}>
+        {report.checked
+          ? 'Nothing clashes — it adds something the specs do not already settle.'
+          : `Nothing mechanical clashes. ${report.note ?? ''}`}
+      </p>
+    )
+  }
+
+  const rank: Record<string, number> = { contradicts: 0, duplicate: 1, 'unknown-term': 2, restates: 3, overlaps: 4 }
+  const ordered = [...report.findings].sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9))
+
+  return (
+    <ul className="check-findings">
+      {ordered.map((finding, index) => (
+        <li key={`${finding.kind}.${finding.subject}.${index}`} className={`check-${finding.kind}`}>
+          <span className="check-kind">{finding.kind}</span>
+          <span className="check-detail">
+            {finding.detail}
+            {finding.quote && <q className="check-quote">{finding.quote}</q>}
+          </span>
+        </li>
+      ))}
+      {!report.checked && <li className="check-partial">{report.note}</li>}
+    </ul>
   )
 }
 

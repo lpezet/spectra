@@ -1,0 +1,14 @@
+{
+  "id": "e-011",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "unarchiveProject"
+  ],
+  "given": "",
+  "expect": "re-enabled any recurring tasks present in project",
+  "raisedBy": {
+    "pass": "usage"
+  },
+  "supersededBy": null
+}
