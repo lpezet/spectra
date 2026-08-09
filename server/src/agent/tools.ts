@@ -14,15 +14,16 @@
  */
 import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
-import { analyzePending, computeBacklinks, summarizeOp } from '@tb/shared'
+import { analyzePending, computeBacklinks, computeCoverage, summarizeOp } from '@tb/shared'
 import type { PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
-import { deployedVersion, recordExport, specsSnapshot } from '../specsExport.js'
+import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
 import { proposeChangeset } from '../propose.js'
 import { raiseQuestion } from '../raise.js'
+import { raiseExpectation } from '../expectations.js'
 import type { RaiseRequest } from '../raise.js'
 import type { ProposeRequest } from '../propose.js'
-import { readChangesets, readQuestions, readTerms } from '../store.js'
+import { readChangesets, readExpectations, readQuestions, readTerms } from '../store.js'
 import type { TranscriptStore } from '../transcripts.js'
 
 /**
@@ -244,6 +245,96 @@ export function blueprintTools(transcripts: TranscriptStore) {
     { annotations: { readOnlyHint: true } },
   )
 
+  const readExpectationsTool = tool(
+    'read_expectations',
+    'Read the expectations — what someone should be able to expect, stated outside the prose of the specs. Functional ones become tests over the domain; non-functional ones describe a running build. Pass `coverage` to get which entity/action pairs nothing has been said about yet, nearest first: that list is the work queue for what the glossary has named but nobody has thought through.',
+    {
+      coverage: z
+        .boolean()
+        .optional()
+        .describe('Return the pair-coverage report instead of the expectation list'),
+      term: z.string().optional().describe('Only expectations naming this term'),
+    },
+    async (args) => {
+      const [{ terms }, { expectations, retired, problems }] = await Promise.all([
+        readTerms(),
+        readExpectations(),
+      ])
+
+      if (args.coverage) {
+        const report = computeCoverage(terms, expectations)
+        return say({
+          ...report,
+          note: 'Coverage means an expectation exists naming both ends of the pair — not that the behaviour is correct. distance 1 is an action naming the entity directly; 2 is reached through the entity graph, which is where the interactions nobody thought about tend to sit.',
+        })
+      }
+
+      const wanted = (list: typeof expectations) =>
+        args.term ? list.filter((expectation) => expectation.terms.includes(args.term!)) : list
+
+      return say({
+        expectations: wanted(expectations),
+        retired: wanted(retired).map((expectation) => ({
+          id: expectation.id,
+          expect: expectation.expect,
+          supersededBy: expectation.supersededBy,
+          retiredBecause: expectation.retiredBecause,
+        })),
+        problems,
+      })
+    },
+    { annotations: { readOnlyHint: true } },
+  )
+
+  /**
+   * The second write that needs no approval, and for the same reason as `raise_question`: it
+   * cannot change what the app does. The worst an expectation can do is turn a check red,
+   * which is the direction that surfaces a defect rather than concealing one.
+   *
+   * There is deliberately no tool for retiring one. That is the move that can turn a red check
+   * green without touching code, and the agent most likely to want it is the one whose work
+   * just failed it — so it stays a human act, over the HTTP route.
+   */
+  const raiseExpectationTool = tool(
+    'raise_expectation',
+    [
+      'Record something someone should be able to expect. Use this when you notice a scenario the specs name but never settle the outcome of — especially one turned up by using or implementing the thing rather than reading it.',
+      'It changes nothing and needs no approval: the most it can do is make a check go red.',
+      'A functional expectation must be phrased using only glossary vocabulary — term names, attributes, function names. If you cannot write it without naming a button, a screen or a string in the UI, it is not an expectation about the domain and does not belong here.',
+      'A non-functional one describes a property of a running build — responsiveness, persistence, accessibility — and is exempt from that rule.',
+      'This is not a question. If the outcome turns on a product decision nobody has made, raise a question instead; an expectation asserts what should happen, so writing one is claiming the answer is already settled.',
+      'Check read_expectations first — a near-duplicate is worse than nothing, because two statements of the same rule drift apart.',
+    ].join(' '),
+    {
+      kind: z.enum(['functional', 'non-functional']),
+      terms: z
+        .array(z.string())
+        .describe('Glossary terms this concerns. Name every term involved — coverage is computed from this, so an expectation about an interaction must name both ends.'),
+      given: z.string().optional().describe('The situation, if it is conditional'),
+      expect: z.string().describe('What must hold'),
+      pass: z.string().describe('What was being done when it came up, e.g. "implementation" or "usage"'),
+      from: z.string().optional().describe('Question or changeset id this follows from, if any'),
+      file: z.string().optional(),
+    },
+    async (args) => {
+      const outcome = await raiseExpectation({
+        kind: args.kind,
+        terms: args.terms,
+        given: args.given,
+        expect: args.expect,
+        pass: args.pass,
+        from: args.from,
+        file: args.file,
+      })
+
+      return say(
+        outcome.ok
+          ? { raised: outcome.id, file: `specs/expectations/${outcome.file}`, note: 'Live immediately. Cite this id in the test that proves it.' }
+          : { error: outcome.error },
+      )
+    },
+  )
+
   const raiseQuestionTool = tool(
     'raise_question',
     [
@@ -365,8 +456,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     'Record that code has been written for an applied changeset. Call this only after the code actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI. Refused unless your stored specs snapshot is at the current version, since otherwise the code was written against a contract that has since moved.',
     { id: z.string().describe('The applied changeset id, e.g. "cs-001"') },
     async (args) => {
-      const { terms } = await readTerms()
-      const current = specsSnapshot(terms).version
+      const current = (await currentSnapshot()).version
       const deployed = await deployedVersion()
 
       if (deployed === null) {
@@ -395,8 +485,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     'Fetch the specs contract at its current version. Store the returned JSON verbatim wherever your project keeps it, and commit it with the code: it is what lets the code be checked against the specs offline, and its version is what mark_implemented is checked against. Refresh it before an implementation pass. It carries names, kinds and hashes, not spec text — it tells you *which* terms moved, and read_glossary tells you what they now say. Do not hand-edit it.',
     {},
     async () => {
-      const { terms } = await readTerms()
-      const snapshot = specsSnapshot(terms)
+      const snapshot = await currentSnapshot()
       recordExport(snapshot, new Date().toISOString())
       return say(snapshot)
     },
@@ -418,9 +507,11 @@ export function blueprintTools(transcripts: TranscriptStore) {
     readGlossary,
     readQuestionsTool,
     readChangesetsTool,
+    readExpectationsTool,
     analyzePendingTool,
     searchTranscripts,
     raiseQuestionTool,
+    raiseExpectationTool,
     proposeChangesetTool,
     markImplementedTool,
     exportSpecsTool,
@@ -429,12 +520,11 @@ export function blueprintTools(transcripts: TranscriptStore) {
     handler: async (args: Record<string, unknown>, extra: unknown) => {
       const call = entry.handler as (a: unknown, e: unknown) => Promise<CallResult>
       const result = await call(args, extra)
-      const { terms } = await readTerms()
       return {
         ...result,
         content: [
           ...result.content,
-          { type: 'text' as const, text: JSON.stringify({ specsVersion: specsSnapshot(terms).version }) },
+          { type: 'text' as const, text: JSON.stringify({ specsVersion: (await currentSnapshot()).version }) },
         ],
       }
     },

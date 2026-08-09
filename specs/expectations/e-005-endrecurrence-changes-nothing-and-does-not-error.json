@@ -1,0 +1,15 @@
+{
+  "id": "e-005",
+  "kind": "functional",
+  "terms": [
+    "endRecurrence",
+    "RecurringTask"
+  ],
+  "given": "a RecurringTask that has already been ended",
+  "expect": "endRecurrence changes nothing and does not error",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-004"
+  },
+  "supersededBy": null
+}

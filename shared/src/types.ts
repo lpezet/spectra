@@ -129,6 +129,77 @@ export interface Answer {
   changesetId?: string
 }
 
+/**
+ * What someone should be able to expect, stated outside the prose.
+ *
+ * A Term says what something *is*; an Expectation says what *happens* in a specific case.
+ * Both are normative, and keeping them apart buys three things the prose cannot:
+ *
+ * - Expectations accumulate. Using the app turns up scenarios nobody thought of the first
+ *   time, and adding one must not mean rewriting a definition that was already correct.
+ * - They are addressable. An id is what lets a test name cite one, a QA agent resolve one,
+ *   and a review notice two that say the same thing.
+ * - They are countable against the vocabulary, which is what makes coverage computable —
+ *   see `coverage.ts`.
+ *
+ * Deliberately *not* a Term. A Term is roughly a class, a thing the product has; an
+ * Expectation is a statement about the vocabulary rather than part of it. Making it a
+ * `TermType` would hand it a parent, attributes, a slot in the glossary browser beside Task,
+ * and a demand for an `implements:` marker — none of which mean anything here. It sits in the
+ * same tier as Question and Changeset: first-class, references terms, is not one.
+ */
+export type ExpectationKind = 'functional' | 'non-functional'
+
+export interface Expectation {
+  id: string
+  /**
+   * Which verifier this is for, and that is the whole reason the field exists rather than
+   * taxonomy for its own sake. A functional expectation is phrased in glossary vocabulary and
+   * becomes a unit test over the domain. A non-functional one — latency, accessibility,
+   * persistence — is a property of an implementation, which this glossary deliberately does
+   * not constrain, so it is exempt from the vocabulary rule and is checked by driving a
+   * running build instead.
+   *
+   * It is stored rather than derived: emptiness of `terms` looked like it would encode this,
+   * but "listing Tasks in a Project holding ten thousand Tasks stays responsive" is
+   * non-functional and names two terms.
+   */
+  kind: ExpectationKind
+  /** Glossary terms this concerns. May be empty for a non-functional expectation that scopes to the whole app. */
+  terms: string[]
+  /** The situation. Empty when the expectation is unconditional. */
+  given: string
+  /** What must hold. For a functional expectation, phrased using only glossary vocabulary. */
+  expect: string
+  raisedBy: ExpectationOrigin
+  /**
+   * Id of the expectation that replaced this one, or null while it is live.
+   *
+   * Expectations move — a decision changes, or the first phrasing was imprecise — and an
+   * edit in place would lose both the old wording and the reason. So they are superseded
+   * rather than rewritten, the same way an answer stays in its question file and a changeset
+   * moves to `applied/` instead of vanishing. Three things fall out: a test named `e-014`
+   * still resolves years later, the reasoning is not re-derived, and the one dangerous
+   * direction — quietly weakening an expectation to turn a red check green — leaves an
+   * artifact in the history that is already reviewed.
+   */
+  supersededBy: string | null
+  /**
+   * Why it stopped applying. Written when it is retired, absent while it is live — the one
+   * field that only ever appears on a retired copy, because a live expectation has no such
+   * reason to record.
+   */
+  retiredBecause?: string
+}
+
+export interface ExpectationOrigin {
+  /** What was being done when it came up, e.g. `implementation`, `usage`, `review`. */
+  pass: string
+  /** Question or changeset it follows from, if any. */
+  from?: string
+  file?: string
+}
+
 export type Severity = 'error' | 'warning'
 
 export interface Diagnostic {

@@ -1,4 +1,12 @@
-import type { Answer, Changeset, Diagnostic, Question, SourceProblem, Term } from '@tb/shared'
+import type {
+  Answer,
+  Changeset,
+  Diagnostic,
+  Expectation,
+  Question,
+  SourceProblem,
+  Term,
+} from '@tb/shared'
 
 export interface Glossary {
   terms: Term[]
@@ -15,6 +23,13 @@ export interface ChangesetFeed {
 
 export interface QuestionFeed {
   questions: Question[]
+  problems: SourceProblem[]
+}
+
+export interface ExpectationFeed {
+  expectations: Expectation[]
+  /** Superseded, kept so a citation of an old id still resolves. */
+  retired: Expectation[]
   problems: SourceProblem[]
 }
 
@@ -36,6 +51,19 @@ export function fetchChangesets(): Promise<ChangesetFeed> {
 
 export function fetchQuestions(): Promise<QuestionFeed> {
   return get<QuestionFeed>('/api/questions')
+}
+
+/**
+ * Only the expectations are fetched, never the coverage — that is computed in the browser
+ * from the same `computeCoverage` the server and the agents use.
+ *
+ * Not a saving. It is what lets the board describe the glossary *as a changeset would leave
+ * it*: open a proposal that adds a function and its uncovered pairs appear immediately,
+ * alongside the highlights and diagnostics that already work that way. A server-computed
+ * number could only ever describe the world before the change.
+ */
+export function fetchExpectations(): Promise<ExpectationFeed> {
+  return get<ExpectationFeed>('/api/expectations')
 }
 
 export interface CommitOutcome {

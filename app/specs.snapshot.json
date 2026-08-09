@@ -1,5 +1,5 @@
 {
-  "version": "a4da54dbffd1f433",
+  "version": "e137fcba03e2ab67",
   "terms": [
     {
       "name": "archiveProject",
@@ -75,6 +75,43 @@
       "name": "unarchiveProject",
       "type": "function",
       "hash": "76efab2bd5eeb82b"
+    }
+  ],
+  "expectations": [
+    {
+      "id": "e-001",
+      "kind": "functional",
+      "hash": "4339cc4275d7b1a6"
+    },
+    {
+      "id": "e-002",
+      "kind": "functional",
+      "hash": "720453f03f99775d"
+    },
+    {
+      "id": "e-003",
+      "kind": "functional",
+      "hash": "c4a298a88dee4a6e"
+    },
+    {
+      "id": "e-004",
+      "kind": "functional",
+      "hash": "53851182cdacf09c"
+    },
+    {
+      "id": "e-005",
+      "kind": "functional",
+      "hash": "97b28e8a7c147f98"
+    },
+    {
+      "id": "e-006",
+      "kind": "functional",
+      "hash": "11d47fb54a37acd9"
+    },
+    {
+      "id": "e-008",
+      "kind": "functional",
+      "hash": "99ccb9808984c281"
     }
   ]
 }

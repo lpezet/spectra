@@ -1,0 +1,16 @@
+{
+  "id": "e-004",
+  "kind": "functional",
+  "terms": [
+    "completeTask",
+    "RecurringTask",
+    "endRecurrence"
+  ],
+  "given": "a RecurringTask that has been ended",
+  "expect": "completeTask marks it done like a plain Task, rather than advancing dueDate and reopening it",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-004"
+  },
+  "supersededBy": null
+}

@@ -1,4 +1,4 @@
-import type { Attribute, Backlinks, Term } from '@tb/shared'
+import type { Attribute, Backlinks, Coverage, Expectation, Term } from '@tb/shared'
 import { parseValueType } from '@tb/shared'
 import type { TermStatus } from '../review.js'
 import { BacklinkPanel } from './BacklinkHighlight.js'
@@ -56,6 +56,9 @@ interface TermDetailProps {
   onSelect: (name: string) => void
   /** Present while a changeset is open and touches this term. `previous` is null for a new term. */
   review?: { previous: Term | null; status: TermStatus }
+  /** Live expectations, unfiltered — this picks out the ones naming this term. */
+  expectations: Expectation[]
+  coverage: Coverage
 }
 
 export function TermDetail({
@@ -65,6 +68,8 @@ export function TermDetail({
   known,
   onSelect,
   review,
+  expectations,
+  coverage,
 }: TermDetailProps) {
   const ancestors = ancestorsOf(term, termsByName)
   const outgoing = backlinks.bySource[term.name] ?? []
@@ -194,7 +199,87 @@ export function TermDetail({
         )}
       </section>
 
+      <ExpectationSection
+        term={term}
+        expectations={expectations}
+        coverage={coverage}
+        known={known}
+        onSelect={onSelect}
+      />
+
       <BacklinkPanel name={term.name} backlinks={backlinks} known={known} onSelect={onSelect} />
     </article>
+  )
+}
+
+/**
+ * What is expected of this term, and what nobody has said yet.
+ *
+ * Both halves are here on purpose. The expectations answer "what must hold"; the gaps answer
+ * "what has not been thought about" — and the second is the one a glossary cannot otherwise
+ * tell you, because absence has no file to live in.
+ */
+function ExpectationSection({
+  term,
+  expectations,
+  coverage,
+  known,
+  onSelect,
+}: {
+  term: Term
+  expectations: Expectation[]
+  coverage: Coverage
+  known: Set<string>
+  onSelect: (name: string) => void
+}) {
+  const mine = expectations.filter((expectation) => expectation.terms.includes(term.name))
+  const gaps = coverage.gaps.filter((pair) => pair.entity === term.name || pair.action === term.name)
+
+  if (mine.length === 0 && gaps.length === 0) return null
+
+  return (
+    <section className="detail-section">
+      <h3>Expectations</h3>
+
+      {mine.length > 0 ? (
+        <ul className="expectations">
+          {mine.map((expectation) => (
+            <li key={expectation.id} className={`expectation kind-${expectation.kind}`}>
+              <code className="expectation-id">{expectation.id}</code>
+              <span className="expectation-body">
+                {expectation.given && (
+                  <>
+                    <span className="muted">Given </span>
+                    {expectation.given}
+                    <span className="muted"> — </span>
+                  </>
+                )}
+                {expectation.expect}
+              </span>
+              {expectation.kind === 'non-functional' && (
+                <span className="muted expectation-kind">non-functional</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted">Nothing says what should happen to this yet.</p>
+      )}
+
+      {gaps.length > 0 && (
+        <p className="muted coverage-inline">
+          Uncovered:{' '}
+          {gaps.map((pair, index) => {
+            const other = pair.entity === term.name ? pair.action : pair.entity
+            return (
+              <span key={`${pair.entity}.${pair.action}`}>
+                {index > 0 && ', '}
+                <TermRef name={other} known={known} onSelect={onSelect} />
+              </span>
+            )
+          })}
+        </p>
+      )}
+    </section>
   )
 }

@@ -1,0 +1,17 @@
+{
+  "id": "e-008",
+  "kind": "functional",
+  "terms": [
+    "deleteProject",
+    "Project",
+    "RecurringTask",
+    "Task"
+  ],
+  "given": "an unarchived Project whose RecurringTasks have all been ended and completed, and whose plain Tasks are done",
+  "expect": "deleteProject succeeds and removes the Project together with every Task it held",
+  "raisedBy": {
+    "pass": "supersedes",
+    "from": "e-007"
+  },
+  "supersededBy": null
+}

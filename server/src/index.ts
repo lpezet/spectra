@@ -7,8 +7,11 @@ import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
-import { deployedVersion, lastExport, specsSnapshot } from './specsExport.js'
-import { SPECS_DIR, readChangesets, readQuestions, readTerms } from './store.js'
+import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
+import { computeCoverage } from '@tb/shared'
+import { raiseExpectation, supersedeExpectation } from './expectations.js'
+import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
+import { SPECS_DIR, readChangesets, readExpectations, readQuestions, readTerms } from './store.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
 
@@ -93,9 +96,8 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
  */
 app.get('/api/specs/version', async (_req, res, next) => {
   try {
-    const { terms } = await readTerms()
     res.json({
-      specsVersion: specsSnapshot(terms).version,
+      specsVersion: (await currentSnapshot()).version,
       snapshotVersion: await deployedVersion(),
       lastExport: lastExport(),
     })
@@ -107,6 +109,86 @@ app.get('/api/specs/version', async (_req, res, next) => {
 app.get('/api/sandbox', async (_req, res, next) => {
   try {
     res.json(await probeSandbox())
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/expectations', async (_req, res, next) => {
+  try {
+    res.json(await readExpectations())
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Adding goes straight in, with no review step — see `expectations.ts` for why that is safe
+ * and why superseding is not.
+ */
+app.post('/api/expectations', async (req, res, next) => {
+  try {
+    const body = req.body as Partial<RaiseExpectationRequest>
+    if (body?.kind !== 'functional' && body?.kind !== 'non-functional') {
+      res.status(400).json({ error: 'Expected { kind: "functional" | "non-functional" }.' })
+      return
+    }
+    if (typeof body.expect !== 'string' || body.expect.trim() === '') {
+      res.status(400).json({ error: 'Expected { expect: string }.' })
+      return
+    }
+
+    const outcome = await raiseExpectation({
+      kind: body.kind,
+      terms: Array.isArray(body.terms) ? body.terms : [],
+      given: typeof body.given === 'string' ? body.given : '',
+      expect: body.expect,
+      pass: typeof body.pass === 'string' && body.pass ? body.pass : 'usage',
+      ...(typeof body.from === 'string' ? { from: body.from } : {}),
+      ...(typeof body.file === 'string' ? { file: body.file } : {}),
+    })
+
+    res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/expectations/:id/supersede', async (req, res, next) => {
+  try {
+    const body = req.body as Partial<SupersedeRequest>
+    if (typeof body?.note !== 'string' || body.note.trim() === '') {
+      res.status(400).json({ error: 'Expected { note: string } saying why this no longer applies.' })
+      return
+    }
+
+    const outcome = await supersedeExpectation(req.params.id, {
+      note: body.note,
+      ...(body.replacement ? { replacement: body.replacement } : {}),
+    })
+
+    res.status(outcome.ok ? 200 : outcome.status).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Which pairs of entity and action nobody has said anything about.
+ *
+ * Counts and lists, never a score — the same reason `/api/specs/version` reports two numbers
+ * and offers no verdict. Expectations per term measure attention, not correctness, and a
+ * percentage would invite reading them as the second thing.
+ */
+app.get('/api/coverage', async (req, res, next) => {
+  try {
+    const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+    const distance = Number(req.query.distance ?? 2)
+    res.json(
+      computeCoverage(terms, expectations, {
+        maxDistance: Number.isFinite(distance) ? Math.max(1, Math.min(4, distance)) : 2,
+      }),
+    )
   } catch (error) {
     next(error)
   }

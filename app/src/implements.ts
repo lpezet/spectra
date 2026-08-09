@@ -74,6 +74,13 @@ export interface TermRecord {
   hash: string
 }
 
+export interface ExpectationRecord {
+  id: string
+  kind: string
+  /** Covers the wording, so a rephrased expectation shows up in the diff. */
+  hash: string
+}
+
 export interface Snapshot {
   /**
    * One value for the whole glossary. There is deliberately no timestamp: the file is a
@@ -82,6 +89,17 @@ export interface Snapshot {
    */
   version: string
   terms: TermRecord[]
+  /**
+   * What must hold, by id — the half of the contract the markers cannot express. Optional
+   * here so a snapshot exported before expectations existed still reads, rather than
+   * failing in a way that looks like the file is corrupt.
+   *
+   * Nothing checks these yet. The check they are here for is "every expectation is named by
+   * some test", which needs a scan of the test files — note `sourceFiles` above deliberately
+   * excludes them, so it is a second pass with the filter inverted rather than a change to
+   * this one.
+   */
+  expectations?: ExpectationRecord[]
 }
 
 /**

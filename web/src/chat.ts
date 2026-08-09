@@ -182,7 +182,7 @@ export function streamSession(id: string, after: number, handlers: StreamHandler
 
 export interface Entity {
   name: string
-  kind: 'term' | 'question' | 'changeset'
+  kind: 'term' | 'question' | 'changeset' | 'expectation'
   hint: string
 }
 

@@ -749,14 +749,16 @@ button {
 /* ---- questions ---- */
 
 .questions,
-.proposals {
+.proposals,
+.coverage {
   margin-bottom: 18px;
 }
 
 /* Sentence case, not uppercase — these read as labels for the cards beneath them, and
    "Proposed changes" shouted in caps looks like a warning. */
 .questions h2,
-.proposals h2 {
+.proposals h2,
+.coverage h2 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1395,4 +1397,131 @@ button.option:hover {
 .approval-command {
   border-left: 2px solid var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------------------------------------------------------------------------------------
+   Coverage — which pairs of entity and action nobody has said anything about.
+
+   Uncovered rows are deliberately the plain ones and covered rows are dimmed. The list
+   exists to show absence, so the thing worth reading has to be the thing without content
+   in it; styling the gaps as an error state would be wrong too, since an uncovered pair is
+   work not yet done rather than something broken.
+   --------------------------------------------------------------------------------------- */
+.coverage-note {
+  font-weight: 400;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.coverage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.coverage-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--panel);
+  border-radius: 3px;
+}
+
+.coverage-row:hover {
+  background: var(--panel-hi);
+}
+
+.coverage-covered {
+  opacity: 0.62;
+}
+
+/* How far the action sits from the entity. d2 is where the interactions nobody spotted by
+   reading a file tend to be, so it is the one that gets a colour. */
+.distance {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex: none;
+}
+
+.distance-2,
+.distance-3,
+.distance-4 {
+  color: var(--modify);
+  border-color: currentColor;
+}
+
+.coverage-pair {
+  flex: none;
+}
+
+.coverage-empty {
+  font-size: 12px;
+  font-style: italic;
+}
+
+.coverage-ids {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.coverage-ids code {
+  color: var(--add);
+  cursor: help;
+}
+
+.coverage-nonfunctional,
+.coverage-inline {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+/* ---------------------------------------------------------------------------------------
+   Expectations, on a term's detail pane.
+   --------------------------------------------------------------------------------------- */
+.expectations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.expectation {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-left: 2px solid var(--add);
+  border-radius: 0 3px 3px 0;
+}
+
+.expectation.kind-non-functional {
+  border-left-color: var(--hl-referenced);
+}
+
+.expectation-id {
+  color: var(--muted);
+  flex: none;
+}
+
+.expectation-body {
+  flex: 1;
+}
+
+.expectation-kind {
+  font-size: 11px;
+  flex: none;
 }

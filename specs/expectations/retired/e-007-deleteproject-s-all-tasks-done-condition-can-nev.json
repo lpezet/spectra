@@ -1,0 +1,17 @@
+{
+  "id": "e-007",
+  "kind": "functional",
+  "terms": [
+    "deleteProject",
+    "Project",
+    "RecurringTask"
+  ],
+  "given": "a Project holding a RecurringTask",
+  "expect": "deleteProject's all-Tasks-done condition can never be satisfied, so the Project is permanently undeletable",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-002"
+  },
+  "supersededBy": "e-008",
+  "retiredBecause": "q-004 added RecurringTask.ended and the endRecurrence function, which makes the all-Tasks-done condition satisfiable after all: a RecurringTask counts as done once it has been ended and then completed. This was committed as a test by q-002 and quietly became false when q-004 was answered."
+}

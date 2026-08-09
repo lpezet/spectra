@@ -27,9 +27,9 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { Term } from '@tb/shared'
+import type { Expectation, Term } from '@tb/shared'
 import { CODER_URL } from './sandbox.js'
-import { SPECS_DIR } from './store.js'
+import { SPECS_DIR, readExpectations, readTerms } from './store.js'
 import { DATA_DIR } from './transcripts.js'
 
 /** Where the last export is remembered. Not in specs/ — it records no decision. */
@@ -46,10 +46,26 @@ export interface SnapshotTerm {
   hash: string
 }
 
+export interface SnapshotExpectation {
+  id: string
+  kind: string
+  /** Covers `given` and `expect`, so a reworded expectation shows up in the diff. */
+  hash: string
+}
+
 export interface Snapshot {
   /** One value for the whole of specs/, so "same or not?" is a string comparison. */
   version: string
   terms: SnapshotTerm[]
+  /**
+   * Live expectations, ids and hashes only — the same lossy-on-purpose treatment the terms
+   * get. An id is what a test name can cite, which is what will let `app/` check that every
+   * expectation has *a* test without this side knowing anything about how tests are written.
+   *
+   * Retired ones are absent. The contract is what must hold now; what used to hold is history,
+   * and history that arrives in a contract file starts looking like a requirement.
+   */
+  expectations: SnapshotExpectation[]
 }
 
 function digest(value: unknown): string {
@@ -85,12 +101,38 @@ function hashTerm(term: Term): string {
  * run the export, and if git says nothing changed, the contract did not move. When it did,
  * the diff names exactly which terms.
  */
-export function specsSnapshot(terms: Term[]): Snapshot {
+export function specsSnapshot(terms: Term[], expectations: Expectation[]): Snapshot {
   const entries: SnapshotTerm[] = [...terms]
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((term) => ({ name: term.name, type: term.type, hash: hashTerm(term) }))
 
-  return { version: digest(entries), terms: entries }
+  const expected: SnapshotExpectation[] = expectations
+    .filter((expectation) => expectation.supersededBy === null)
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((expectation) => ({
+      id: expectation.id,
+      kind: expectation.kind,
+      hash: digest({ given: expectation.given, expect: expectation.expect, terms: [...expectation.terms].sort() }),
+    }))
+
+  // Both halves feed the version, so adding an expectation moves it and a stale
+  // `mark_implemented` is refused until the snapshot is refreshed. That is right even when the
+  // new expectation already passes: "already satisfied" is a claim worth someone confirming,
+  // and the cost of confirming is a tool call.
+  return { version: digest({ terms: entries, expectations: expected }), terms: entries, expectations: expected }
+}
+
+/**
+ * The snapshot of what is on disk right now.
+ *
+ * Every caller wants both halves, and `specsSnapshot` takes them separately only so it can be
+ * tested without a filesystem. Reading them here rather than at each call site is what stops a
+ * caller from passing terms alone and computing a version nobody else agrees with — the failure
+ * would be a silent mismatch, which is the worst shape for a bug in a version check to take.
+ */
+export async function currentSnapshot(): Promise<Snapshot> {
+  const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+  return specsSnapshot(terms, expectations)
 }
 
 /**

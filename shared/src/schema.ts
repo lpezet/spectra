@@ -4,7 +4,7 @@
  */
 import { z } from 'zod'
 import { TERM_TYPES } from './types.js'
-import type { Changeset, Question, Term } from './types.js'
+import type { Changeset, Expectation, Question, Term } from './types.js'
 import { describeValueTypeError, isValueType } from './valueType.js'
 
 const termName = z
@@ -125,6 +125,46 @@ export const questionSchema = z
     }
   })
 
+export const expectationSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.enum(['functional', 'non-functional']),
+    terms: z.array(termName).default([]),
+    given: z.string().default(''),
+    expect: z.string().min(1),
+    raisedBy: z
+      .object({
+        pass: z.string().min(1),
+        from: z.string().min(1).optional(),
+        file: z.string().optional(),
+      })
+      .strict(),
+    supersededBy: z.string().min(1).nullable().default(null),
+    retiredBecause: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((expectation, ctx) => {
+    // A functional expectation with no terms is coverage that can never be counted — it
+    // would sit in the file and show up against nothing. Non-functional ones are exempt:
+    // "the app survives a refresh" legitimately scopes to no term at all.
+    if (expectation.kind === 'functional' && expectation.terms.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['terms'],
+        message: 'a functional expectation must name at least one glossary term',
+      })
+    }
+    // Self-supersession would make the expectation both live and retired, and the coverage
+    // pass would have to pick one.
+    if (expectation.supersededBy === expectation.id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['supersededBy'],
+        message: 'an expectation cannot supersede itself',
+      })
+    }
+  })
+
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
 function formatIssues(error: z.ZodError): string[] {
@@ -152,5 +192,12 @@ export function parseQuestion(data: unknown): ParseResult<Question> {
   const result = questionSchema.safeParse(data)
   return result.success
     ? { ok: true, value: result.data as Question }
+    : { ok: false, errors: formatIssues(result.error) }
+}
+
+export function parseExpectation(data: unknown): ParseResult<Expectation> {
+  const result = expectationSchema.safeParse(data)
+  return result.success
+    ? { ok: true, value: result.data as Expectation }
     : { ok: false, errors: formatIssues(result.error) }
 }

@@ -1,0 +1,15 @@
+{
+  "id": "e-001",
+  "kind": "functional",
+  "terms": [
+    "completeTask",
+    "RecurringTask"
+  ],
+  "given": "a RecurringTask that has not been ended",
+  "expect": "completeTask leaves done false, so the Task is immediately open again for its next occurrence",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-002"
+  },
+  "supersededBy": null
+}

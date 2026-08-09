@@ -1,0 +1,16 @@
+{
+  "id": "e-002",
+  "kind": "functional",
+  "terms": [
+    "completeTask",
+    "RecurringTask",
+    "RecurrenceRule"
+  ],
+  "given": "a RecurringTask due 2026-08-05 whose recurrenceRule is 'every 3 days', not ended",
+  "expect": "completeTask advances dueDate to 2026-08-08",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-002"
+  },
+  "supersededBy": null
+}

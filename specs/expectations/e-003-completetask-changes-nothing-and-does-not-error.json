@@ -1,0 +1,15 @@
+{
+  "id": "e-003",
+  "kind": "functional",
+  "terms": [
+    "completeTask",
+    "Task"
+  ],
+  "given": "a Task that is already done",
+  "expect": "completeTask changes nothing and does not error",
+  "raisedBy": {
+    "pass": "seed",
+    "from": "q-002"
+  },
+  "supersededBy": null
+}
