@@ -14,7 +14,7 @@ import {
   DEFAULT_VOICES,
   dictate,
   dictationAvailable,
-  firstSentence,
+  leadSentence,
   rankVoices,
   speak,
   speakableText,
@@ -192,7 +192,7 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     const last = runs[runs.length - 1]?.steps.filter(isNarrative).pop()
     if (!last?.text || last.author === 'human') return
 
-    const text = firstSentence(speakableText(last.text))
+    const text = leadSentence(speakableText(last.text))
     speak(text, { ...(choices[last.author] ?? DEFAULT_VOICES.spec!), voices })
   }, [running, runs, speaking, choices, voices])
 

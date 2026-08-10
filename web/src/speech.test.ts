@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applySigils, firstSentence, speakableText } from './speech.js'
+import { applySigils, leadSentence, speakableText } from './speech.js'
 
 describe('speakableText', () => {
   it('keeps prose', () => {
@@ -44,19 +44,46 @@ describe('speakableText', () => {
   })
 })
 
-describe('firstSentence', () => {
-  it('leaves a short message alone', () => {
-    expect(firstSentence('Tests pass.')).toBe('Tests pass.')
+describe('leadSentence', () => {
+  /** What the prompt now asks both agents to produce, and all that should be read. */
+  it('reads the conclusion and stops', () => {
+    expect(
+      leadSentence(
+        'The tests pass and q-009 is still open. I renamed eleven tests to cite their expectation ids and refreshed the snapshot.',
+      ),
+    ).toBe('The tests pass and q-009 is still open.')
   })
 
-  it('cuts at a sentence end when there is one', () => {
-    const long = `${'a'.repeat(100)}. ${'b'.repeat(300)}`
-    expect(firstSentence(long)).toBe(`${'a'.repeat(100)}.`)
+  /** Thirteen characters, and complete — this must not drag the next sentence in with it. */
+  it('leaves a short but complete conclusion alone', () => {
+    expect(leadSentence('Raised q-009. It is open and unanswered.')).toBe('Raised q-009.')
   })
 
-  it('ellipsises when there is no sentence end to cut at', () => {
-    const long = 'c'.repeat(400)
-    expect(firstSentence(long, 100)).toBe(`${'c'.repeat(100)}…`)
+  it('joins a very short opener to the sentence after it', () => {
+    expect(leadSentence('Done. Eleven tests now cite their expectation ids.')).toBe(
+      'Done. Eleven tests now cite their expectation ids.',
+    )
+  })
+
+  it('leaves a single-sentence message alone', () => {
+    expect(leadSentence('Tests pass and nothing is contested.')).toBe(
+      'Tests pass and nothing is contested.',
+    )
+  })
+
+  /** An id ending in a full stop is not the end of a sentence. */
+  it('does not end a sentence at an id or an abbreviation', () => {
+    expect(leadSentence('Raised q-009. e-011 stays contested until it is answered.')).toBe(
+      'Raised q-009. e-011 stays contested until it is answered.',
+    )
+  })
+
+  it('truncates a passage with no sentence break rather than reading it whole', () => {
+    expect(leadSentence('c'.repeat(400), 100)).toBe(`${'c'.repeat(100)}…`)
+  })
+
+  it('has nothing to say about an empty message', () => {
+    expect(leadSentence('   ')).toBe('')
   })
 })
 

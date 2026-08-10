@@ -69,18 +69,45 @@ export function speakableText(markdown: string): string {
 }
 
 /**
- * The opening sentence, when the whole thing is too long to sit through.
+ * The conclusion, which both agents are now told to put first.
  *
- * A crude split on purpose. The better fix is upstream — an agent told to lead with its
- * conclusion produces a first sentence worth hearing, and that helps the folded view and
- * plain skimming at the same time. This is what makes do until then, and it is why the
- * cut-off is generous rather than tight: truncating a paragraph that was not written to be
- * truncated loses more than it saves.
+ * The prompt does the real work here: "the first sentence of your final message must be a
+ * single plain sentence saying what happened". This reads that sentence and stops, which is
+ * why the whole thing costs no summariser and no second model call — the agent was going to
+ * write a conclusion anyway, it just used to be buried.
+ *
+ * Two allowances for the times it is not followed. A very short opener ("Done.") is joined to
+ * the one after it, because a two-word utterance tells you less than the silence it replaced.
+ * And a passage with no sentence break at all is truncated rather than read whole, since the
+ * alternative is a paragraph nobody asked to hear.
  */
-export function firstSentence(text: string, max = 240): string {
-  if (text.length <= max) return text
+/**
+ * Shorter than the shortest reply that stands on its own.
+ *
+ * "Raised q-009." is thirteen characters and says everything it needs to; "Done." is five and
+ * says nothing the silence did not. The line goes between them, and it goes there rather than
+ * anywhere higher because a real conclusion is often short — "The tests pass and q-009 is
+ * still open." is thirty-nine, and a generous threshold swallowed the sentence after it.
+ */
+const ENOUGH = 12
 
-  const cut = text.slice(0, max)
+export function leadSentence(text: string, max = 240): string {
+  const trimmed = text.trim()
+  if (trimmed === '') return ''
+
+  // Split after . ? or ! when followed by a space and a capital or a digit — enough to keep
+  // "e.g." and "q-009." from ending a sentence that has not ended.
+  const parts = trimmed.split(/(?<=[.?!])\s+(?=[A-Z0-9@#"'(])/)
+
+  let spoken = ''
+  for (const part of parts) {
+    if (spoken !== '' && spoken.length >= ENOUGH) break
+    spoken = spoken === '' ? part : `${spoken} ${part}`
+  }
+
+  if (spoken.length <= max) return spoken
+
+  const cut = spoken.slice(0, max)
   const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '))
   return stop > 60 ? cut.slice(0, stop + 1) : `${cut.trimEnd()}…`
 }
