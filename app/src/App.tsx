@@ -1,5 +1,5 @@
 /**
- * implements: Project, Task, RecurringTask, Priority, completeTask, reopenTask, deleteProject, endRecurrence, createProject, createTask, deleteTask, moveTask, archiveProject, unarchiveProject
+ * implements: Project, Task, RecurringTask, Priority, completeTask, reopenTask, deleteProject, endRecurrence, resumeRecurrence, createProject, createTask, deleteTask, moveTask, archiveProject, unarchiveProject
  *
  * Intentionally bare. The point is to exercise the spec'd behaviour, not to be a good
  * ToDo app — so every spec'd function reports what it did into the log at the bottom,
@@ -13,6 +13,7 @@ import { unarchiveProject } from './domain/unarchiveProject.js'
 import { deleteTask } from './domain/deleteTask.js'
 import { moveTask } from './domain/moveTask.js'
 import { endRecurrence } from './domain/endRecurrence.js'
+import { resumeRecurrence } from './domain/resumeRecurrence.js'
 import { reopenTask } from './domain/reopenTask.js'
 import type { AnyTask, Project, Result, World } from './domain/types.js'
 import { PRIORITIES, isRecurring } from './domain/types.js'
@@ -59,16 +60,17 @@ export function App() {
   const tasks = useMemo(() => (selected ? tasksOf(world, selected.id) : []), [world, selected])
 
   /**
-   * archiveProject "ends every RecurringTask it holds ... so none schedule a further
-   * occurrence", and unarchiveProject "does not re-enable any RecurringTask that archiving
-   * ended". That is a one-way cost, so it is said out loud before the click, not after.
+   * archiveProject "ends every RecurringTask it holds that is not already ended", and since
+   * q-009 unarchiveProject "resumes it (per resumeRecurrence)" for exactly those. So this is
+   * no longer a warning about something irreversible — it is still said before the click,
+   * because a repeating Task silently stopping is a surprise either way.
    */
   const willEnd = selected ? recurrencesEndedByArchiving(world, selected.id) : []
   const confirming = selected !== null && confirmingArchive === selected.id
 
   /**
-   * Archiving with nothing to lose goes straight through. Archiving that would end a
-   * recurrence asks first, because that half cannot be undone.
+   * Archiving with no live recurrence goes straight through. Archiving that would stop one
+   * says which, and waits.
    */
   function askToArchive() {
     if (!selected) return
@@ -228,13 +230,14 @@ export function App() {
                 <div className="warning asking" role="alertdialog">
                   <p>
                     Archiving will also end {willEnd.length} recurring{' '}
-                    {willEnd.length === 1 ? 'Task' : 'Tasks'} ({willEnd.join(', ')}). Restoring the Project later
-                    does not start {willEnd.length === 1 ? 'it' : 'them'} repeating again.
+                    {willEnd.length === 1 ? 'Task' : 'Tasks'} ({willEnd.join(', ')}). Restoring the Project starts{' '}
+                    {willEnd.length === 1 ? 'it' : 'them'} repeating again — a recurrence you ended yourself stays
+                    ended.
                   </p>
 
                   <p className="confirm">
                     <strong>Archive anyway?</strong>
-                    <button type="button" className="danger" onClick={askToArchive} autoFocus>
+                    <button type="button" onClick={askToArchive} autoFocus>
                       End {willEnd.length === 1 ? 'it' : 'them'} and archive
                     </button>
                     <button type="button" onClick={() => setConfirmingArchive(null)}>
@@ -247,9 +250,9 @@ export function App() {
               {selected.archived && (
                 <div className="warning">
                   <p>
-                    Archived: hidden from the default list, and any recurring Tasks it held have been ended.
-                    Deleting it now is permanent and takes its {tasks.length}{' '}
-                    {tasks.length === 1 ? 'Task' : 'Tasks'} with it.
+                    Archived: hidden from the default list, and any recurring Tasks it held have been ended —
+                    Restore starts those repeating again. Deleting it now is permanent and takes its{' '}
+                    {tasks.length} {tasks.length === 1 ? 'Task' : 'Tasks'} with it.
                   </p>
                 </div>
               )}
@@ -298,6 +301,7 @@ export function App() {
                       onComplete={() => run(completeTask(world, task.id, today()))}
                       onReopen={() => run(reopenTask(world, task.id))}
                       onEnd={() => run(endRecurrence(world, task.id))}
+                      onResume={() => run(resumeRecurrence(world, task.id))}
                       onDelete={() => run(deleteTask(world, task.id))}
                       onMove={(destination) => run(moveTask(world, task.id, destination))}
                       elsewhere={world.projects.filter((project) => project.id !== task.project)}
@@ -335,6 +339,7 @@ function TaskRow({
   onComplete,
   onReopen,
   onEnd,
+  onResume,
   onDelete,
   onMove,
   elsewhere,
@@ -343,6 +348,7 @@ function TaskRow({
   onComplete: () => void
   onReopen: () => void
   onEnd: () => void
+  onResume: () => void
   onDelete: () => void
   onMove: (destination: string) => void
   /** Projects this Task is not already in — nothing to offer when there are none. */
@@ -378,6 +384,14 @@ function TaskRow({
         {recurring && !task.ended && (
           <button type="button" onClick={onEnd} title="Stop it repeating — completing it then finishes it">
             End
+          </button>
+        )}
+        {/* The other direction, added by q-009. Offered on any ended RecurringTask, however
+            it was ended: resumeRecurrence does not read endedByArchiving to decide whether
+            to act, only unarchiveProject does, to decide which Tasks to put through it. */}
+        {recurring && task.ended && (
+          <button type="button" onClick={onResume} title="Start it repeating again from its rule">
+            Resume
           </button>
         )}
         {elsewhere.length > 0 && (

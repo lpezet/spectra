@@ -1,10 +1,10 @@
 {
-  "version": "d21522932778503f",
+  "version": "86744147b2ab8902",
   "terms": [
     {
       "name": "archiveProject",
       "type": "function",
-      "hash": "5ae6e9bb37f702e1"
+      "hash": "074a2b33435fb239"
     },
     {
       "name": "completeTask",
@@ -34,7 +34,7 @@
     {
       "name": "endRecurrence",
       "type": "function",
-      "hash": "6397c64274f6eb60"
+      "hash": "cc8564de6b7ae210"
     },
     {
       "name": "moveTask",
@@ -59,12 +59,17 @@
     {
       "name": "RecurringTask",
       "type": "entity",
-      "hash": "7f1f0dea9cacb698"
+      "hash": "7137c91542cf17b3"
     },
     {
       "name": "reopenTask",
       "type": "function",
       "hash": "33a75900dc40ee43"
+    },
+    {
+      "name": "resumeRecurrence",
+      "type": "function",
+      "hash": "7ee8d0dd4541dfb3"
     },
     {
       "name": "Task",
@@ -74,7 +79,7 @@
     {
       "name": "unarchiveProject",
       "type": "function",
-      "hash": "76efab2bd5eeb82b"
+      "hash": "68e5cbc7740cd463"
     }
   ],
   "expectations": [
@@ -127,6 +132,11 @@
       "id": "e-011",
       "kind": "functional",
       "hash": "09696a6536996be0"
+    },
+    {
+      "id": "e-012",
+      "kind": "functional",
+      "hash": "b32db7fc67e6564f"
     }
   ]
 }

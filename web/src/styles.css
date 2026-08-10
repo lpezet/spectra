@@ -1819,3 +1819,124 @@ button.option:hover {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ---------------------------------------------------------------------------------------
+   A run: one human turn and everything that followed.
+
+   The collapse exists so the agent's prose can be read as prose. Twenty tool calls between
+   "Now updating the tests" and "Tests pass" bury the two sentences that say what happened —
+   so what it *did* folds into a strip and what it *said* stays in full. Nothing is dropped,
+   and every fold has a way back.
+   --------------------------------------------------------------------------------------- */
+.run {
+  margin-bottom: 4px;
+}
+
+/* Quiet until hovered. It is a way back to detail, not something to read on every run. */
+.run-bar {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity 0.12s;
+  margin: 2px 2px 10px;
+}
+
+.run:hover .run-bar,
+.run-bar:focus-within {
+  opacity: 1;
+}
+
+.run-bar button {
+  font-size: 10px;
+  color: var(--muted);
+  border-bottom: 1px dotted currentColor;
+}
+
+.run-bar button:hover {
+  color: var(--accent);
+}
+
+/* The level-2 fold: what sits between the first thing said and the last. */
+.run-fold {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 11px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  border-left: 2px dashed var(--line);
+  background: var(--panel);
+}
+
+.run-fold:hover {
+  color: var(--text);
+  border-left-color: var(--accent);
+}
+
+/* The level-1 fold: a stretch of tool calls, named rather than counted. */
+.strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 4px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.strip:hover {
+  border-color: var(--muted);
+  color: var(--text);
+}
+
+.strip-count {
+  flex: none;
+  min-width: 18px;
+  text-align: center;
+  border-radius: 3px;
+  background: var(--panel-hi);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.strip-names {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* A failure inside a fold has to be visible from outside it, or the fold hides the one
+   thing you needed to see. */
+.strip-failed {
+  border-color: var(--remove);
+}
+
+.strip-flag {
+  flex: none;
+  color: var(--remove);
+}
+
+.strip-open {
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.strip-close {
+  font-size: 10px;
+  color: var(--muted);
+  border-bottom: 1px dotted currentColor;
+}
+
+.strip-close:hover {
+  color: var(--accent);
+}

@@ -22,7 +22,10 @@ export function completeTask(world: World, taskId: string, today: string): Resul
 
   // "If the Task is already done, this is a no-op — it does not error and does not
   // un-complete it." Note this returns ok: true; a redundant call is not a failure.
-  // Under the current spec a RecurringTask never reaches this state on its own.
+  //
+  // Since q-009 a live RecurringTask *can* reach this state: end it, complete it (an ended
+  // one completes like a plain Task), then resumeRecurrence. This clause is unconditional
+  // and comes first, so such a Task sits done until reopenTask clears it — see e-012.
   if (task.done) {
     return { world, ok: true, message: `completeTask: "${task.title}" was already done — no change.` }
   }

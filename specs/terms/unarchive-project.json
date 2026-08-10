@@ -1,7 +1,7 @@
 {
   "name": "unarchiveProject",
   "type": "function",
-  "spec": "Restores an archived Project to active status, making it visible in default listings again. Does not re-enable any RecurringTask that archiving ended — there is no function in this vocabulary that resumes a recurrence once ended.",
+  "spec": "Restores an archived Project to active status, making it visible in default listings again. For every RecurringTask in the Project whose endedByArchiving is true, resumes it (per resumeRecurrence), reversing exactly the ending that this Project's archiveProject performed. A RecurringTask ended directly via endRecurrence (endedByArchiving false) is left ended — unarchiveProject does not resume it.",
   "parent": null,
   "tags": [],
   "attributes": [

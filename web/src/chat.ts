@@ -235,3 +235,68 @@ export function matchEntities(entities: Entity[], query: string, limit = 8): Ent
     })
     .slice(0, limit)
 }
+
+/**
+ * The transcript, grouped into runs.
+ *
+ * A flat event list reads badly once @coder does real work: twenty tool calls and a handful
+ * of approval cards sit between "Now updating the tests" and "Tests and typecheck pass", and
+ * the two sentences that say what happened are the hardest things on screen to find. Grouping
+ * is what lets the noise collapse without being thrown away.
+ *
+ * A run is one human turn and everything that followed it. The boundary is the next `user`
+ * event, not a timestamp or a `done` signal — those are properties of a live stream, and this
+ * has to produce the same grouping when replaying a conversation from cold.
+ *
+ * Events before the first user message keep their own leading run with no prompt. That
+ * happens on a resumed session whose start has been pruned, and dropping them would silently
+ * lose transcript.
+ */
+export interface Run {
+  /** Ends up as the key; ids are per-session and monotonic. */
+  id: number
+  /** The human turn that began it, or null for events that precede any. */
+  prompt: ChatEvent | null
+  /** Who answered. Null when nobody was addressed and nothing ran. */
+  author: Author | null
+  /** Everything after the prompt, in order. */
+  steps: ChatEvent[]
+}
+
+export function groupRuns(events: ChatEvent[]): Run[] {
+  const runs: Run[] = []
+
+  for (const event of events) {
+    if (event.kind === 'user' || runs.length === 0) {
+      runs.push({
+        id: event.id,
+        prompt: event.kind === 'user' ? event : null,
+        author: null,
+        steps: event.kind === 'user' ? [] : [event],
+      })
+      continue
+    }
+
+    const run = runs[runs.length - 1]!
+    run.steps.push(event)
+    if (event.author !== 'human' && !run.author) run.author = event.author
+  }
+
+  return runs
+}
+
+/** Prose the agent wrote — the narrative, as opposed to what it did. */
+export function isNarrative(event: ChatEvent): boolean {
+  return event.kind === 'assistant' || event.kind === 'error'
+}
+
+/**
+ * An approval nobody has answered yet.
+ *
+ * These must never be hidden by any collapse. The run is genuinely suspended inside the SDK's
+ * permission callback while one is on screen, so folding it away would stall the agent with
+ * no visible reason — the worst possible thing for a summary view to do.
+ */
+export function isPendingApproval(event: ChatEvent): boolean {
+  return event.kind === 'approval' && event.status !== 'completed'
+}

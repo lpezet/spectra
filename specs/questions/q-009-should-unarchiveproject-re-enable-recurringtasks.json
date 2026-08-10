@@ -1,0 +1,37 @@
+{
+  "id": "q-009",
+  "asks": "Should unarchiveProject re-enable RecurringTasks that were ended by the archiveProject that preceded it, or should archiving's end of a recurrence remain permanent even after unarchiving?",
+  "because": "unarchiveProject's spec states \"Does not re-enable any RecurringTask that archiving ended — there is no function in this vocabulary that resumes a recurrence once ended.\" Expectation e-011 (from usage) says the opposite: unarchiveProject should have \"re-enabled any recurring tasks present in project.\" archiveProject's spec also currently calls itself \"reversible via unarchiveProject,\" which is arguably at odds with recurrence-ending being one-way.",
+  "raisedBy": {
+    "pass": "review",
+    "terms": [
+      "unarchiveProject",
+      "archiveProject",
+      "RecurringTask",
+      "endRecurrence",
+      "Project"
+    ]
+  },
+  "options": [
+    {
+      "label": "Keep current behaviour: unarchiveProject never re-enables recurrence; endRecurrence (whether triggered directly or via archiving) is permanent. Retire or correct e-011 to match.",
+      "detail": "No glossary change needed to unarchiveProject or endRecurrence; would need e-011 addressed (it stays contested/retired by the human's call, not proposed by me).",
+      "proposal": null
+    },
+    {
+      "label": "Add a way to resume a recurrence: introduce something like a resumeRecurrence function, and have unarchiveProject call it for RecurringTasks whose ended state was caused by the archiveProject that is now being reversed (but not ones ended independently beforehand).",
+      "detail": "Requires new vocabulary (a resume/reactivate function) and distinguishing 'ended by archiving' from 'ended directly' if that distinction matters — a further sub-decision.",
+      "proposal": null
+    },
+    {
+      "label": "Make unarchiveProject unconditionally re-enable every RecurringTask in the Project that is currently ended, regardless of why it was ended.",
+      "detail": "Simpler than option 2 but erases the distinction between recurrences a user deliberately ended and ones only ended as a side effect of archiving.",
+      "proposal": null
+    }
+  ],
+  "answer": {
+    "chose": "Add a way to resume a recurrence: introduce something like a resumeRecurrence function, and have unarchiveProject call it for RecurringTasks whose ended state was caused by the archiveProject that is now being reversed (but not ones ended independently beforehand).",
+    "note": "",
+    "answeredAt": "2026-08-10T00:19:03.616Z"
+  }
+}

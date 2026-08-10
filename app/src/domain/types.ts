@@ -67,6 +67,14 @@ export interface RecurringTask extends Task {
   recurrenceRule: string
   /** RecurringTask.ended — boolean, default false. Stops it repeating (q-004). */
   ended: boolean
+  /**
+   * RecurringTask.endedByArchiving — boolean, default false. Records *why* it ended, which
+   * is the whole of q-009: archiveProject sets it true "so unarchiveProject can later tell
+   * it apart from a RecurringTask ended directly via endRecurrence", and endRecurrence sets
+   * it false. Only meaningful while `ended` is true; resumeRecurrence clears it back to
+   * false.
+   */
+  endedByArchiving: boolean
 }
 
 export type AnyTask = Task | RecurringTask

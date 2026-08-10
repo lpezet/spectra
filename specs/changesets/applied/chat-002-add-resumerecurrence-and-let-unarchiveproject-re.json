@@ -1,0 +1,53 @@
+{
+  "id": "chat-002",
+  "summary": "Add resumeRecurrence and let unarchiveProject reverse only the endings archiveProject caused",
+  "ops": [
+    {
+      "op": "add_attribute",
+      "term": "RecurringTask",
+      "attribute": {
+        "name": "endedByArchiving",
+        "valueType": "boolean",
+        "default": false
+      }
+    },
+    {
+      "op": "modify_spec",
+      "term": "endRecurrence",
+      "spec": "Stops a RecurringTask from repeating. The Task is marked ended — and endedByArchiving is set to false, recording that it was ended directly rather than by archiving — and is not scheduled again; completing an ended RecurringTask marks it done like any plain Task. Ending an already-ended RecurringTask is a no-op (idempotent) — it does not error."
+    },
+    {
+      "op": "modify_spec",
+      "term": "archiveProject",
+      "spec": "Archives a Project: marks it archived so it is hidden from default listings, and ends every RecurringTask it holds that is not already ended — setting ended to true and endedByArchiving to true, so unarchiveProject can later tell it apart from a RecurringTask ended directly via endRecurrence. A RecurringTask that was already ended before archiving is left untouched, including its existing endedByArchiving value. Does not delete the Project or any of its Tasks, and is reversible via unarchiveProject."
+    },
+    {
+      "op": "add_entity",
+      "term": "resumeRecurrence",
+      "termType": "function",
+      "spec": "Resumes a RecurringTask that was ended, so it schedules occurrences again per its recurrenceRule, and clears endedByArchiving to false. Calling it on a RecurringTask that is not ended is a no-op (idempotent) — it does not error.",
+      "attributes": [
+        {
+          "name": "target",
+          "valueType": "ref:RecurringTask"
+        }
+      ]
+    },
+    {
+      "op": "modify_spec",
+      "term": "unarchiveProject",
+      "spec": "Restores an archived Project to active status, making it visible in default listings again. For every RecurringTask in the Project whose endedByArchiving is true, resumes it (per resumeRecurrence), reversing exactly the ending that this Project's archiveProject performed. A RecurringTask ended directly via endRecurrence (endedByArchiving false) is left ended — unarchiveProject does not resume it."
+    }
+  ],
+  "tests": [
+    "archiveProject on a Project holding an active RecurringTask ends it and sets endedByArchiving to true",
+    "archiveProject does not change endedByArchiving on a RecurringTask that was already ended before archiving",
+    "unarchiveProject resumes (un-ends) every RecurringTask in the Project whose endedByArchiving is true",
+    "unarchiveProject leaves ended any RecurringTask in the Project whose endedByArchiving is false",
+    "resumeRecurrence called on a RecurringTask that is not ended is a no-op and does not error",
+    "calling endRecurrence directly on a RecurringTask sets endedByArchiving to false, even if it had previously been true"
+  ],
+  "fromQuestion": "q-009",
+  "appliedAt": "2026-08-10T00:21:31.382Z",
+  "implementedAt": null
+}

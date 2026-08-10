@@ -103,8 +103,10 @@ export function createTask(world: World, input: NewTask): CreateTaskResult {
     // Task.priority carries `"default": "normal"`.
     priority: input.priority ?? 'normal',
   }
+  // RecurringTask.ended and .endedByArchiving both carry `"default": false` — a new
+  // RecurringTask is repeating, and has no ending to have a reason for.
   const task: AnyTask = input.recurrenceRule
-    ? { ...base, recurrenceRule: input.recurrenceRule, ended: false }
+    ? { ...base, recurrenceRule: input.recurrenceRule, ended: false, endedByArchiving: false }
     : base
 
   return {

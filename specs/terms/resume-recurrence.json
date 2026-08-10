@@ -1,0 +1,10 @@
+{
+  "name": "resumeRecurrence",
+  "type": "function",
+  "spec": "Resumes a RecurringTask that was ended, so it schedules occurrences again per its recurrenceRule, and clears endedByArchiving to false. Calling it on a RecurringTask that is not ended is a no-op (idempotent) — it does not error.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "target", "valueType": "ref:RecurringTask" }
+  ]
+}

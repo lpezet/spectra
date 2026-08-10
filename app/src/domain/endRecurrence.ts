@@ -1,9 +1,11 @@
 /**
  * implements: endRecurrence
  *
- * spec: "Stops a RecurringTask from repeating. The Task is marked ended and is not
- * scheduled again; completing an ended RecurringTask marks it done like any plain Task.
- * Ending an already-ended RecurringTask is a no-op (idempotent) — it does not error."
+ * spec: "Stops a RecurringTask from repeating. The Task is marked ended — and
+ * endedByArchiving is set to false, recording that it was ended directly rather than by
+ * archiving — and is not scheduled again; completing an ended RecurringTask marks it done
+ * like any plain Task. Ending an already-ended RecurringTask is a no-op (idempotent) — it
+ * does not error."
  *
  * Added by q-004, which was raised because a Project holding a RecurringTask had become
  * undeletable: `deleteProject` blocks on any Task that is not done, and since q-002 a
@@ -27,7 +29,11 @@ export function endRecurrence(world: World, taskId: string): Result {
     return { world, ok: true, message: `endRecurrence: "${task.title}" had already ended — no change.` }
   }
 
-  const updated = { ...task, ended: true }
+  // "The Task is marked ended — and endedByArchiving is set to false, recording that it was
+  // ended directly rather than by archiving". Set explicitly rather than left at its
+  // default, because a Task ended by archiving and then resumed and then ended here must
+  // come out of this call reading as ended-directly.
+  const updated = { ...task, ended: true, endedByArchiving: false }
 
   return {
     world: { ...world, tasks: world.tasks.map((candidate) => (candidate.id === taskId ? updated : candidate)) },

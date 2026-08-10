@@ -9,6 +9,7 @@ import { deleteProject } from './deleteProject.js'
 import { unarchiveProject } from './unarchiveProject.js'
 import { reopenTask } from './reopenTask.js'
 import { endRecurrence } from './endRecurrence.js'
+import { resumeRecurrence } from './resumeRecurrence.js'
 import { deleteTask } from './deleteTask.js'
 import { moveTask } from './moveTask.js'
 import { PRIORITIES, isPriority, isRecurring } from './types.js'
@@ -385,8 +386,9 @@ describe('archiveProject', () => {
     expect(archivedProjects(result.world).map((project) => project.id)).toEqual([projectId])
   })
 
-  // "ends every RecurringTask it holds (per endRecurrence) so none schedule a further occurrence"
-  it('ends every RecurringTask it holds', () => {
+  // "ends every RecurringTask it holds that is not already ended — setting ended to true and
+  // endedByArchiving to true"
+  it('e-009: ends every RecurringTask it holds, marking each endedByArchiving', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
@@ -399,7 +401,22 @@ describe('archiveProject', () => {
 
     expect(repeating).toHaveLength(2)
     expect(repeating.every((task) => task.ended)).toBe(true)
+    expect(repeating.every((task) => task.endedByArchiving)).toBe(true)
     expect(result.message).toMatch(/ending 2 recurring Tasks/)
+  })
+
+  // "A RecurringTask that was already ended before archiving is left untouched, including
+  // its existing endedByArchiving value." endRecurrence set it false, so it stays false —
+  // which is what stops unarchiveProject resuming a recurrence the user ended by hand.
+  it('leaves a RecurringTask that was already ended untouched, endedByArchiving included', () => {
+    const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const ended = endRecurrence(world, taskId)
+    const result = archiveProject(ended.world, projectId)
+    const task = result.world.tasks[0]!
+
+    expect(isRecurring(task) && task.ended).toBe(true)
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+    expect(result.message).not.toMatch(/ending/)
   })
 
   it('makes those ended Tasks stay done when completed, like any plain Task', () => {
@@ -476,11 +493,29 @@ describe('unarchiveProject', () => {
     expect(activeProjects(restored.world).map((project) => project.id)).toEqual([projectId])
   })
 
-  // "Does not re-enable any RecurringTask that archiving ended — there is no function in
-  // this vocabulary that resumes a recurrence once ended."
-  it('leaves a recurrence archiving ended still ended', () => {
+  // "For every RecurringTask in the Project whose endedByArchiving is true, resumes it (per
+  // resumeRecurrence), reversing exactly the ending that this Project's archiveProject
+  // performed." The reverse of what this test asserted before q-009 was answered.
+  it('resumes a recurrence that archiving ended', () => {
     const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
     const restored = unarchiveProject(archiveProject(world, projectId).world, projectId)
+    const task = restored.world.tasks[0]!
+
+    expect(isRecurring(task) && task.ended).toBe(false)
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+
+    // And so completing it schedules the next occurrence again, rather than finishing it.
+    const done = completeTask(restored.world, taskId, TODAY)
+    expect(done.world.tasks[0]!.done).toBe(false)
+    expect(done.world.tasks[0]!.dueDate).toBe('2026-08-12')
+  })
+
+  // "A RecurringTask ended directly via endRecurrence (endedByArchiving false) is left
+  // ended — unarchiveProject does not resume it."
+  it('leaves a recurrence the caller ended directly still ended', () => {
+    const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const ended = endRecurrence(world, taskId)
+    const restored = unarchiveProject(archiveProject(ended.world, projectId).world, projectId)
     const task = restored.world.tasks[0]!
 
     expect(isRecurring(task) && task.ended).toBe(true)
@@ -489,6 +524,32 @@ describe('unarchiveProject', () => {
     const done = completeTask(restored.world, taskId, TODAY)
     expect(done.world.tasks[0]!.done).toBe(true)
     expect(done.world.tasks[0]!.dueDate).toBe('2026-08-05')
+  })
+
+  // Both kinds in one Project, since the whole point of endedByArchiving is telling them
+  // apart: the round trip must restore one and not the other.
+  it('resumes only the recurrences archiving ended when a Project holds both kinds', () => {
+    let world = emptyWorld()
+    const project = createProject(world, 'Home')
+    world = project.world
+    const byHand = createTask(world, { title: 'Bins', project: project.project.id, recurrenceRule: 'FREQ=WEEKLY' })
+    world = byHand.world
+    const byArchiving = createTask(world, {
+      title: 'Plants',
+      project: project.project.id,
+      recurrenceRule: 'FREQ=DAILY',
+    })
+    world = byArchiving.world
+
+    world = endRecurrence(world, byHand.task!.id).world
+    const restored = unarchiveProject(archiveProject(world, project.project.id).world, project.project.id)
+
+    const hand = restored.world.tasks.find((task) => task.id === byHand.task!.id)!
+    const archived = restored.world.tasks.find((task) => task.id === byArchiving.task!.id)!
+
+    expect(isRecurring(hand) && hand.ended).toBe(true)
+    expect(isRecurring(archived) && archived.ended).toBe(false)
+    expect(restored.message).toMatch(/resuming 1 recurring Task/)
   })
 
   it('keeps the Project and its Tasks intact across archive and restore', () => {
@@ -525,7 +586,27 @@ describe('endRecurrence', () => {
     expect(done.world.tasks[0]!.dueDate).toBe('2026-08-05')
   })
 
-  it('is idempotent: ending an already-ended RecurringTask changes nothing and does not error', () => {
+  // "The Task is marked ended — and endedByArchiving is set to false, recording that it was
+  // ended directly rather than by archiving."
+  it('records that it was ended directly, not by archiving', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const task = endRecurrence(world, taskId).world.tasks[0]!
+
+    expect(isRecurring(task) && task.ended).toBe(true)
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+  })
+
+  // Ending by hand after archiving-and-restoring must read as ended by hand, or the next
+  // unarchive would resume a recurrence the caller deliberately stopped.
+  it('overwrites an earlier endedByArchiving when the caller ends it directly', () => {
+    const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const restored = unarchiveProject(archiveProject(world, projectId).world, projectId)
+    const task = endRecurrence(restored.world, taskId).world.tasks[0]!
+
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+  })
+
+  it('e-005: is idempotent — ending an already-ended RecurringTask changes nothing and does not error', () => {
     const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
     const once = endRecurrence(world, taskId)
     const twice = endRecurrence(once.world, taskId)
@@ -556,6 +637,99 @@ describe('endRecurrence', () => {
     const { world } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
     const task = world.tasks[0]!
     expect(isRecurring(task) && task.ended).toBe(false)
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+  })
+})
+
+describe('resumeRecurrence', () => {
+  // "Resumes a RecurringTask that was ended, so it schedules occurrences again per its
+  // recurrenceRule, and clears endedByArchiving to false."
+  it('starts an ended RecurringTask repeating again', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const resumed = resumeRecurrence(endRecurrence(world, taskId).world, taskId)
+    const task = resumed.world.tasks[0]!
+
+    expect(resumed.ok).toBe(true)
+    expect(isRecurring(task) && task.ended).toBe(false)
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+
+    // "schedules occurrences again per its recurrenceRule" — completing advances and reopens.
+    const done = completeTask(resumed.world, taskId, TODAY)
+    expect(done.world.tasks[0]!.done).toBe(false)
+    expect(done.world.tasks[0]!.dueDate).toBe('2026-08-12')
+  })
+
+  it('clears endedByArchiving on a recurrence that archiving ended', () => {
+    const { world, projectId, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const resumed = resumeRecurrence(archiveProject(world, projectId).world, taskId)
+    const task = resumed.world.tasks[0]!
+
+    expect(isRecurring(task) && task.endedByArchiving).toBe(false)
+  })
+
+  // "Calling it on a RecurringTask that is not ended is a no-op (idempotent) — it does not error."
+  it('is idempotent — resuming a RecurringTask that is not ended changes nothing and does not error', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const once = resumeRecurrence(world, taskId)
+    const twice = resumeRecurrence(once.world, taskId)
+
+    expect(once.ok).toBe(true)
+    expect(once.world).toBe(world)
+    expect(twice.ok).toBe(true)
+    expect(twice.message).toMatch(/was still repeating/)
+  })
+
+  it('refuses on a plain Task, which has no recurrence to resume', () => {
+    const { world, taskId } = scenario()
+    const result = resumeRecurrence(world, taskId)
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/is not a RecurringTask/)
+  })
+
+  it('refuses a Task that does not exist', () => {
+    const { world } = scenario({ recurrenceRule: 'FREQ=WEEKLY' })
+    const result = resumeRecurrence(world, 'task-999')
+
+    expect(result.ok).toBe(false)
+    expect(result.world).toBe(world)
+  })
+
+  /**
+   * A state only reachable since q-009: end it, complete it (which marks an ended
+   * RecurringTask done "like any plain Task"), then resume it. completeTask's first clause
+   * is unconditional — "If the Task is already done, this is a no-op" — so the resumed Task
+   * sits done until reopenTask clears it, and only then repeats again.
+   */
+  it('e-012: leaves done true when resuming a RecurringTask completed while ended', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const done = completeTask(endRecurrence(world, taskId).world, taskId, TODAY)
+    expect(done.world.tasks[0]!.done).toBe(true)
+
+    const resumed = resumeRecurrence(done.world, taskId)
+    const task = resumed.world.tasks[0]!
+    expect(isRecurring(task) && task.ended).toBe(false)
+    expect(task.done).toBe(true)
+
+    // Still done, so completing does nothing — the dueDate does not advance.
+    const again = completeTask(resumed.world, taskId, TODAY)
+    expect(again.world.tasks[0]!.dueDate).toBe('2026-08-05')
+    expect(again.message).toMatch(/was already done/)
+
+    // reopenTask is the way out, and then it advances as a live recurrence again.
+    const reopened = reopenTask(again.world, taskId)
+    const advanced = completeTask(reopened.world, taskId, TODAY)
+    expect(advanced.world.tasks[0]!.done).toBe(false)
+    expect(advanced.world.tasks[0]!.dueDate).toBe('2026-08-12')
+  })
+
+  it('leaves the rule and dueDate alone — it restarts repetition, it does not reschedule', () => {
+    const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
+    const resumed = resumeRecurrence(endRecurrence(world, taskId).world, taskId)
+    const task = resumed.world.tasks[0]!
+
+    expect(task.dueDate).toBe('2026-08-05')
+    expect(isRecurring(task) && task.recurrenceRule).toBe('FREQ=WEEKLY')
   })
 })
 

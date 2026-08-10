@@ -8,7 +8,7 @@
  * its own file plus everything pointing at it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Agent, ChatEvent, ChatSession, Entity, Mention } from '../chat.js'
+import type { Agent, ChatEvent, ChatSession, Entity, Mention, Run } from '../chat.js'
 import { Markdown } from './Markdown.js'
 import {
   addresseeOf,
@@ -17,6 +17,9 @@ import {
   deleteSession,
   fetchChatStatus,
   fetchSessionState,
+  groupRuns,
+  isNarrative,
+  isPendingApproval,
   listAgents,
   setUnattended,
   listSessions,
@@ -59,6 +62,8 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     () => new Set(entities.filter((entity) => entity.kind === 'term').map((entity) => entity.name)),
     [entities],
   )
+
+  const runs = useMemo(() => groupRuns(events), [events])
 
   const composer = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -249,13 +254,16 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
           </div>
         )}
 
-        {events.map((event) => (
-          <Bubble
-            key={event.id}
-            event={event}
+        {runs.map((run, index) => (
+          <RunGroup
+            key={run.id}
+            run={run}
+            // The newest run is the one you are reading, so it never folds itself away
+            // mid-sentence. Sending the next message is what turns it into history.
+            latest={index === runs.length - 1}
             known={known}
             onSelectTerm={onSelectTerm}
-            onDecide={(decision, note) => {
+            onDecide={(event, decision, note) => {
               if (event.toolCallId && sessionId) {
                 void decideApproval(sessionId, event.toolCallId, decision, note).catch((cause: Error) =>
                   setError(cause.message),
@@ -340,6 +348,198 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
         </div>
       </div>
     </aside>
+  )
+}
+
+/**
+ * One human turn and everything that followed it, at one of three depths.
+ *
+ * The problem this solves only appears once @coder does real work: twenty tool calls and a
+ * few approval cards sit between "Now updating the tests" and "Tests and typecheck pass", and
+ * the two sentences that say what actually happened become the hardest things on screen to
+ * find. Nothing is discarded — the depths differ only in what is folded.
+ *
+ *   narrative  what it said, with what it did folded into one strip   (default, live)
+ *   folded     the first thing it said and the last                   (default, history)
+ *   full       every event, as before
+ *
+ * Live runs default to narrative because you are watching it think and the tool calls are
+ * noise; finished ones fold once they stop being the newest, because by then you want the
+ * conclusion and the way back to it. A run that only ever said one thing never folds — there
+ * would be nothing to hide and a fold bar would be a lie about there being more.
+ */
+type Depth = 'folded' | 'narrative' | 'full'
+
+function RunGroup({
+  run,
+  latest,
+  known,
+  onSelectTerm,
+  onDecide,
+}: {
+  run: Run
+  latest: boolean
+  known: Set<string>
+  onSelectTerm: (name: string) => void
+  onDecide: (event: ChatEvent, decision: 'allow' | 'deny', note?: string) => void
+}) {
+  const [override, setOverride] = useState<Depth | null>(null)
+
+  const narrative = run.steps.filter(isNarrative)
+  const depth: Depth = override ?? (latest ? 'narrative' : 'folded')
+
+  // Fewer than two things said means folding would hide nothing, so the control is not
+  // offered — an expander over an empty middle is worse than no expander.
+  const foldable = narrative.length > 1
+  const effective: Depth = depth === 'folded' && !foldable ? 'narrative' : depth
+
+  const bubble = (event: ChatEvent) => (
+    <Bubble
+      key={event.id}
+      event={event}
+      known={known}
+      onSelectTerm={onSelectTerm}
+      onDecide={(decision, note) => onDecide(event, decision, note)}
+    />
+  )
+
+  if (effective === 'full') {
+    return (
+      <div className="run">
+        {run.prompt && bubble(run.prompt)}
+        {run.steps.map(bubble)}
+        <RunBar depth={effective} onChange={setOverride} steps={run.steps.length} />
+      </div>
+    )
+  }
+
+  if (effective === 'folded') {
+    const first = narrative[0]!
+    const last = narrative[narrative.length - 1]!
+    // Everything between the two, including anything still waiting on you.
+    const hidden = run.steps.filter((step) => step.id !== first.id && step.id !== last.id)
+    const pending = hidden.filter(isPendingApproval)
+
+    return (
+      <div className="run">
+        {run.prompt && bubble(run.prompt)}
+        {bubble(first)}
+        <button type="button" className="run-fold" onClick={() => setOverride('narrative')}>
+          {hidden.length} step{hidden.length === 1 ? '' : 's'} hidden — show what it did
+        </button>
+        {/* A blocked approval is never folded away: the run is suspended until it is
+            answered, and hiding it would stall the agent with no visible cause. */}
+        {pending.map(bubble)}
+        {bubble(last)}
+        <RunBar depth={effective} onChange={setOverride} steps={run.steps.length} />
+      </div>
+    )
+  }
+
+  // Narrative: prose in full, everything else folded into runs of adjacent steps.
+  const blocks: Array<{ kind: 'say'; event: ChatEvent } | { kind: 'did'; events: ChatEvent[] }> = []
+  for (const step of run.steps) {
+    if (isNarrative(step) || isPendingApproval(step)) {
+      blocks.push({ kind: 'say', event: step })
+      continue
+    }
+    const tail = blocks[blocks.length - 1]
+    if (tail?.kind === 'did') tail.events.push(step)
+    else blocks.push({ kind: 'did', events: [step] })
+  }
+
+  return (
+    <div className="run">
+      {run.prompt && bubble(run.prompt)}
+      {blocks.map((block, index) =>
+        block.kind === 'say' ? (
+          bubble(block.event)
+        ) : (
+          <StepStrip key={`did-${index}`} events={block.events} render={bubble} />
+        ),
+      )}
+      <RunBar depth={effective} onChange={setOverride} steps={run.steps.length} foldable={foldable} />
+    </div>
+  )
+}
+
+/** The depth control, kept quiet — it is a way back to detail, not a thing to read. */
+function RunBar({
+  depth,
+  onChange,
+  steps,
+  foldable = true,
+}: {
+  depth: Depth
+  onChange: (depth: Depth) => void
+  steps: number
+  foldable?: boolean
+}) {
+  if (steps === 0) return null
+
+  return (
+    <div className="run-bar">
+      {depth !== 'folded' && foldable && (
+        <button type="button" onClick={() => onChange('folded')}>
+          fold
+        </button>
+      )}
+      {depth !== 'narrative' && (
+        <button type="button" onClick={() => onChange('narrative')}>
+          what it said
+        </button>
+      )}
+      {depth !== 'full' && (
+        <button type="button" onClick={() => onChange('full')}>
+          everything
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A stretch of tool calls, as one line until asked otherwise.
+ *
+ * It names the tools rather than counting them. "6 steps" tells you nothing you can act on;
+ * "read_glossary, Edit ×3, Bash" tells you whether the thing you are looking for is in there,
+ * which is the only reason to expand it.
+ */
+function StepStrip({
+  events,
+  render,
+}: {
+  events: ChatEvent[]
+  render: (event: ChatEvent) => JSX.Element
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (open) {
+    return (
+      <div className="strip-open">
+        {events.map(render)}
+        <button type="button" className="strip-close" onClick={() => setOpen(false)}>
+          fold these away
+        </button>
+      </div>
+    )
+  }
+
+  const counts = new Map<string, number>()
+  for (const event of events) {
+    const name = event.text ?? event.kind
+    counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  const failed = events.some((event) => event.status === 'failed')
+
+  return (
+    <button type="button" className={`strip ${failed ? 'strip-failed' : ''}`} onClick={() => setOpen(true)}>
+      <span className="strip-count">{events.length}</span>
+      <span className="strip-names">
+        {[...counts].map(([name, count]) => (count > 1 ? `${name} ×${count}` : name)).join(' · ')}
+      </span>
+      {failed && <span className="strip-flag">one failed</span>}
+    </button>
   )
 }
 

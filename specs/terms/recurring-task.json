@@ -6,6 +6,7 @@
   "tags": [],
   "attributes": [
     { "name": "recurrenceRule", "valueType": "ref:RecurrenceRule" },
-    { "name": "ended", "valueType": "boolean", "default": false }
+    { "name": "ended", "valueType": "boolean", "default": false },
+    { "name": "endedByArchiving", "valueType": "boolean", "default": false }
   ]
 }

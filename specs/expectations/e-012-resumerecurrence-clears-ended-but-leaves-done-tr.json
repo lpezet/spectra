@@ -1,0 +1,19 @@
+{
+  "id": "e-012",
+  "kind": "functional",
+  "terms": [
+    "resumeRecurrence",
+    "RecurringTask",
+    "completeTask",
+    "reopenTask"
+  ],
+  "given": "a RecurringTask that endRecurrence ended and completeTask then marked done",
+  "expect": "resumeRecurrence clears ended but leaves done true, so completeTask stays a no-op until reopenTask clears done, after which completeTask advances dueDate again",
+  "raisedBy": {
+    "pass": "implementation",
+    "from": "q-009",
+    "file": "app/src/domain/resumeRecurrence.ts"
+  },
+  "supersededBy": null,
+  "contested": []
+}

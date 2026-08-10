@@ -1,7 +1,7 @@
 {
   "name": "archiveProject",
   "type": "function",
-  "spec": "Archives a Project: marks it archived so it is hidden from default listings, and ends every RecurringTask it holds (per endRecurrence) so none schedule a further occurrence. Does not delete the Project or any of its Tasks, and is reversible via unarchiveProject.",
+  "spec": "Archives a Project: marks it archived so it is hidden from default listings, and ends every RecurringTask it holds that is not already ended — setting ended to true and endedByArchiving to true, so unarchiveProject can later tell it apart from a RecurringTask ended directly via endRecurrence. A RecurringTask that was already ended before archiving is left untouched, including its existing endedByArchiving value. Does not delete the Project or any of its Tasks, and is reversible via unarchiveProject.",
   "parent": null,
   "tags": [],
   "attributes": [
