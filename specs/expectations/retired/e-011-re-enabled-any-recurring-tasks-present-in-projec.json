@@ -10,7 +10,7 @@
   "raisedBy": {
     "pass": "usage"
   },
-  "supersededBy": null,
+  "supersededBy": "e-013",
   "contested": [
     {
       "kind": "contradicts",
@@ -18,5 +18,6 @@
       "detail": "The draft claims all recurring tasks in the project are re-enabled, but the spec only resumes those with endedByArchiving true and explicitly leaves directly-ended ones ended.",
       "quote": "A RecurringTask ended directly via endRecurrence (endedByArchiving false) is left ended — unarchiveProject does not resume it."
     }
-  ]
+  ],
+  "retiredBecause": "q-009 rewrote unarchiveProject, so this stopped being opposite to the spec and became broader than it: the spec resumes only the RecurringTasks with endedByArchiving true and deliberately leaves directly-ended ones ended. Replaced with wording that draws that line."
 }

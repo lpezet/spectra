@@ -1,0 +1,17 @@
+{
+  "id": "e-013",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "unarchiveProject",
+    "RecurringTask"
+  ],
+  "given": "an archived Project holding both a RecurringTask that archiveProject ended and a RecurringTask that endRecurrence had already ended directly",
+  "expect": "unarchiveProject resumes the recurring tasks that archiving ended, and leaves the directly-ended one ended",
+  "raisedBy": {
+    "pass": "supersedes",
+    "from": "e-011"
+  },
+  "supersededBy": null,
+  "contested": []
+}
