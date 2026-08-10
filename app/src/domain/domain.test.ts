@@ -124,7 +124,7 @@ describe('completeTask', () => {
     expect(result.world.tasks[0]!.done).toBe(true)
   })
 
-  it('is idempotent: completing an already-done Task changes nothing and does not error', () => {
+  it('e-003: is idempotent — completing an already-done Task changes nothing and does not error', () => {
     const { world, taskId } = scenario()
     const once = completeTask(world, taskId, TODAY)
     const twice = completeTask(once.world, taskId, TODAY)
@@ -141,12 +141,12 @@ describe('completeTask', () => {
   })
 
   // The three below are the tests q-002's changeset committed to, verbatim.
-  it('leaves a RecurringTask not done', () => {
+  it('e-001: leaves a RecurringTask not done', () => {
     const { world, taskId } = scenario({ recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' })
     expect(completeTask(world, taskId, TODAY).world.tasks[0]!.done).toBe(false)
   })
 
-  it('advances a RecurringTask due 2026-08-05 with FREQ=DAILY;INTERVAL=3 to 2026-08-08', () => {
+  it('e-002: advances a RecurringTask due 2026-08-05 with FREQ=DAILY;INTERVAL=3 to 2026-08-08', () => {
     const { world, taskId } = scenario({ recurrenceRule: 'FREQ=DAILY;INTERVAL=3', dueDate: '2026-08-05' })
     expect(completeTask(world, taskId, TODAY).world.tasks[0]!.dueDate).toBe('2026-08-08')
   })
@@ -253,7 +253,7 @@ describe('deleteProject', () => {
   })
 
   // q-002 made this unsatisfiable; q-004 gave it a way out. Both halves are pinned here.
-  it('still refuses while a RecurringTask has not ended, however often it is completed', () => {
+  it('e-006: still refuses while a RecurringTask has not ended, however often it is completed', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
@@ -274,8 +274,11 @@ describe('deleteProject', () => {
     expect(result.message).toMatch(/1 incomplete Task/)
   })
 
-  // The test q-004's changeset committed to.
-  it('deletes a Project once its RecurringTasks are ended and completed', () => {
+  // The test q-004's changeset committed to. e-007 stated this before q-004 and was
+  // unsatisfiable — a live RecurringTask is never all-done — so e-008 supersedes it with the
+  // ended-and-completed route q-004 opened. Both kinds of Task are here because e-008 names
+  // both, and the Tasks are asserted gone because e-008 says the Project takes them with it.
+  it('e-008: deletes a Project once its RecurringTasks are ended and completed', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
@@ -285,13 +288,17 @@ describe('deleteProject', () => {
       recurrenceRule: 'FREQ=WEEKLY',
     })
     world = task.world
+    const plain = createTask(world, { title: 'Buy compost', project: project.project.id })
+    world = plain.world
 
     world = endRecurrence(world, task.task!.id).world
     world = completeTask(world, task.task!.id, TODAY).world
+    world = completeTask(world, plain.task!.id, TODAY).world
 
     const result = deleteProject(world, project.project.id)
     expect(result.ok).toBe(true)
     expect(result.world.projects).toEqual([])
+    expect(result.world.tasks).toEqual([])
   })
 
   it('deletes an empty Project', () => {
@@ -528,7 +535,7 @@ describe('unarchiveProject', () => {
 
   // Both kinds in one Project, since the whole point of endedByArchiving is telling them
   // apart: the round trip must restore one and not the other.
-  it('resumes only the recurrences archiving ended when a Project holds both kinds', () => {
+  it('e-013: resumes only the recurrences archiving ended when a Project holds both kinds', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
@@ -577,7 +584,7 @@ describe('unarchiveProject', () => {
 
 describe('endRecurrence', () => {
   // The tests q-004's changeset committed to.
-  it('makes an ended RecurringTask stay done when completed, rather than reopening', () => {
+  it('e-004: makes an ended RecurringTask stay done when completed, rather than reopening', () => {
     const { world, taskId } = scenario({ recurrenceRule: 'FREQ=WEEKLY', dueDate: '2026-08-05' })
     const ended = endRecurrence(world, taskId)
     const done = completeTask(ended.world, taskId, TODAY)
@@ -782,7 +789,7 @@ describe('moveTask', () => {
   }
 
   // The test q-005's changeset committed to.
-  it('reassigns the Task and updates both Projects', () => {
+  it('e-010: reassigns the Task and updates both Projects', () => {
     const { world, homeId, workId, taskId } = twoProjects()
     const result = moveTask(world, taskId, workId)
 
