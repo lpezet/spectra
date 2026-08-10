@@ -11,6 +11,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent, ChatEvent, ChatSession, Entity, Mention, Run } from '../chat.js'
 import { Markdown } from './Markdown.js'
 import {
+  DEFAULT_VOICES,
+  dictate,
+  dictationAvailable,
+  firstSentence,
+  rankVoices,
+  speak,
+  speakableText,
+  speechAvailable,
+  stopSpeaking,
+  suggestVoices,
+} from '../speech.js'
+import type { Dictation, VoiceChoice } from '../speech.js'
+import {
   addresseeOf,
   createSession,
   decideApproval,
@@ -55,6 +68,20 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   const [draft, setDraft] = useState('')
   const [unattended, setUnattendedState] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Off unless you turned it on, and remembered because a preference is not a permission —
+  // unlike unattended mode, which is deliberately forgotten on restart.
+  const [speaking, setSpeaking] = useState(() => localStorage.getItem('tb.speech') === 'on')
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [choices, setChoices] = useState<Record<string, VoiceChoice>>(() => {
+    try {
+      return { ...DEFAULT_VOICES, ...(JSON.parse(localStorage.getItem('tb.voices') ?? '{}') as object) }
+    } catch {
+      return DEFAULT_VOICES
+    }
+  })
+  const [listening, setListening] = useState(false)
+  const dictation = useRef<Dictation | null>(null)
 
   // Only terms are linkable; an `@q-004` in prose stays plain rather than becoming a
   // dead link to something the glossary has no page for.
@@ -120,6 +147,103 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight })
   }, [events, streaming])
+
+  /**
+   * Chrome fills the voice list asynchronously and returns an empty array until it has, so
+   * this listens as well as asking. Without the event the picker is empty on first paint and
+   * both agents fall back to the default voice.
+   */
+  useEffect(() => {
+    if (!speechAvailable()) return
+
+    const load = () => {
+      const found = window.speechSynthesis.getVoices()
+      if (found.length === 0) return
+      setVoices(found)
+      setChoices((current) => {
+        if (current.spec?.uri || current.coder?.uri) return current
+        const suggested = suggestVoices(found)
+        return {
+          spec: { ...current.spec!, uri: suggested.spec },
+          coder: { ...current.coder!, uri: suggested.coder },
+        }
+      })
+    }
+
+    load()
+    window.speechSynthesis.addEventListener('voiceschanged', load)
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', load)
+  }, [])
+
+  /**
+   * Speaks once per run, when the run ends.
+   *
+   * One rule rather than several, and the simplicity is the point. Watching `running` fall
+   * from true means nothing is ever spoken while replaying an old conversation — a page load
+   * never sees the transition — so no cursor or baseline is needed to keep history quiet.
+   * It also covers failure for free: an error is narrative, so a run that died says why.
+   */
+  const wasRunning = useRef(false)
+  useEffect(() => {
+    const finished = wasRunning.current && !running
+    wasRunning.current = running
+    if (!finished || !speaking) return
+
+    const last = runs[runs.length - 1]?.steps.filter(isNarrative).pop()
+    if (!last?.text || last.author === 'human') return
+
+    const text = firstSentence(speakableText(last.text))
+    speak(text, { ...(choices[last.author] ?? DEFAULT_VOICES.spec!), voices })
+  }, [running, runs, speaking, choices, voices])
+
+  // Sending supersedes whatever is being said: the answer you were listening to is no longer
+  // the thing you are waiting on.
+  useEffect(() => () => stopSpeaking(), [])
+
+  function toggleSpeech(on: boolean) {
+    setSpeaking(on)
+    localStorage.setItem('tb.speech', on ? 'on' : 'off')
+    if (!on) stopSpeaking()
+  }
+
+  function chooseVoice(agent: string, uri: string) {
+    setChoices((current) => {
+      const next = { ...current, [agent]: { ...current[agent]!, uri: uri || null } }
+      localStorage.setItem('tb.voices', JSON.stringify(next))
+      return next
+    })
+  }
+
+  /**
+   * Dictation fills the composer and never sends.
+   *
+   * The composer's grammar is sigils — `@spec` to address, `#Task` to refer — and no speech
+   * engine produces either, so what lands in the box is always going to need a glance. Making
+   * it a draft rather than a message is what turns that from a defect into a normal edit.
+   */
+  function toggleDictation() {
+    if (dictation.current) {
+      dictation.current.stop()
+      return
+    }
+
+    const before = draft ? `${draft} ` : ''
+    const started = dictate(
+      (text) => setDraft(before + text),
+      (cause) => {
+        dictation.current = null
+        setListening(false)
+        if (cause && cause !== 'aborted' && cause !== 'no-speech') setError(`Dictation stopped: ${cause}`)
+      },
+    )
+
+    if (!started) {
+      setError('This browser has no speech recognition — Chrome or Edge have it, Firefox does not.')
+      return
+    }
+    dictation.current = started
+    setListening(true)
+  }
 
   /**
    * The server decides. It refuses when there is no reachable sandbox — running in-process
@@ -215,6 +339,16 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
         <button type="button" className="chat-icon" title="New conversation" onClick={() => void start()}>
           +
         </button>
+        {speechAvailable() && (
+          <VoiceControls
+            speaking={speaking}
+            onToggle={toggleSpeech}
+            voices={voices}
+            choices={choices}
+            agents={agents}
+            onChoose={chooseVoice}
+          />
+        )}
         {sessionId && (
           <button
             type="button"
@@ -342,6 +476,20 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
             <input type="checkbox" checked={unattended} onChange={(event) => void toggleUnattended(event.target.checked)} />
             let @coder work unattended
           </label>
+          {dictationAvailable() && (
+            <button
+              type="button"
+              className={`chat-icon mic ${listening ? 'mic-on' : ''}`}
+              title={
+                listening
+                  ? 'Stop dictating'
+                  : 'Dictate into the box. It never sends on its own — @ and # do not dictate, so read it back first.'
+              }
+              onClick={toggleDictation}
+            >
+              {listening ? '◉' : '🎤'}
+            </button>
+          )}
           <button type="button" className="action" disabled={running || !draft.trim()} onClick={() => void submit()}>
             Send
           </button>
@@ -369,6 +517,82 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
  * would be nothing to hide and a fold bar would be a lie about there being more.
  */
 type Depth = 'folded' | 'narrative' | 'full'
+
+/**
+ * Which voice each agent gets, and whether anyone is speaking at all.
+ *
+ * Two agents want two voices, but voice availability is the operating system's business and
+ * a bare Linux browser may offer one or none. So the pickers show whatever exists, and the
+ * agents stay distinguishable by pitch and rate regardless — that fallback is in the defaults
+ * rather than here, so it holds even when nothing is chosen.
+ */
+function VoiceControls({
+  speaking,
+  onToggle,
+  voices,
+  choices,
+  agents,
+  onChoose,
+}: {
+  speaking: boolean
+  onToggle: (on: boolean) => void
+  voices: SpeechSynthesisVoice[]
+  choices: Record<string, VoiceChoice>
+  agents: Agent[]
+  onChoose: (agent: string, uri: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ranked = rankVoices(voices)
+
+  return (
+    <div className="voice">
+      <button
+        type="button"
+        className={`chat-icon ${speaking ? 'voice-on' : ''}`}
+        title={speaking ? 'Stop reading replies aloud' : 'Read each reply aloud when it finishes'}
+        onClick={() => onToggle(!speaking)}
+      >
+        {speaking ? '🔊' : '🔇'}
+      </button>
+
+      {speaking && ranked.length > 0 && (
+        <button
+          type="button"
+          className="chat-icon"
+          title="Pick a voice for each agent"
+          onClick={() => setOpen(!open)}
+        >
+          ⋯
+        </button>
+      )}
+
+      {open && speaking && (
+        <div className="voice-picker">
+          {agents.map((agent) => (
+            <label key={agent.name}>
+              <span className={`author author-${agent.name}`}>@{agent.name}</span>
+              <select
+                value={choices[agent.name]?.uri ?? ''}
+                onChange={(event) => onChoose(agent.name, event.target.value)}
+              >
+                <option value="">browser default</option>
+                {ranked.map((voice) => (
+                  <option key={voice.voiceURI} value={voice.voiceURI}>
+                    {voice.name} ({voice.lang})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <p className="muted">
+            Only the last thing an agent says in a run is read, with code left out. Silence while
+            it works.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function RunGroup({
   run,

@@ -1940,3 +1940,79 @@ button.option:hover {
 .strip-close:hover {
   color: var(--accent);
 }
+
+/* ---------------------------------------------------------------------------------------
+   Voice.
+
+   Off unless asked for, and quiet while the agent works — only the last thing said in a run
+   is read. A panel that talks over its own tool calls would be worse than one that stays
+   silent, and the conclusion is the part you were waiting for anyway.
+   --------------------------------------------------------------------------------------- */
+.voice {
+  position: relative;
+  display: flex;
+  gap: 2px;
+}
+
+.voice-on {
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.voice-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 6;
+  width: 280px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-hi);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.voice-picker .author {
+  flex: none;
+  width: 52px;
+}
+
+.voice-picker select {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.voice-picker p {
+  margin: 0;
+  font-size: 11px;
+}
+
+/* Unmistakable while the microphone is live. A recording indicator you have to look for is
+   the wrong kind of subtle. */
+.mic-on {
+  color: var(--remove);
+  border-color: currentColor;
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
