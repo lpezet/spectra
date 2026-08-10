@@ -109,6 +109,46 @@ export async function raiseExpectation(request: RaiseExpectationRequest): Promis
   return { ok: true, id, file: path.basename(target), expectation }
 }
 
+/**
+ * Re-reads a live expectation against the specs as they are now, and rewrites what it clashes
+ * with.
+ *
+ * `contested` is a snapshot of a disagreement, and the specs move underneath it. When q-009
+ * was answered, unarchiveProject's spec was rewritten and e-011 was left quoting a sentence
+ * that no longer exists anywhere — still flagged, still out of coverage, and now for a reason
+ * nobody could check. @coder found that and correctly refused to act on it.
+ *
+ * Rewriting rather than clearing is the point. A clash that is gone should disappear, and one
+ * that has merely *changed* should say what it clashes with now — e-011 is the second kind:
+ * the spec it contradicted was replaced by one it is merely broader than, which is a different
+ * conversation and needs different words.
+ *
+ * It never retires anything. If the disagreement survives the re-check, the expectation stays
+ * live and contested and a human still decides which side gives.
+ */
+export async function recheckExpectation(
+  id: string,
+  check: (expectation: Expectation, others: Expectation[]) => Promise<Clash[]>,
+): Promise<ExpectationOutcome> {
+  const entry = await findExpectationEntry(id)
+  if (!entry) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+
+  const { entries } = await readExpectationEntries()
+  const others = entries
+    .map((candidate) => candidate.expectation)
+    .filter((candidate) => candidate.id !== id)
+
+  const contested = await check(entry.expectation, others)
+  const updated: Expectation = { ...entry.expectation, contested }
+
+  await writeAtomic(
+    path.join(EXPECTATIONS_DIR, entry.file),
+    `${JSON.stringify(updated, null, 2)}\n`,
+  )
+
+  return { ok: true, id, file: entry.file, expectation: updated }
+}
+
 export interface SupersedeRequest {
   /** What the replacement says. Omit to retire the expectation outright. */
   replacement?: Omit<RaiseExpectationRequest, 'pass' | 'from' | 'file'> & { pass?: string }

@@ -10,7 +10,7 @@ import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@tb/shared'
 import { checkExpectation } from './expectationCheck.js'
-import { raiseExpectation, supersedeExpectation } from './expectations.js'
+import { raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR, readChangesets, readExpectations, readQuestions, readTerms } from './store.js'
 
@@ -192,6 +192,37 @@ app.post('/api/expectations', async (req, res, next) => {
       ...(typeof body.from === 'string' ? { from: body.from } : {}),
       ...(typeof body.file === 'string' ? { file: body.file } : {}),
       ...(Array.isArray(body.contested) ? { contested: body.contested } : {}),
+    })
+
+    res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Reads a live expectation against the specs as they are now.
+ *
+ * Answering a question rewrites term text, which can leave a `contested` marker quoting a
+ * sentence that no longer exists — flagged for a reason nobody can check. This refreshes it:
+ * a clash that has gone disappears, one that changed says what it clashes with now, and one
+ * that survives keeps the expectation out of coverage exactly as before.
+ */
+app.post('/api/expectations/:id/recheck', async (req, res, next) => {
+  try {
+    const [{ terms }] = await Promise.all([readTerms()])
+    const outcome = await recheckExpectation(req.params.id, async (expectation, others) => {
+      const report = await checkExpectation(
+        {
+          kind: expectation.kind,
+          terms: expectation.terms,
+          given: expectation.given,
+          expect: expectation.expect,
+        },
+        terms,
+        others,
+      )
+      return report.findings
     })
 
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)

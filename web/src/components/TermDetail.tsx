@@ -80,6 +80,7 @@ interface TermDetailProps {
   expectations: Expectation[]
   coverage: Coverage
   onSupersede: (id: string, draft: SupersedeDraft) => void
+  onRecheck: (id: string) => void
   busy: boolean
 }
 
@@ -93,6 +94,7 @@ export function TermDetail({
   expectations,
   coverage,
   onSupersede,
+  onRecheck,
   busy,
 }: TermDetailProps) {
   const ancestors = ancestorsOf(term, termsByName)
@@ -230,6 +232,7 @@ export function TermDetail({
         known={known}
         onSelect={onSelect}
         onSupersede={onSupersede}
+        onRecheck={onRecheck}
         busy={busy}
       />
 
@@ -252,6 +255,7 @@ function ExpectationSection({
   known,
   onSelect,
   onSupersede,
+  onRecheck,
   busy,
 }: {
   term: Term
@@ -260,6 +264,7 @@ function ExpectationSection({
   known: Set<string>
   onSelect: (name: string) => void
   onSupersede: (id: string, draft: SupersedeDraft) => void
+  onRecheck: (id: string) => void
   busy: boolean
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
@@ -317,10 +322,26 @@ function ExpectationSection({
               {expectation.contested.map((clash) => (
                 <p key={`${clash.kind}.${clash.subject}`} className="expectation-clash">
                   <span className="check-kind">{clash.kind}</span>
-                  {clash.detail}
-                  {clash.quote && <q className="check-quote">{clash.quote}</q>}
+                  <span>
+                    {clash.detail}
+                    {clash.quote && <q className="check-quote">{clash.quote}</q>}
+                  </span>
                 </p>
               ))}
+
+              {/* The specs move underneath a clash. Answering a question can rewrite the very
+                  sentence a marker quotes, leaving it flagged for a reason nobody can check. */}
+              {expectation.contested.length > 0 && (
+                <button
+                  type="button"
+                  className="expectation-recheck"
+                  disabled={busy}
+                  title="Read it against the specs as they are now"
+                  onClick={() => onRecheck(expectation.id)}
+                >
+                  re-check against the current specs
+                </button>
+              )}
 
               {openId === expectation.id && (
                 <SupersedeForm

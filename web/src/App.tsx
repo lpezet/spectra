@@ -11,6 +11,7 @@ import {
   fetchQuestions,
   markImplemented,
   raiseExpectation,
+  recheckExpectation,
   rejectChangeset,
   supersedeExpectation,
 } from './api.js'
@@ -263,6 +264,18 @@ export function App() {
     )
   }
 
+  function recheck(id: string) {
+    void recordExpectation(
+      () => recheckExpectation(id),
+      (outcome) => {
+        const clashes = outcome.expectation?.contested ?? []
+        return clashes.length === 0
+          ? `${id} re-checked · nothing clashes any more, so it counts as coverage again`
+          : `${id} re-checked · still clashes with ${clashes.map((clash) => clash.subject).join(', ')}`
+      },
+    )
+  }
+
   function supersede(id: string, draft: SupersedeDraft) {
     void recordExpectation(
       () => supersedeExpectation(id, draft.note, draft.replacement),
@@ -391,6 +404,7 @@ export function App() {
               expectations={expectations}
               coverage={coverage}
               onSupersede={supersede}
+              onRecheck={recheck}
               busy={busy}
             />
           ) : (

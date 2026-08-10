@@ -177,6 +177,11 @@ export function raiseExpectation(
   return post<RaiseOutcome>('/api/expectations', { ...draft, pass: 'usage', contested })
 }
 
+/** Re-reads a live expectation against the specs as they are now, and rewrites its clashes. */
+export function recheckExpectation(id: string): Promise<RaiseOutcome> {
+  return post<RaiseOutcome>(`/api/expectations/${encodeURIComponent(id)}/recheck`, {})
+}
+
 export interface SupersedeOutcome {
   ok: boolean
   error?: string

@@ -182,20 +182,43 @@ export function blueprintTools(transcripts: TranscriptStore) {
     { annotations: { readOnlyHint: true } },
   )
 
+  /**
+   * Pending *and* applied, and the applied half was missing.
+   *
+   * This used to return only the pending queue while @coder's prompt told it to "read
+   * changesets to see what landed" and then "call mark_implemented with the changeset id".
+   * Neither was answerable: a changeset stops being pending the moment it is applied, which
+   * is exactly when an implementer starts caring about it. @coder guessed ids and had them
+   * refused, which looked like the version guard being strict and was really this tool
+   * declining to say what work exists.
+   *
+   * `outstanding` leads because it is the work list — applied, and no code written for it
+   * yet. It is also the only place a changeset's id can be found by something that did not
+   * watch it being applied, since answering a question mints an id only when the chosen
+   * option carried a proposal, and q-009's options deliberately carried none.
+   */
   const readChangesetsTool = tool(
     'read_changesets',
-    'Read the pending changesets — proposed edits to the glossary awaiting review.',
+    'Read changesets: `outstanding` are applied but not yet implemented — the work, and where to find the id mark_implemented wants. `pending` are proposed and awaiting human review; do not implement those, they may still be rejected or changed. `implemented` is history.',
     {},
     async () => {
-      const { changesets, problems } = await readChangesets()
+      const { changesets, applied, problems } = await readChangesets()
+
+      const describe = (changeset: (typeof applied)[number]) => ({
+        id: changeset.id,
+        summary: changeset.summary,
+        fromQuestion: changeset.fromQuestion,
+        appliedAt: changeset.appliedAt,
+        ops: changeset.ops.map(summarizeOp),
+        tests: changeset.tests,
+      })
+
       return say({
-        changesets: changesets.map((changeset) => ({
-          id: changeset.id,
-          summary: changeset.summary,
-          fromQuestion: changeset.fromQuestion,
-          ops: changeset.ops.map(summarizeOp),
-          tests: changeset.tests,
-        })),
+        outstanding: applied.filter((changeset) => !changeset.implementedAt).map(describe),
+        pending: changesets.map(describe),
+        implemented: applied
+          .filter((changeset) => changeset.implementedAt)
+          .map((changeset) => ({ id: changeset.id, summary: changeset.summary, implementedAt: changeset.implementedAt })),
         problems,
       })
     },
