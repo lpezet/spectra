@@ -1,0 +1,32 @@
+{
+  "id": "q-029",
+  "asks": "When a RecurringTask with endedByArchiving true is moved out of the Project whose archiveProject ended it, and that Project is later unarchived, what should happen to the moved RecurringTask?",
+  "because": "archiveProject \"ends every RecurringTask it holds that is not already ended, setting ended to true and endedByArchiving to true, so unarchiveProject can later tell it apart from a RecurringTask ended directly via endRecurrence.\" unarchiveProject resumes \"every RecurringTask in the Project whose endedByArchiving is true.\" moveTask \"Reassigns a Task from its current Project to a different Project\" and says nothing about recurrence state. If R is ended by archiving Project A, then moved to Project B via moveTask, unarchiving A no longer finds R \"in the Project\", so R stays ended forever, still carrying endedByArchiving true even though the archiving that set it has since been reversed.",
+  "raisedBy": {
+    "pass": "review",
+    "terms": [
+      "moveTask",
+      "archiveProject",
+      "unarchiveProject",
+      "RecurringTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "moveTask clears endedByArchiving",
+      "detail": "When a RecurringTask is moved, if endedByArchiving is true it is set false, and ended stays true, unchanged. R ends up ended-directly rather than ended-by-archiving, so unarchiving A has nothing to say about it and never will.",
+      "proposal": null
+    },
+    {
+      "label": "unarchiveProject is widened to reach Tasks that were moved out",
+      "detail": "unarchiveProject would need to resume RecurringTasks that archiveProject on this Project ended, wherever they now live, not only ones currently in the Project. Requires recording which archiveProject action ended a given RecurringTask, and raises what happens if the destination Project is itself later archived.",
+      "proposal": null
+    },
+    {
+      "label": "moveTask refuses to move a Task whose endedByArchiving is true",
+      "detail": "A RecurringTask ended by archiving cannot be reassigned to another Project until its Project is unarchived, which resumes it, or its recurrence is ended directly. A new failure case for moveTask not in the current spec.",
+      "proposal": null
+    }
+  ],
+  "answer": null
+}
