@@ -1,0 +1,18 @@
+{
+  "id": "chat-003",
+  "summary": "moveTask clears endedByArchiving when a RecurringTask is moved to a non-archived Project",
+  "ops": [
+    {
+      "op": "modify_spec",
+      "term": "moveTask",
+      "spec": "Reassigns a Task from its current Project to a different Project. If the Task is a RecurringTask whose endedByArchiving is true, moveTask sets endedByArchiving to false, since the archiving that caused it no longer applies once the Task belongs to a different Project, while leaving its ended state unchanged. This applies when the destination Project is not archived; what moveTask does when the destination Project is itself archived is not yet specified."
+    }
+  ],
+  "tests": [
+    "Moving a RecurringTask whose endedByArchiving is true into a non-archived Project sets endedByArchiving to false.",
+    "Moving such a RecurringTask does not change its ended value: if it was ended, it stays ended, just no longer attributed to archiving.",
+    "A RecurringTask moved this way is not resumed by a later unarchiveProject of the Project it was moved out of, since endedByArchiving is no longer true.",
+    "A RecurringTask whose endedByArchiving is already false is unaffected by this rule when moved."
+  ],
+  "fromQuestion": "q-029"
+}

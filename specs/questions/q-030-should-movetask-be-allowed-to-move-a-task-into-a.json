@@ -1,0 +1,32 @@
+{
+  "id": "q-030",
+  "asks": "Should moveTask be allowed to move a Task into a Project that is archived, and if so, what happens to a RecurringTask's ended and endedByArchiving state when it arrives there?",
+  "because": "moveTask's spec places no restriction on the destination Project's archived status. archiveProject only ends RecurringTasks \"it holds\" at the moment archiveProject runs, so a Task moved into an already-archived Project afterward is never touched by that archiving. As it stands, moveTask could be used to move an active, still-repeating RecurringTask into an archived Project, where it would go on regenerating occurrences inside a Project that is supposed to be hidden from default listings and wound down.",
+  "raisedBy": {
+    "pass": "review",
+    "terms": [
+      "moveTask",
+      "archiveProject",
+      "Project",
+      "RecurringTask"
+    ]
+  },
+  "options": [
+    {
+      "label": "moveTask refuses to move a Task into an archived Project",
+      "detail": "The destination must be unarchived first. Archived Projects are frozen containers; nothing new, recurring or not, can be added to one.",
+      "proposal": null
+    },
+    {
+      "label": "moveTask is allowed and treats the RecurringTask as swept up by that archiving",
+      "detail": "A RecurringTask moved into an archived Project has ended set to true and endedByArchiving set to true, as if it had been sitting there when that Project's archiveProject ran.",
+      "proposal": null
+    },
+    {
+      "label": "moveTask is allowed and leaves the RecurringTask unaffected",
+      "detail": "The RecurringTask keeps regenerating occurrences even though its Project is archived and hidden from default listings.",
+      "proposal": null
+    }
+  ],
+  "answer": null
+}
