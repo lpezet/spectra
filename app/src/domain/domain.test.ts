@@ -395,7 +395,7 @@ describe('archiveProject', () => {
 
   // "ends every RecurringTask it holds that is not already ended — setting ended to true and
   // endedByArchiving to true"
-  it('e-009: ends every RecurringTask it holds, marking each endedByArchiving', () => {
+  it('e-024: ends every RecurringTask it holds, marking each endedByArchiving', () => {
     let world = emptyWorld()
     const project = createProject(world, 'Home')
     world = project.world
@@ -789,7 +789,7 @@ describe('moveTask', () => {
   }
 
   // The test q-005's changeset committed to.
-  it('e-010: reassigns the Task and updates both Projects', () => {
+  it('e-025: reassigns the Task and updates both Projects', () => {
     const { world, homeId, workId, taskId } = twoProjects()
     const result = moveTask(world, taskId, workId)
 
