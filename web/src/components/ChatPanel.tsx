@@ -14,15 +14,18 @@ import {
   DEFAULT_VOICES,
   dictate,
   dictationAvailable,
+  fetchRemoteVoices,
   leadSentence,
   rankVoices,
+  rearmRemoteVoice,
   speak,
   speakableText,
   speechAvailable,
   stopSpeaking,
   suggestVoices,
+  withDefaultVoices,
 } from '../speech.js'
-import type { Dictation, VoiceChoice } from '../speech.js'
+import type { Dictation, RemoteError, RemoteVoice, VoiceChoice } from '../speech.js'
 import {
   addresseeOf,
   createSession,
@@ -73,6 +76,8 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   // unlike unattended mode, which is deliberately forgotten on restart.
   const [speaking, setSpeaking] = useState(() => localStorage.getItem('tb.speech') === 'on')
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [remoteVoices, setRemoteVoices] = useState<RemoteVoice[]>([])
+  const [fallback, setFallback] = useState<RemoteError | null>(null)
   const [choices, setChoices] = useState<Record<string, VoiceChoice>>(() => {
     try {
       return { ...DEFAULT_VOICES, ...(JSON.parse(localStorage.getItem('tb.voices') ?? '{}') as object) }
@@ -176,6 +181,29 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
   }, [])
 
   /**
+   * Asked for once, and only when speech is actually on — the list costs a call to a third
+   * party, and a page that reaches out to a vendor for a feature nobody switched on is doing
+   * something the reader did not ask for. An empty list is the normal answer and needs no
+   * handling: the picker simply shows the system voices, exactly as before.
+   */
+  useEffect(() => {
+    if (!speaking || remoteVoices.length > 0) return
+    let live = true
+    void fetchRemoteVoices().then((found) => {
+      if (!live) return
+      setRemoteVoices(found.voices)
+      setChoices((current) => {
+        const next = withDefaultVoices(current, found.defaults)
+        if (next !== current) localStorage.setItem('tb.voices', JSON.stringify(next))
+        return next
+      })
+    })
+    return () => {
+      live = false
+    }
+  }, [speaking, remoteVoices.length])
+
+  /**
    * Speaks once per run, when the run ends.
    *
    * One rule rather than several, and the simplicity is the point. Watching `running` fall
@@ -193,7 +221,11 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     if (!last?.text || last.author === 'human') return
 
     const text = leadSentence(speakableText(last.text))
-    speak(text, { ...(choices[last.author] ?? DEFAULT_VOICES.spec!), voices })
+    speak(text, {
+      ...(choices[last.author] ?? DEFAULT_VOICES.spec!),
+      voices,
+      onFallback: setFallback,
+    })
   }, [running, runs, speaking, choices, voices])
 
   // Sending supersedes whatever is being said: the answer you were listening to is no longer
@@ -206,12 +238,30 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     if (!on) stopSpeaking()
   }
 
-  function chooseVoice(agent: string, uri: string) {
+  /**
+   * One value from one dropdown, carrying which kind of voice it is. A `remote:` prefix means
+   * ElevenLabs; anything else is a browser voice URI.
+   *
+   * Both are always stored. Picking a remote voice does not throw away the local choice — that
+   * is the one that speaks when the quota runs out, and a listener who has to re-pick it at
+   * exactly the moment it starts mattering has been let down.
+   */
+  function chooseVoice(agent: string, value: string) {
+    const remote = value.startsWith('remote:')
     setChoices((current) => {
-      const next = { ...current, [agent]: { ...current[agent]!, uri: uri || null } }
+      const next = {
+        ...current,
+        [agent]: {
+          ...current[agent]!,
+          ...(remote ? { remoteId: value.slice('remote:'.length) } : { uri: value || null, remoteId: null }),
+        },
+      }
       localStorage.setItem('tb.voices', JSON.stringify(next))
       return next
     })
+    // A new choice deserves a fresh attempt, even if the last one failed.
+    rearmRemoteVoice()
+    setFallback(null)
   }
 
   /**
@@ -309,6 +359,22 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     requestAnimationFrame(() => composer.current?.focus())
   }
 
+  /**
+   * Takes the top suggestion, if the list is open. Returns whether it did, so a key that has
+   * a job of its own — Tab moves focus, Enter sends — can tell whether it was used up here.
+   */
+  function completeFirst(): boolean {
+    if (agentSuggestions.length > 0) {
+      insert(agentSuggestions[0]!.name, '@')
+      return true
+    }
+    if (suggestions.length > 0) {
+      insert(suggestions[0]!.name, '#')
+      return true
+    }
+    return false
+  }
+
   const agentNames = agents.map((agent) => agent.name)
   const to = addresseeOf(draft, agentNames)
 
@@ -341,6 +407,8 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
         </button>
         {speechAvailable() && (
           <VoiceControls
+            remoteVoices={remoteVoices}
+            fallback={fallback}
             speaking={speaking}
             onToggle={toggleSpeech}
             voices={voices}
@@ -450,17 +518,25 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
           onChange={(event) => onDraftChange(event.target.value, event.target.selectionStart)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') setMention(null)
+            // Tab completes only while the list is open. Swallowing it the rest of the time
+            // would trap the keyboard in the composer, and the way out of a text box is Tab.
+            if (event.key === 'Tab' && !event.shiftKey) {
+              if (completeFirst()) event.preventDefault()
+              return
+            }
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
-              if (agentSuggestions.length > 0) insert(agentSuggestions[0]!.name, '@')
-              else if (suggestions.length > 0) insert(suggestions[0]!.name, '#')
-              else void submit()
+              if (!completeFirst()) void submit()
             }
           }}
         />
         <div className="composer-actions">
           <span className="muted">
-            {to ? (
+            {mention ? (
+              <>
+                Tab to complete <strong>{mention.sigil === 'agent' ? '@' : '#'}{mention.query}</strong>
+              </>
+            ) : to ? (
               <>
                 to <strong className={`author author-${to}`}>@{to}</strong> · Enter to send
               </>
@@ -533,6 +609,8 @@ function VoiceControls({
   choices,
   agents,
   onChoose,
+  remoteVoices,
+  fallback,
 }: {
   speaking: boolean
   onToggle: (on: boolean) => void
@@ -540,6 +618,8 @@ function VoiceControls({
   choices: Record<string, VoiceChoice>
   agents: Agent[]
   onChoose: (agent: string, uri: string) => void
+  remoteVoices: RemoteVoice[]
+  fallback: RemoteError | null
 }) {
   const [open, setOpen] = useState(false)
   const ranked = rankVoices(voices)
@@ -555,7 +635,7 @@ function VoiceControls({
         {speaking ? '🔊' : '🔇'}
       </button>
 
-      {speaking && ranked.length > 0 && (
+      {speaking && (ranked.length > 0 || remoteVoices.length > 0) && (
         <button
           type="button"
           className="chat-icon"
@@ -571,8 +651,17 @@ function VoiceControls({
           {agents.map((agent) => (
             <label key={agent.name}>
               <span className={`author author-${agent.name}`}>@{agent.name}</span>
+              {/*
+                One control, not two. The value carries which kind it is, because "which voice
+                do you want" is a single question and splitting it into a provider dropdown and
+                a voice dropdown would make the listener answer it twice.
+              */}
               <select
-                value={choices[agent.name]?.uri ?? ''}
+                value={
+                  choices[agent.name]?.remoteId
+                    ? `remote:${choices[agent.name]!.remoteId}`
+                    : (choices[agent.name]?.uri ?? '')
+                }
                 onChange={(event) => onChoose(agent.name, event.target.value)}
               >
                 <option value="">browser default</option>
@@ -581,9 +670,34 @@ function VoiceControls({
                     {voice.name} ({voice.lang})
                   </option>
                 ))}
+                {remoteVoices.length > 0 && (
+                  <optgroup label="ElevenLabs — sends the sentence to them">
+                    {remoteVoices.map((voice) => (
+                      <option key={voice.id} value={`remote:${voice.id}`}>
+                        {voice.name}
+                        {voice.description ? ` — ${voice.description}` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
           ))}
+          {/*
+            Said out loud rather than left to be inferred from silence. A voice that quietly
+            stopped being the one you picked is a bug report waiting to happen.
+          */}
+          {fallback && (
+            <p className="chat-warn">
+              {fallback.reason === 'quota'
+                ? `ElevenLabs will not bill this (${fallback.detail}) — out of credit, or a voice your plan does not include. The browser voice is speaking instead.`
+                : fallback.reason === 'no-credential'
+                  ? 'No ELEVENLABS_API_KEY on the server — the browser voice is speaking instead.'
+                  : fallback.reason === 'rate-limit'
+                    ? 'ElevenLabs rate-limited that one; the browser voice took it.'
+                    : `ElevenLabs could not speak (${fallback.detail}) — using the browser voice.`}
+            </p>
+          )}
           <p className="muted">
             Only the last thing an agent says in a run is read, with code left out. Silence while
             it works.

@@ -13,6 +13,7 @@ import { checkExpectation } from './expectationCheck.js'
 import { raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR, readChangesets, readExpectations, readQuestions, readTerms } from './store.js'
+import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
 
@@ -110,6 +111,64 @@ app.get('/api/specs/version', async (_req, res, next) => {
 app.get('/api/sandbox', async (_req, res, next) => {
   try {
     res.json(await probeSandbox())
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * Which remote voices exist, if any — and never a verdict about whether to use one.
+ *
+ * `configured` is only "is there a key", not "does it work": finding that out costs a call to
+ * the vendor, and a UI that cannot paint its voice picker until a third party answers is a UI
+ * that hangs for a feature nobody switched on yet. The browser asks, and treats an empty list
+ * exactly as it treats a machine with one system voice.
+ */
+app.get('/api/speech', async (_req, res, next) => {
+  try {
+    if (!speechKey()) {
+      res.json({ configured: false, voices: [], defaults: {}, model: speechModel })
+      return
+    }
+    const outcome = await listVoices()
+    res.json({
+      configured: true,
+      model: speechModel,
+      defaults: defaultVoiceIds(),
+      voices: 'voices' in outcome ? outcome.voices : [],
+      ...('error' in outcome ? { error: outcome.error } : {}),
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+/**
+ * One utterance of audio.
+ *
+ * A failure comes back as JSON naming the shape of it, not as a bare status, because the
+ * caller has a real decision to make and the two interesting cases look identical from the
+ * outside: a spent quota should send the browser back to its local voice for good, while a
+ * rate limit should cost it one sentence. 200 is audio; anything else is a reason.
+ */
+app.post('/api/speech', async (req, res, next) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
+    const voiceId = typeof req.body?.voiceId === 'string' ? req.body.voiceId : ''
+    if (!text || !voiceId) {
+      res.status(400).json({ error: 'Expected { text: string, voiceId: string }.' })
+      return
+    }
+
+    const outcome = await synthesize(text, voiceId)
+    if ('error' in outcome) {
+      res.status(outcome.error.reason === 'no-credential' ? 501 : 502).json(outcome.error)
+      return
+    }
+
+    res.setHeader('Content-Type', outcome.type)
+    res.setHeader('Cache-Control', 'no-store')
+    res.send(outcome.audio)
   } catch (error) {
     next(error)
   }

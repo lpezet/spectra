@@ -1,11 +1,14 @@
 /**
  * Reading the agents out loud, and typing by talking.
  *
- * Entirely in the browser. Nothing here touches the server, the agents, the sandbox or the
- * credential — which is why it can be added without thinking about any of them. The one
- * exception is worth knowing: dictation in Chrome sends your audio to Google. It is your
- * microphone and your browser rather than anything this tool controls, but in a project this
- * careful about egress it should be a thing you chose, not a thing you discovered.
+ * In the browser by default, and that default is load-bearing: the local voice needs no
+ * server, no credential and no network, so it is what speaks when anything else fails.
+ *
+ * Two things do leave, and both should be chosen rather than discovered, because this project
+ * is careful about egress everywhere else. Dictation in Chrome sends your audio to Google —
+ * your microphone and your browser, not something this tool controls. And picking a remote
+ * voice sends the sentence being spoken to ElevenLabs, by way of the server, which holds the
+ * key so the browser never learns it. Pick no remote voice and neither happens.
  *
  * What gets spoken is deliberately narrow. Not every message — the *last* thing an agent said
  * in a run, which is the same unit the fold already treats as the conclusion. Silence while it
@@ -117,6 +120,14 @@ export interface VoiceChoice {
   uri: string | null
   pitch: number
   rate: number
+  /**
+   * An ElevenLabs voice id, or null for the browser's own synthesiser.
+   *
+   * Kept alongside `uri` rather than replacing it, because the browser voice is not a lesser
+   * option to be forgotten once a remote one is picked — it is what speaks when the network is
+   * slow, the quota is spent, or the key was never set. Both are always chosen.
+   */
+  remoteId?: string | null
 }
 
 /**
@@ -158,23 +169,134 @@ export function suggestVoices(voices: SpeechSynthesisVoice[]): { spec: string | 
 
 export interface SpeakOptions extends VoiceChoice {
   voices: SpeechSynthesisVoice[]
+  /** Told when a remote voice could not speak and the local one took over, and why. */
+  onFallback?: (error: RemoteError) => void
 }
 
 export function speechAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
-/**
- * Says one thing, cancelling whatever was being said.
- *
- * Cancelling rather than queueing is the right default here: if a newer conclusion has
- * arrived, the older one has stopped being what you wanted to hear, and a queue would leave
- * you listening to history while the present scrolls past.
- */
-export function speak(text: string, options: SpeakOptions): void {
-  if (!speechAvailable() || text.trim() === '') return
+/* ----------------------------------------------------------------------------------------
+   The remote voice
+   ---------------------------------------------------------------------------------------- */
 
-  window.speechSynthesis.cancel()
+export type SpeechFailure = 'no-credential' | 'quota' | 'rate-limit' | 'rejected' | 'unreachable'
+
+export interface RemoteError {
+  reason: SpeechFailure
+  status: number | null
+  detail: string
+}
+
+export interface RemoteVoice {
+  id: string
+  name: string
+  description: string
+}
+
+/**
+ * Whether a failure is the kind worth giving up on.
+ *
+ * A spent quota, a missing key and a rejected request will all still be true in thirty
+ * seconds, so continuing to ask costs a round trip of silence before every sentence for the
+ * rest of the session. A rate limit and an unreachable host might not be, so those are
+ * forgiven — but only so many times, because a host that is down stays down and the delay is
+ * paid on every utterance until something stops asking.
+ */
+export function disarmsImmediately(reason: SpeechFailure): boolean {
+  return reason === 'quota' || reason === 'no-credential' || reason === 'rejected'
+}
+
+/** How many forgivable failures in a row before the remote voice is dropped anyway. */
+export const FORGIVEN = 3
+
+let armed = true
+let stumbles = 0
+let lastError: RemoteError | null = null
+
+export function remoteVoiceState(): { armed: boolean; error: RemoteError | null } {
+  return { armed, error: lastError }
+}
+
+/** Called when the listener changes something, since a new choice deserves a fresh try. */
+export function rearmRemoteVoice(): void {
+  armed = true
+  stumbles = 0
+  lastError = null
+}
+
+function noteFailure(error: RemoteError): void {
+  lastError = error
+  if (disarmsImmediately(error.reason)) {
+    armed = false
+    return
+  }
+  stumbles += 1
+  if (stumbles >= FORGIVEN) armed = false
+}
+
+export interface RemoteVoices {
+  configured: boolean
+  voices: RemoteVoice[]
+  /** Which voice each agent should start on, named server-side next to the key. */
+  defaults: Record<string, string | null>
+}
+
+export async function fetchRemoteVoices(): Promise<RemoteVoices> {
+  try {
+    const response = await fetch('/api/speech')
+    if (!response.ok) return { configured: false, voices: [], defaults: {} }
+    const body = (await response.json()) as Partial<RemoteVoices>
+    return {
+      configured: body.configured === true,
+      voices: body.voices ?? [],
+      defaults: body.defaults ?? {},
+    }
+  } catch {
+    return { configured: false, voices: [], defaults: {} }
+  }
+}
+
+/**
+ * Applies the server's defaults without overruling a choice already made.
+ *
+ * The distinction that makes this safe is `undefined` versus `null`: never having decided is
+ * not the same as having chosen the browser voice. Picking a system voice writes an explicit
+ * null, so a listener who deliberately went local does not find themselves back on a paid
+ * voice the next time the page loads.
+ */
+export function withDefaultVoices(
+  choices: Record<string, VoiceChoice>,
+  defaults: Record<string, string | null>,
+): Record<string, VoiceChoice> {
+  let changed = false
+  const next: Record<string, VoiceChoice> = { ...choices }
+
+  for (const [agent, id] of Object.entries(defaults)) {
+    if (!id || !next[agent] || next[agent]!.remoteId !== undefined) continue
+    next[agent] = { ...next[agent]!, remoteId: id }
+    changed = true
+  }
+
+  return changed ? next : choices
+}
+
+/* ----------------------------------------------------------------------------------------
+   Saying it
+   ---------------------------------------------------------------------------------------- */
+
+/**
+ * Rises every time speaking is superseded, so a slow remote answer can tell that the sentence
+ * it was fetching is no longer the one anybody is waiting for. Without it, a two-second
+ * synthesis that lands after the next run finished would talk over the newer conclusion —
+ * the exact history-while-the-present-scrolls-past problem `stopSpeaking` exists to prevent.
+ */
+let generation = 0
+let playing: HTMLAudioElement | null = null
+
+function speakLocally(text: string, options: SpeakOptions): void {
+  if (!speechAvailable()) return
   const utterance = new SpeechSynthesisUtterance(text)
   const voice = options.uri ? options.voices.find((candidate) => candidate.voiceURI === options.uri) : undefined
   if (voice) utterance.voice = voice
@@ -183,8 +305,80 @@ export function speak(text: string, options: SpeakOptions): void {
   window.speechSynthesis.speak(utterance)
 }
 
+async function speakRemotely(text: string, options: SpeakOptions, mine: number): Promise<void> {
+  const response = await fetch('/api/speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voiceId: options.remoteId }),
+  })
+
+  if (!response.ok) {
+    const error = (await response.json().catch(() => null)) as RemoteError | null
+    throw error ?? { reason: 'unreachable' as const, status: response.status, detail: response.statusText }
+  }
+
+  const blob = await response.blob()
+  // Superseded while the audio was being made. Say nothing at all rather than say the old one.
+  if (mine !== generation) return
+
+  const url = URL.createObjectURL(blob)
+  const audio = new Audio(url)
+  // Pitch has no meaning for recorded audio, and the voices are distinct enough not to need
+  // it; rate still does, so the one setting that survives the crossing is kept.
+  audio.playbackRate = options.rate
+  audio.onended = () => {
+    URL.revokeObjectURL(url)
+    if (playing === audio) playing = null
+  }
+  playing = audio
+  await audio.play()
+  stumbles = 0
+}
+
+/**
+ * Says one thing, cancelling whatever was being said.
+ *
+ * Cancelling rather than queueing is the right default here: if a newer conclusion has
+ * arrived, the older one has stopped being what you wanted to hear, and a queue would leave
+ * you listening to history while the present scrolls past.
+ *
+ * Stays synchronous for callers even though a remote voice is not, because the caller is an
+ * effect that fires when a run ends and has nothing to do with the result. Every path that
+ * fails ends up at the local voice, so the sentence is spoken either way.
+ */
+export function speak(text: string, options: SpeakOptions): void {
+  if (text.trim() === '') return
+
+  stopSpeaking()
+  const mine = generation
+
+  if (!options.remoteId || !armed) {
+    speakLocally(text, options)
+    return
+  }
+
+  void speakRemotely(text, options, mine).catch((cause: unknown) => {
+    const error: RemoteError =
+      cause && typeof cause === 'object' && 'reason' in cause
+        ? (cause as RemoteError)
+        : { reason: 'unreachable', status: null, detail: (cause as Error)?.message ?? 'failed' }
+
+    noteFailure(error)
+    options.onFallback?.(error)
+    // Only if nothing newer has started talking in the meantime — a fallback for a sentence
+    // that has already been superseded is just the old sentence arriving late.
+    if (mine === generation) speakLocally(text, options)
+  })
+}
+
 export function stopSpeaking(): void {
+  generation += 1
   if (speechAvailable()) window.speechSynthesis.cancel()
+  if (playing) {
+    playing.pause()
+    playing.src = ''
+    playing = null
+  }
 }
 
 /* ----------------------------------------------------------------------------------------

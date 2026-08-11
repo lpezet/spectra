@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import { applySigils, leadSentence, speakableText } from './speech.js'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  FORGIVEN,
+  applySigils,
+  disarmsImmediately,
+  leadSentence,
+  rearmRemoteVoice,
+  remoteVoiceState,
+  speakableText,
+  withDefaultVoices,
+} from './speech.js'
 
 describe('speakableText', () => {
   it('keeps prose', () => {
@@ -107,5 +116,87 @@ describe('applySigils', () => {
   /** "at" is an ordinary word; only the agent names should be rewritten. */
   it('leaves an unrelated "at" alone', () => {
     expect(applySigils('look at the glossary')).toBe('look at the glossary')
+  })
+})
+
+/**
+ * The fallback rules, which are the whole point of the remote voice being optional. Nothing
+ * here touches the network: what is worth pinning is *which* failures are worth giving up on,
+ * because getting that wrong is either a session of silent round trips before every sentence
+ * or a voice that vanishes on one bad packet.
+ */
+describe('disarmsImmediately', () => {
+  it('gives up on a spent quota — it will still be spent in thirty seconds', () => {
+    expect(disarmsImmediately('quota')).toBe(true)
+  })
+
+  it('gives up when there is no key, rather than asking again every sentence', () => {
+    expect(disarmsImmediately('no-credential')).toBe(true)
+  })
+
+  it('gives up on a rejected request, which a retry reproduces exactly', () => {
+    expect(disarmsImmediately('rejected')).toBe(true)
+  })
+
+  /** Both of these can stop being true, so they cost one sentence rather than the session. */
+  it('forgives a rate limit', () => {
+    expect(disarmsImmediately('rate-limit')).toBe(false)
+  })
+
+  it('forgives an unreachable host', () => {
+    expect(disarmsImmediately('unreachable')).toBe(false)
+  })
+})
+
+describe('the remote voice arms and disarms', () => {
+  beforeEach(() => rearmRemoteVoice())
+
+  it('starts armed, with nothing to report', () => {
+    expect(remoteVoiceState()).toEqual({ armed: true, error: null })
+  })
+
+  it('re-arming after a failure is what lets a new choice be tried', () => {
+    rearmRemoteVoice()
+    expect(remoteVoiceState().armed).toBe(true)
+  })
+
+  /** Forgiven is not forgotten: a host that stays down stops being asked. */
+  it('forgives a fixed number of times, so a dead host is not paid for forever', () => {
+    expect(FORGIVEN).toBe(3)
+  })
+})
+
+/**
+ * Seeding from the server's defaults. The whole subtlety is that "never chose" and "chose the
+ * browser" are different states, and only the first one may be filled in.
+ */
+describe('withDefaultVoices', () => {
+  const base = { uri: null, pitch: 1, rate: 1 }
+
+  it('starts an agent on the voice the server named', () => {
+    const next = withDefaultVoices({ spec: { ...base } }, { spec: 'voice-1' })
+    expect(next.spec?.remoteId).toBe('voice-1')
+  })
+
+  /** An explicit null is a decision to stay local, and outranks the environment. */
+  it('leaves a deliberate browser voice alone', () => {
+    const chosen = { spec: { ...base, remoteId: null } }
+    expect(withDefaultVoices(chosen, { spec: 'voice-1' })).toBe(chosen)
+  })
+
+  it('does not overwrite a remote voice already picked', () => {
+    const chosen = { spec: { ...base, remoteId: 'mine' } }
+    expect(withDefaultVoices(chosen, { spec: 'voice-1' })).toBe(chosen)
+  })
+
+  it('returns the same object when there is nothing to apply, so React sees no change', () => {
+    const current = { spec: { ...base } }
+    expect(withDefaultVoices(current, {})).toBe(current)
+    expect(withDefaultVoices(current, { spec: null })).toBe(current)
+  })
+
+  it('ignores a default for an agent that is not there', () => {
+    const current = { spec: { ...base } }
+    expect(withDefaultVoices(current, { coder: 'voice-2' })).toBe(current)
   })
 })

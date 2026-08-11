@@ -66,6 +66,15 @@ services:
       # rotate. This is the only service that gets one.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Text-to-speech, and the second thing that ever leaves this machine. Optional: with no
+      # key the browser reads replies in a system voice and nothing is sent anywhere. On this
+      # service only — `coder` has no route out and a voice is not a reason to give it one.
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      # Which voice each agent starts on. Named here rather than only in a browser's
+      # localStorage so a second browser, or a cleared one, sounds like the first.
+      - ELEVENLABS_SPEC_VOICE_ID=${ELEVENLABS_SPEC_VOICE_ID:-}
+      - ELEVENLABS_CODER_VOICE_ID=${ELEVENLABS_CODER_VOICE_ID:-}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-}
       # Reachable only from inside the sandbox network — which is the point. Express probes
       # it at /api/sandbox so "is the box up?" is a question with an answer.
       - CODER_URL=http://coder:5177
