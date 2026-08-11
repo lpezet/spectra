@@ -14,5 +14,7 @@
     "A RecurringTask moved this way is not resumed by a later unarchiveProject of the Project it was moved out of, since endedByArchiving is no longer true.",
     "A RecurringTask whose endedByArchiving is already false is unaffected by this rule when moved."
   ],
-  "fromQuestion": "q-029"
+  "fromQuestion": "q-029",
+  "appliedAt": "2026-08-11T02:45:24.509Z",
+  "implementedAt": "2026-08-11T02:49:18.700Z"
 }

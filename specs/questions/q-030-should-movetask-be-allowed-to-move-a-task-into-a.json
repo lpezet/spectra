@@ -28,5 +28,9 @@
       "proposal": null
     }
   ],
-  "answer": null
+  "answer": {
+    "chose": "moveTask is allowed and treats the RecurringTask as swept up by that archiving",
+    "note": "",
+    "answeredAt": "2026-08-11T02:43:55.005Z"
+  }
 }

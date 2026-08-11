@@ -1,5 +1,5 @@
 {
-  "version": "86744147b2ab8902",
+  "version": "3b6925977ed1058c",
   "terms": [
     {
       "name": "archiveProject",
@@ -39,7 +39,7 @@
     {
       "name": "moveTask",
       "type": "function",
-      "hash": "5a51b65928e18921"
+      "hash": "bff0cdf9730fd80e"
     },
     {
       "name": "Priority",
@@ -119,24 +119,74 @@
       "hash": "99ccb9808984c281"
     },
     {
-      "id": "e-009",
-      "kind": "functional",
-      "hash": "907afb71367e1af2"
-    },
-    {
-      "id": "e-010",
-      "kind": "functional",
-      "hash": "0d47335084b79f35"
-    },
-    {
-      "id": "e-011",
-      "kind": "functional",
-      "hash": "09696a6536996be0"
-    },
-    {
       "id": "e-012",
       "kind": "functional",
       "hash": "b32db7fc67e6564f"
+    },
+    {
+      "id": "e-013",
+      "kind": "functional",
+      "hash": "a3f2c824137e67a7"
+    },
+    {
+      "id": "e-014",
+      "kind": "functional",
+      "hash": "3f3ed493e9038ed1"
+    },
+    {
+      "id": "e-015",
+      "kind": "functional",
+      "hash": "9bab27fcbb5c88f4"
+    },
+    {
+      "id": "e-016",
+      "kind": "functional",
+      "hash": "5bbea1729790b209"
+    },
+    {
+      "id": "e-017",
+      "kind": "functional",
+      "hash": "0e039b59e84d264f"
+    },
+    {
+      "id": "e-018",
+      "kind": "functional",
+      "hash": "c863f76265ff7f03"
+    },
+    {
+      "id": "e-019",
+      "kind": "functional",
+      "hash": "08614f0199a466fb"
+    },
+    {
+      "id": "e-020",
+      "kind": "functional",
+      "hash": "f0f54e2ee54c331f"
+    },
+    {
+      "id": "e-021",
+      "kind": "functional",
+      "hash": "85d6caf6bfea86ad"
+    },
+    {
+      "id": "e-022",
+      "kind": "functional",
+      "hash": "30aeba0b006ae55d"
+    },
+    {
+      "id": "e-023",
+      "kind": "functional",
+      "hash": "f282a29ac43d4483"
+    },
+    {
+      "id": "e-024",
+      "kind": "functional",
+      "hash": "7916c9bb8551caa1"
+    },
+    {
+      "id": "e-025",
+      "kind": "functional",
+      "hash": "bbc9381c82209791"
     }
   ]
 }

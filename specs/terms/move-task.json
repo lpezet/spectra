@@ -1,7 +1,7 @@
 {
   "name": "moveTask",
   "type": "function",
-  "spec": "Reassigns a Task from its current Project to a different Project.",
+  "spec": "Reassigns a Task from its current Project to a different Project. If the Task is a RecurringTask whose endedByArchiving is true, moveTask sets endedByArchiving to false, since the archiving that caused it no longer applies once the Task belongs to a different Project, while leaving its ended state unchanged. This applies when the destination Project is not archived; what moveTask does when the destination Project is itself archived is not yet specified.",
   "parent": null,
   "tags": [],
   "attributes": [
