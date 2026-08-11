@@ -97,7 +97,16 @@ function classify(status: number, body: string): SpeechError {
 export interface RemoteVoice {
   id: string
   name: string
-  /** Whatever the vendor labels it with — accent, age, use case. Shown, never parsed. */
+  /**
+   * `premade`, `professional`, `generated`, `cloned` — the vendor's own word for where the
+   * voice came from, and the thing that decides whether a given plan may speak with it.
+   *
+   * Reported separately from the labels rather than mixed in with them, because the listener
+   * has a real decision hanging off it: a picker that lists forty voices where half answer
+   * 402 is a picker that teaches you to distrust it.
+   */
+  category: string
+  /** Whatever else the vendor labels it with — accent, age, use case. Shown, never parsed. */
   description: string
 }
 
@@ -120,9 +129,8 @@ export async function listVoices(): Promise<{ voices: RemoteVoice[] } | { error:
         .map((voice) => ({
           id: voice.voice_id!,
           name: voice.name!,
-          description: [voice.category, ...Object.values(voice.labels ?? {})]
-            .filter(Boolean)
-            .join(' · '),
+          category: voice.category ?? 'other',
+          description: Object.values(voice.labels ?? {}).filter(Boolean).join(' · '),
         })),
     }
   } catch (cause) {

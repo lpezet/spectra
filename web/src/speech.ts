@@ -192,7 +192,38 @@ export interface RemoteError {
 export interface RemoteVoice {
   id: string
   name: string
+  /** The vendor's word for where the voice came from — what a plan grants access by. */
+  category: string
   description: string
+}
+
+/**
+ * Sorted into the vendor's own categories, `premade` first.
+ *
+ * Which categories a plan actually includes is between the listener and their vendor, and
+ * this deliberately does not try to know: a voice that is refused says so at the moment it is
+ * refused, which is the only account of it that cannot go out of date. What grouping buys is
+ * narrower and worth having anyway — the refusals arrive in blocks, so one 402 tells you
+ * something about the twenty voices next to it instead of only about itself.
+ *
+ * `premade` leads because it is the set every plan has had, which makes it the useful thing
+ * to try first rather than the fortieth thing to try.
+ */
+export function voicesByCategory(voices: RemoteVoice[]): Array<{ category: string; voices: RemoteVoice[] }> {
+  const groups = new Map<string, RemoteVoice[]>()
+  for (const voice of voices) {
+    const key = voice.category || 'other'
+    groups.set(key, [...(groups.get(key) ?? []), voice])
+  }
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => {
+      if (left === right) return 0
+      if (left === 'premade') return -1
+      if (right === 'premade') return 1
+      return left.localeCompare(right)
+    })
+    .map(([category, found]) => ({ category, voices: found }))
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   rearmRemoteVoice,
   remoteVoiceState,
   speakableText,
+  voicesByCategory,
   withDefaultVoices,
 } from './speech.js'
 
@@ -198,5 +199,33 @@ describe('withDefaultVoices', () => {
   it('ignores a default for an agent that is not there', () => {
     const current = { spec: { ...base } }
     expect(withDefaultVoices(current, { coder: 'voice-2' })).toBe(current)
+  })
+})
+
+describe('voicesByCategory', () => {
+  const voice = (id: string, category: string) => ({ id, name: id, category, description: '' })
+
+  it('puts premade first, whatever order they arrived in', () => {
+    const grouped = voicesByCategory([voice('a', 'professional'), voice('b', 'premade')])
+    expect(grouped.map((group) => group.category)).toEqual(['premade', 'professional'])
+  })
+
+  it('sorts the rest by name so the list does not move around between loads', () => {
+    const grouped = voicesByCategory([
+      voice('a', 'professional'),
+      voice('b', 'cloned'),
+      voice('c', 'generated'),
+    ])
+    expect(grouped.map((group) => group.category)).toEqual(['cloned', 'generated', 'professional'])
+  })
+
+  it('keeps every voice, in its own group', () => {
+    const grouped = voicesByCategory([voice('a', 'premade'), voice('b', 'premade'), voice('c', 'generated')])
+    expect(grouped.find((group) => group.category === 'premade')?.voices).toHaveLength(2)
+    expect(grouped.flatMap((group) => group.voices)).toHaveLength(3)
+  })
+
+  it('gives a voice with no category somewhere to live', () => {
+    expect(voicesByCategory([voice('a', '')]).map((group) => group.category)).toEqual(['other'])
   })
 })

@@ -23,6 +23,7 @@ import {
   speechAvailable,
   stopSpeaking,
   suggestVoices,
+  voicesByCategory,
   withDefaultVoices,
 } from '../speech.js'
 import type { Dictation, RemoteError, RemoteVoice, VoiceChoice } from '../speech.js'
@@ -192,11 +193,11 @@ export function ChatPanel({ entities, onSpecsChanged, onSelectTerm, onClose }: C
     void fetchRemoteVoices().then((found) => {
       if (!live) return
       setRemoteVoices(found.voices)
-      setChoices((current) => {
-        const next = withDefaultVoices(current, found.defaults)
-        if (next !== current) localStorage.setItem('tb.voices', JSON.stringify(next))
-        return next
-      })
+      // Applied for this page and deliberately not written back. Persisting it would turn the
+      // server's default into a decision this browser had made, and the next edit to .env
+      // would then be ignored by the only browser that had ever run — which reads exactly
+      // like the setting not working. Only a pick in the picker is stored.
+      setChoices((current) => withDefaultVoices(current, found.defaults))
     })
     return () => {
       live = false
@@ -670,16 +671,19 @@ function VoiceControls({
                     {voice.name} ({voice.lang})
                   </option>
                 ))}
-                {remoteVoices.length > 0 && (
-                  <optgroup label="ElevenLabs — sends the sentence to them">
-                    {remoteVoices.map((voice) => (
+                {voicesByCategory(remoteVoices).map((group) => (
+                  <optgroup
+                    key={group.category}
+                    label={`ElevenLabs ${group.category} — sends the sentence to them`}
+                  >
+                    {group.voices.map((voice) => (
                       <option key={voice.id} value={`remote:${voice.id}`}>
                         {voice.name}
                         {voice.description ? ` — ${voice.description}` : ''}
                       </option>
                     ))}
                   </optgroup>
-                )}
+                ))}
               </select>
             </label>
           ))}
