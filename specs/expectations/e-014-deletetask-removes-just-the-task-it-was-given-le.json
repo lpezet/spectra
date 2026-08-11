@@ -1,0 +1,16 @@
+{
+  "id": "e-014",
+  "kind": "functional",
+  "terms": [
+    "deleteTask",
+    "Task",
+    "Project"
+  ],
+  "given": "an unarchived Project holding two Tasks, one of them not done",
+  "expect": "deleteTask removes just the Task it was given, leaves the Project and its other Task in place, and does not refuse over the Task not being done the way deleteProject would",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

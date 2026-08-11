@@ -1,0 +1,15 @@
+{
+  "id": "e-015",
+  "kind": "functional",
+  "terms": [
+    "deleteTask",
+    "RecurringTask"
+  ],
+  "given": "a RecurringTask that is still repeating and has not been ended",
+  "expect": "deleteTask removes it outright and no further occurrence is ever scheduled, so there is no need to endRecurrence first",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

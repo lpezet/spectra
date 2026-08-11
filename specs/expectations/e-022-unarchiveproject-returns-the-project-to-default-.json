@@ -1,0 +1,16 @@
+{
+  "id": "e-022",
+  "kind": "functional",
+  "terms": [
+    "unarchiveProject",
+    "Project",
+    "Task"
+  ],
+  "given": "an archived Project holding Tasks in various done states",
+  "expect": "unarchiveProject returns the Project to default listings with every Task still attached and its done state unchanged",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

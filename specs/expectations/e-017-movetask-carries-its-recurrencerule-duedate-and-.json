@@ -1,0 +1,15 @@
+{
+  "id": "e-017",
+  "kind": "functional",
+  "terms": [
+    "moveTask",
+    "RecurringTask"
+  ],
+  "given": "a RecurringTask that is still repeating",
+  "expect": "moveTask carries its recurrenceRule, dueDate and ended state into the new Project, so it goes on repeating on the same schedule rather than restarting",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

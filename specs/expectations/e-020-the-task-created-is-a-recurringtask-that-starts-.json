@@ -1,0 +1,16 @@
+{
+  "id": "e-020",
+  "kind": "functional",
+  "terms": [
+    "createTask",
+    "RecurringTask",
+    "RecurrenceRule"
+  ],
+  "given": "createTask called with a recurrenceRule",
+  "expect": "the Task created is a RecurringTask that starts un-ended and not done, so it is already repeating before anyone completes it",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

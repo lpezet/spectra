@@ -1,0 +1,16 @@
+{
+  "id": "e-018",
+  "kind": "functional",
+  "terms": [
+    "reopenTask",
+    "Task",
+    "completeTask"
+  ],
+  "given": "a Task that completeTask marked done",
+  "expect": "reopenTask clears done so the Task is open again, and reopening a Task that was never completed changes nothing and does not error",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

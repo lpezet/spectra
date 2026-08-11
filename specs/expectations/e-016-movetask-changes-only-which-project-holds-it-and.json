@@ -1,0 +1,16 @@
+{
+  "id": "e-016",
+  "kind": "functional",
+  "terms": [
+    "moveTask",
+    "Task",
+    "Project"
+  ],
+  "given": "a Task with a priority, a dueDate and a done state, held by one Project",
+  "expect": "moveTask changes only which Project holds it and carries priority, dueDate and done across unchanged",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

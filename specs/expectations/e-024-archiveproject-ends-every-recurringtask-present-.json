@@ -1,0 +1,17 @@
+{
+  "id": "e-024",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "archiveProject",
+    "RecurringTask"
+  ],
+  "given": "an unarchived Project holding RecurringTasks that have not been ended",
+  "expect": "archiveProject ends every RecurringTask present in the Project, so none schedules a further occurrence",
+  "raisedBy": {
+    "pass": "supersedes",
+    "from": "e-009"
+  },
+  "supersededBy": null,
+  "contested": []
+}

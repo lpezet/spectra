@@ -1,0 +1,17 @@
+{
+  "id": "e-025",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "moveTask",
+    "Task"
+  ],
+  "given": "a Task held by one Project and a second Project to move it to",
+  "expect": "the Task is re-assigned to the new Project, and leaves the Project that held it",
+  "raisedBy": {
+    "pass": "supersedes",
+    "from": "e-010"
+  },
+  "supersededBy": null,
+  "contested": []
+}

@@ -1,0 +1,17 @@
+{
+  "id": "e-021",
+  "kind": "functional",
+  "terms": [
+    "archiveProject",
+    "Project",
+    "Task"
+  ],
+  "given": "an unarchived Project holding Tasks in various done states",
+  "expect": "archiveProject hides the Project from default listings but deletes nothing — every Task it holds is still there, with its done state unchanged",
+  "raisedBy": {
+    "pass": "coverage",
+    "from": "chat-001"
+  },
+  "supersededBy": null,
+  "contested": []
+}

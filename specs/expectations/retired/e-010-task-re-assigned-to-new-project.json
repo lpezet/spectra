@@ -1,0 +1,16 @@
+{
+  "id": "e-010",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "moveTask"
+  ],
+  "given": "",
+  "expect": "task re-assigned to new project",
+  "raisedBy": {
+    "pass": "usage"
+  },
+  "supersededBy": "e-025",
+  "contested": [],
+  "retiredBecause": "The wording stands; only the term list was wrong. e-010 is a statement about what moving does to a Task, but named only Project and moveTask, leaving Task x moveTask reading as an untouched pair."
+}

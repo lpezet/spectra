@@ -1,0 +1,16 @@
+{
+  "id": "e-019",
+  "kind": "functional",
+  "terms": [
+    "createTask",
+    "Task",
+    "Project"
+  ],
+  "given": "an existing Project",
+  "expect": "createTask puts the new Task in that Project and nowhere else, not done, and the Project's task list holds it immediately",
+  "raisedBy": {
+    "pass": "coverage"
+  },
+  "supersededBy": null,
+  "contested": []
+}

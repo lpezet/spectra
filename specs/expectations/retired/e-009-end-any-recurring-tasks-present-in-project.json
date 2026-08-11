@@ -1,0 +1,16 @@
+{
+  "id": "e-009",
+  "kind": "functional",
+  "terms": [
+    "Project",
+    "archiveProject"
+  ],
+  "given": "",
+  "expect": "end any recurring tasks present in project",
+  "raisedBy": {
+    "pass": "usage"
+  },
+  "supersededBy": "e-024",
+  "contested": [],
+  "retiredBecause": "The wording stands; only the term list was wrong. e-009 is a statement about what archiving does to RecurringTasks, but named only Project and archiveProject, so RecurringTask x archiveProject read as an untouched pair while the expectation covering it sat right there."
+}

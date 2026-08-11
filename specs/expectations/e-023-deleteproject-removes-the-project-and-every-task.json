@@ -1,0 +1,18 @@
+{
+  "id": "e-023",
+  "kind": "functional",
+  "terms": [
+    "deleteProject",
+    "Project",
+    "Task",
+    "archiveProject"
+  ],
+  "given": "an archived Project still holding Tasks that are not done",
+  "expect": "deleteProject removes the Project and every Task it holds permanently, without the incomplete-Task refusal that applies to an unarchived Project",
+  "raisedBy": {
+    "pass": "coverage",
+    "from": "chat-001"
+  },
+  "supersededBy": null,
+  "contested": []
+}
