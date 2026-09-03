@@ -9,6 +9,7 @@ import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@tb/shared'
+import type { Author } from '@tb/shared'
 import { checkExpectation } from './expectationCheck.js'
 import { raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
@@ -23,6 +24,11 @@ const PORT = Number(process.env.PORT ?? 5174)
 const store = new FileSystemSpecStore(SPECS_DIR)
 const transcripts = new TranscriptStore()
 const runner = new AgentRunner(store, transcripts)
+
+// Every write over the HTTP API is a person acting in the browser. Stamped here, server-side —
+// never taken from the request body — the same reason the agent's identity comes from its route.
+// `user` fills in once there is auth; until then the actor kind is what we can honestly record.
+const HUMAN: Author = { kind: 'human' }
 
 const app = express()
 
@@ -255,7 +261,7 @@ app.post('/api/expectations', async (req, res, next) => {
       ...(typeof body.from === 'string' ? { from: body.from } : {}),
       ...(typeof body.file === 'string' ? { file: body.file } : {}),
       ...(Array.isArray(body.contested) ? { contested: body.contested } : {}),
-    })
+    }, HUMAN)
 
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
@@ -305,7 +311,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
     const outcome = await supersedeExpectation(store, req.params.id, {
       note: body.note,
       ...(body.replacement ? { replacement: body.replacement } : {}),
-    })
+    }, HUMAN)
 
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
@@ -355,7 +361,7 @@ app.post('/api/questions/:id/answer', async (req, res, next) => {
       chose,
       note: typeof body?.note === 'string' ? body.note : '',
       answeredAt: new Date().toISOString(),
-    })
+    }, HUMAN)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)

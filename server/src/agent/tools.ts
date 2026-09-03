@@ -15,7 +15,7 @@
 import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, computeCoverage, summarizeOp } from '@tb/shared'
-import type { Changeset, PendingItem, Question, Term } from '@tb/shared'
+import type { Author, Changeset, PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
 import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
@@ -118,7 +118,7 @@ function pendingItems(changesets: Changeset[], questions: Question[]): PendingIt
   return items
 }
 
-export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
+export function blueprintTools(store: SpecStore, transcripts: TranscriptStore, author: Author) {
   const readGlossary = tool(
     'read_glossary',
     'Read the spec glossary. Omit `term` for every term in summary form; supply one to get its full spec, attributes, subtypes and everything that references it.',
@@ -364,13 +364,17 @@ export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
       const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
       const report = await checkExpectation(draft, terms, expectations)
 
-      const outcome = await raiseExpectation(store, {
-        ...draft,
-        pass: args.pass,
-        from: args.from,
-        file: args.file,
-        contested: report.findings,
-      })
+      const outcome = await raiseExpectation(
+        store,
+        {
+          ...draft,
+          pass: args.pass,
+          from: args.from,
+          file: args.file,
+          contested: report.findings,
+        },
+        author,
+      )
 
       return say(
         outcome.ok
@@ -425,16 +429,20 @@ export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
         .describe('Candidate answers; may be empty when only the human can write the spec'),
     },
     async (args) => {
-      const outcome = await raiseQuestion(store, {
-        asks: args.asks,
-        because: args.because,
-        pass: args.pass,
-        file: args.file,
-        terms: args.terms,
-        // proposalSchema validates the shape at the tool boundary; zod's inferred output
-        // is structurally `Proposal` but widened, so it is asserted rather than re-parsed.
-        options: args.options as RaiseRequest['options'],
-      })
+      const outcome = await raiseQuestion(
+        store,
+        {
+          asks: args.asks,
+          because: args.because,
+          pass: args.pass,
+          file: args.file,
+          terms: args.terms,
+          // proposalSchema validates the shape at the tool boundary; zod's inferred output
+          // is structurally `Proposal` but widened, so it is asserted rather than re-parsed.
+          options: args.options as RaiseRequest['options'],
+        },
+        author,
+      )
 
       return say(
         outcome.ok
@@ -465,12 +473,16 @@ export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
         .describe('Id of an already-answered question this follows from, if any'),
     },
     async (args) => {
-      const outcome = await proposeChangeset(store, {
-        summary: args.summary,
-        ops: args.ops as ProposeRequest['ops'],
-        tests: args.tests,
-        ...(args.fromQuestion ? { fromQuestion: args.fromQuestion } : {}),
-      })
+      const outcome = await proposeChangeset(
+        store,
+        {
+          summary: args.summary,
+          ops: args.ops as ProposeRequest['ops'],
+          tests: args.tests,
+          ...(args.fromQuestion ? { fromQuestion: args.fromQuestion } : {}),
+        },
+        author,
+      )
 
       return say(
         outcome.ok
@@ -585,10 +597,24 @@ export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
   }))
 }
 
-/** The subset a given agent may call, resolved from its definition. */
-export function toolsFor(store: SpecStore, transcripts: TranscriptStore, names: readonly string[]) {
+/**
+ * The subset a given agent may call, resolved from its definition.
+ *
+ * `author` is the agent's own identity, passed by the caller — the runner and the HTTP MCP
+ * route both know which agent this is (`spec` or `coder`) and stamp it here. It is never taken
+ * from the tool arguments, so a write the agent makes is attributed to the agent, not to
+ * whatever it claims.
+ */
+export function toolsFor(
+  store: SpecStore,
+  transcripts: TranscriptStore,
+  author: Author,
+  names: readonly string[],
+) {
   const wanted = new Set(names)
-  return blueprintTools(store, transcripts).filter((candidate) => wanted.has((candidate as { name: string }).name))
+  return blueprintTools(store, transcripts, author).filter((candidate) =>
+    wanted.has((candidate as { name: string }).name),
+  )
 }
 
 export function qualified(names: readonly string[]): string[] {

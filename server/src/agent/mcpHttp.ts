@@ -50,7 +50,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
     }
     res.json({
       agent: agent.name,
-      tools: toolsFor(store, transcripts, agent.domainTools).map((entry) => ({
+      tools: toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools).map((entry) => ({
         name: entry.name,
         description: entry.description,
       })),
@@ -81,7 +81,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
       builtins: agent.builtins,
       autoApprove: agent.autoApprove,
       disallowedTools: agent.disallowedTools ?? [],
-      tools: toolsFor(store, transcripts, agent.domainTools).map((entry) => entry.name),
+      tools: toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools).map((entry) => entry.name),
     })
   })
 
@@ -109,7 +109,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
       handler: (args: Record<string, unknown>) => unknown,
     ) => void
 
-    for (const entry of toolsFor(store, transcripts, agent.domainTools)) {
+    for (const entry of toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools)) {
       register(
         entry.name,
         { description: entry.description, inputSchema: entry.inputSchema },

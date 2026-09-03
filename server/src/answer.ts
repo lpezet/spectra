@@ -7,7 +7,7 @@
  * Note what does not happen: nothing is applied. Answering a question decides the intent;
  * applying the changeset it produces is still a separate, deliberate act.
  */
-import type { Answer, Changeset } from '@tb/shared'
+import type { Answer, Author, Changeset } from '@tb/shared'
 import { slug } from './files.js'
 import type { SpecStore } from './specStore.js'
 
@@ -36,6 +36,7 @@ export async function answerQuestion(
   store: SpecStore,
   id: string,
   request: AnswerRequest,
+  author: Author,
 ): Promise<AnswerOutcome> {
   const question = await store.findQuestion(id)
   if (!question) return { ok: false, status: 404, error: `No question with id "${id}".` }
@@ -70,6 +71,7 @@ export async function answerQuestion(
     chose: request.chose,
     note: request.note,
     answeredAt: request.answeredAt,
+    author,
   }
 
   let changesetFile: string | undefined
@@ -82,6 +84,7 @@ export async function answerQuestion(
       ops: option.proposal.ops,
       tests: option.proposal.tests,
       fromQuestion: question.id,
+      author,
     }
 
     // Written before the answer: if the process dies between the two, an unreferenced changeset
