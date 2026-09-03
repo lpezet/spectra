@@ -19,7 +19,7 @@
  * that would most like to make it is the one whose code just failed it.
  */
 import { parseExpectation } from '@tb/shared'
-import type { Clash, Expectation, ExpectationKind } from '@tb/shared'
+import type { Author, Clash, Expectation, ExpectationKind } from '@tb/shared'
 import type { SpecStore } from './specStore.js'
 
 export interface RaiseExpectationRequest {
@@ -47,12 +47,14 @@ export type ExpectationOutcome =
 export async function raiseExpectation(
   store: SpecStore,
   request: RaiseExpectationRequest,
+  author: Author,
 ): Promise<ExpectationOutcome> {
   const id = await store.nextExpectationId()
 
   const expectation: Expectation = {
     id,
     kind: request.kind,
+    author,
     terms: request.terms,
     given: request.given ?? '',
     expect: request.expect,
@@ -129,6 +131,7 @@ export async function supersedeExpectation(
   store: SpecStore,
   id: string,
   request: SupersedeRequest,
+  author: Author,
 ): Promise<SupersedeOutcome> {
   const original = await store.findExpectation(id)
   if (!original) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
@@ -136,11 +139,15 @@ export async function supersedeExpectation(
   let replacement: Expectation | null = null
 
   if (request.replacement) {
-    const raised = await raiseExpectation(store, {
-      ...request.replacement,
-      pass: request.replacement.pass ?? 'supersedes',
-      from: id,
-    })
+    const raised = await raiseExpectation(
+      store,
+      {
+        ...request.replacement,
+        pass: request.replacement.pass ?? 'supersedes',
+        from: id,
+      },
+      author,
+    )
     if (!raised.ok) return { ok: false, error: raised.error, status: raised.status ?? 400 }
     replacement = raised.expectation
   }

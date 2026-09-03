@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
+import type { Author } from '@tb/shared'
 import { raiseQuestion } from './raise.js'
+
+const BY: Author = { kind: 'human' }
 
 // The store is constructor-injected now, so the temp glossary is just a directory we point a
 // FileSystemSpecStore at — no module-load env dance.
@@ -34,7 +37,7 @@ async function questionFiles(): Promise<string[]> {
 
 describe('raiseQuestion', () => {
   it('writes a question with no options — some can only be answered in prose', async () => {
-    const outcome = await raiseQuestion(store, { ...BASE, options: [] })
+    const outcome = await raiseQuestion(store, { ...BASE, options: [] }, BY)
 
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
@@ -43,15 +46,17 @@ describe('raiseQuestion', () => {
     const written = JSON.parse(await readFile(path.join(specs, 'questions', outcome.file), 'utf8'))
     expect(written.answer).toBeNull()
     expect(written.raisedBy).toEqual({ pass: 'implementation', terms: ['Task'] })
+    // Identity is stamped by the caller and persisted alongside the origin.
+    expect(written.author).toEqual({ kind: 'human' })
   })
 
   it('numbers the next question above the highest already there', async () => {
-    const second = await raiseQuestion(store, { ...BASE, asks: 'Second question?', options: [] })
+    const second = await raiseQuestion(store, { ...BASE, asks: 'Second question?', options: [] }, BY)
     expect(second.ok && second.id).toBe('q-002')
   })
 
   it('names the file from the id and the question', async () => {
-    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Should a Task have an owner?', options: [] })
+    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Should a Task have an owner?', options: [] }, BY)
     expect(outcome.ok && outcome.file).toMatch(/^q-003-should-a-task-have-an-owner\.json$/)
   })
 
@@ -70,7 +75,7 @@ describe('raiseQuestion', () => {
         },
         { label: 'Leave it out' },
       ],
-    })
+    }, BY)
 
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
@@ -93,7 +98,7 @@ describe('raiseQuestion', () => {
           },
         },
       ],
-    })
+    }, BY)
 
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
@@ -102,8 +107,8 @@ describe('raiseQuestion', () => {
   })
 
   it('never overwrites an existing file when two questions collide on a name', async () => {
-    const first = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] })
-    const second = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] })
+    const first = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] }, BY)
+    const second = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] }, BY)
 
     expect(first.ok && second.ok).toBe(true)
     if (!first.ok || !second.ok) return

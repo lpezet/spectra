@@ -163,7 +163,8 @@ export class AgentRunner {
     const server = createSdkMcpServer({
       name: 'blueprints',
       version: '1.0.0',
-      tools: toolsFor(this.store, this.transcripts, agent.domainTools),
+      // The agent's own identity, stamped on anything it writes — `to` is 'spec' or 'coder'.
+      tools: toolsFor(this.store, this.transcripts, { kind: to }, agent.domainTools),
     })
 
     const key = `${sessionId}:${to}`

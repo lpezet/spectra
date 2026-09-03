@@ -6,7 +6,7 @@
  * runs through the human. That is why this needs no approval prompt while `proposeChangeset` will.
  */
 import { parseQuestion } from '@tb/shared'
-import type { Proposal, Question, QuestionOption } from '@tb/shared'
+import type { Author, Proposal, Question, QuestionOption } from '@tb/shared'
 import type { SpecStore } from './specStore.js'
 
 export interface RaiseRequest {
@@ -22,7 +22,11 @@ export type RaiseOutcome =
   | { ok: false; error: string }
   | { ok: true; id: string; file: string; question: Question }
 
-export async function raiseQuestion(store: SpecStore, request: RaiseRequest): Promise<RaiseOutcome> {
+export async function raiseQuestion(
+  store: SpecStore,
+  request: RaiseRequest,
+  author: Author,
+): Promise<RaiseOutcome> {
   const id = await store.nextQuestionId()
 
   const options: QuestionOption[] = request.options.map((option) => ({
@@ -40,6 +44,7 @@ export async function raiseQuestion(store: SpecStore, request: RaiseRequest): Pr
       ...(request.file ? { file: request.file } : {}),
       terms: request.terms,
     },
+    author,
     options,
     answer: null,
   }

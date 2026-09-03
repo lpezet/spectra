@@ -18,6 +18,14 @@ const valueType = z.string().superRefine((raw, ctx) => {
   }
 })
 
+/** Identity, stamped server-side. `.strict()` schemas below must allow it or a record carrying it is rejected. */
+const authorSchema = z
+  .object({
+    kind: z.enum(['human', 'spec', 'coder']),
+    user: z.string().min(1).optional(),
+  })
+  .strict()
+
 export const attributeSchema = z
   .object({
     name: z.string().min(1),
@@ -67,6 +75,7 @@ export const changesetSchema = z
     fromQuestion: z.string().min(1).optional(),
     appliedAt: z.string().optional(),
     implementedAt: z.string().nullable().optional(),
+    author: authorSchema.optional(),
   })
   .strict()
 
@@ -101,12 +110,14 @@ export const questionSchema = z
           .strict(),
       )
       .default([]),
+    author: authorSchema.optional(),
     answer: z
       .object({
         chose: z.string().nullable(),
         note: z.string(),
         answeredAt: z.string(),
         changesetId: z.string().optional(),
+        author: authorSchema.optional(),
       })
       .strict()
       .nullable()
@@ -129,6 +140,7 @@ export const expectationSchema = z
   .object({
     id: z.string().min(1),
     kind: z.enum(['functional', 'non-functional']),
+    author: authorSchema.optional(),
     terms: z.array(termName).default([]),
     given: z.string().default(''),
     expect: z.string().min(1),

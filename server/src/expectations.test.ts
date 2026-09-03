@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
+import type { Author } from '@tb/shared'
 import { raiseExpectation, supersedeExpectation } from './expectations.js'
+
+const BY: Author = { kind: 'human' }
 
 // The store is constructor-injected now, so the temp glossary is just a directory we point a
 // FileSystemSpecStore at.
@@ -34,7 +37,7 @@ async function liveFiles(): Promise<string[]> {
 
 describe('raiseExpectation', () => {
   it('writes a live expectation with no review step', async () => {
-    const outcome = await raiseExpectation(store, BASE)
+    const outcome = await raiseExpectation(store, BASE, BY)
 
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
@@ -43,16 +46,18 @@ describe('raiseExpectation', () => {
     const written = JSON.parse(await readFile(path.join(specs, 'expectations', outcome.file), 'utf8'))
     expect(written.supersededBy).toBeNull()
     expect(written.raisedBy).toEqual({ pass: 'implementation' })
+    // Identity is stamped by the caller and persisted alongside the origin.
+    expect(written.author).toEqual({ kind: 'human' })
   })
 
   it('numbers the next above the highest already there', async () => {
-    const second = await raiseExpectation(store, { ...BASE, expect: 'a second thing holds' })
+    const second = await raiseExpectation(store, { ...BASE, expect: 'a second thing holds' }, BY)
     expect(second.ok && second.id).toBe('e-002')
   })
 
   it('refuses a functional expectation naming no terms, since it could never be counted', async () => {
     const before = await liveFiles()
-    const outcome = await raiseExpectation(store, { ...BASE, terms: [], expect: 'something vague' })
+    const outcome = await raiseExpectation(store, { ...BASE, terms: [], expect: 'something vague' }, BY)
 
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
@@ -66,21 +71,21 @@ describe('raiseExpectation', () => {
       terms: [],
       expect: 'the app survives a refresh',
       pass: 'usage',
-    })
+    }, BY)
     expect(outcome.ok).toBe(true)
   })
 })
 
 describe('supersedeExpectation', () => {
   it('moves the original to retired/, records why, and points at the replacement', async () => {
-    const original = await raiseExpectation(store, { ...BASE, expect: 'the first wording' })
+    const original = await raiseExpectation(store, { ...BASE, expect: 'the first wording' }, BY)
     expect(original.ok).toBe(true)
     if (!original.ok) return
 
     const outcome = await supersedeExpectation(store, original.id, {
       note: 'q-004 settled it the other way',
       replacement: { kind: 'functional', terms: ['Task', 'completeTask'], expect: 'the better wording' },
-    })
+    }, BY)
 
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
@@ -97,11 +102,11 @@ describe('supersedeExpectation', () => {
   })
 
   it('retires without a replacement, and the directory is what marks it retired', async () => {
-    const original = await raiseExpectation(store, { ...BASE, expect: 'this turned out to be wrong' })
+    const original = await raiseExpectation(store, { ...BASE, expect: 'this turned out to be wrong' }, BY)
     expect(original.ok).toBe(true)
     if (!original.ok) return
 
-    const outcome = await supersedeExpectation(store, original.id, { note: 'the feature was dropped' })
+    const outcome = await supersedeExpectation(store, original.id, { note: 'the feature was dropped' }, BY)
     expect(outcome.ok && outcome.replacement).toBeNull()
 
     const { expectations, retired } = await store.readExpectations()
@@ -111,12 +116,12 @@ describe('supersedeExpectation', () => {
   })
 
   it('never reuses a retired id', async () => {
-    const before = await raiseExpectation(store, { ...BASE, expect: 'about to be retired' })
+    const before = await raiseExpectation(store, { ...BASE, expect: 'about to be retired' }, BY)
     expect(before.ok).toBe(true)
     if (!before.ok) return
 
-    await supersedeExpectation(store, before.id, { note: 'no longer relevant' })
-    const after = await raiseExpectation(store, { ...BASE, expect: 'raised after the retirement' })
+    await supersedeExpectation(store, before.id, { note: 'no longer relevant' }, BY)
+    const after = await raiseExpectation(store, { ...BASE, expect: 'raised after the retirement' }, BY)
 
     expect(after.ok).toBe(true)
     if (!after.ok) return
@@ -125,7 +130,7 @@ describe('supersedeExpectation', () => {
   })
 
   it('404s on an id that is not live', async () => {
-    const outcome = await supersedeExpectation(store, 'e-999', { note: 'nothing there' })
+    const outcome = await supersedeExpectation(store, 'e-999', { note: 'nothing there' }, BY)
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
     expect(outcome.status).toBe(404)

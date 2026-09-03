@@ -4,6 +4,23 @@
  * repo is a view over data shaped like this.
  */
 
+/**
+ * Who made a write. The kind distinguishes a person from the two agents; it is stamped
+ * server-side from the route or the agent definition, never taken from the client, so an actor
+ * in the sandbox cannot claim to be a human. `user` is the human account — absent until auth
+ * exists, and for an agent action it is eventually the human whose session it was.
+ *
+ * This is identity, kept separate from the `raisedBy` origin (which records *why* and in what
+ * pass). Optional on the records below: absent means the record predates identity tracking,
+ * the same way `appliedAt` is absent on changesets applied before it was recorded.
+ */
+export type AuthorKind = 'human' | 'spec' | 'coder'
+
+export interface Author {
+  kind: AuthorKind
+  user?: string
+}
+
 export type TermType = 'entity' | 'event' | 'function' | 'attribute-type'
 
 export const TERM_TYPES: readonly TermType[] = [
@@ -58,6 +75,8 @@ export interface Changeset {
   ops: Op[]
   /** Plain-language test intentions; a changeset carrying passing tests is safer to auto-approve. */
   tests: string[]
+  /** Who proposed it. Absent on changesets minted before identity was tracked. */
+  author?: Author
   /** Set when this changeset was minted by answering a Question — the id of that question. */
   fromQuestion?: string
   /** ISO timestamp, written when the changeset lands. Absent while it is still pending. */
@@ -86,6 +105,8 @@ export interface Question {
   /** Why it is being asked — must quote the spec text in conflict, not just describe inconvenience. */
   because: string
   raisedBy: QuestionOrigin
+  /** Who raised it. Absent on questions raised before identity was tracked. */
+  author?: Author
   /**
    * Candidate answers. The count is the answer shape, so there is no separate field to
    * keep in sync: one option is approve-or-decline, several is a choice, none means only
@@ -127,6 +148,8 @@ export interface Answer {
   answeredAt: string
   /** Id of the changeset this answer put into the pending queue, if any. */
   changesetId?: string
+  /** Who answered. Absent on answers recorded before identity was tracked. */
+  author?: Author
 }
 
 /**
@@ -186,6 +209,8 @@ export interface Expectation {
    * non-functional and names two terms.
    */
   kind: ExpectationKind
+  /** Who raised it. Absent on expectations raised before identity was tracked. */
+  author?: Author
   /** Glossary terms this concerns. May be empty for a non-functional expectation that scopes to the whole app. */
   terms: string[]
   /** The situation. Empty when the expectation is unconditional. */

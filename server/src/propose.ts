@@ -7,7 +7,7 @@
  * this needs no approval prompt of its own — the approval already exists downstream.
  */
 import { parseChangeset } from '@tb/shared'
-import type { Changeset, Op } from '@tb/shared'
+import type { Author, Changeset, Op } from '@tb/shared'
 import type { SpecStore } from './specStore.js'
 
 export interface ProposeRequest {
@@ -25,6 +25,7 @@ export type ProposeOutcome =
 export async function proposeChangeset(
   store: SpecStore,
   request: ProposeRequest,
+  author: Author,
 ): Promise<ProposeOutcome> {
   const id = await store.nextChangesetId()
   const changeset: Changeset = {
@@ -33,6 +34,7 @@ export async function proposeChangeset(
     ops: request.ops,
     tests: request.tests,
     ...(request.fromQuestion ? { fromQuestion: request.fromQuestion } : {}),
+    author,
   }
 
   // Validate before writing: a malformed changeset on disk comes back as a source problem in
