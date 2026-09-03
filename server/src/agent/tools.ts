@@ -15,7 +15,7 @@
 import { z } from 'zod'
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { analyzePending, computeBacklinks, computeCoverage, summarizeOp } from '@tb/shared'
-import type { PendingItem, Question, Term } from '@tb/shared'
+import type { Changeset, PendingItem, Question, Term } from '@tb/shared'
 import { markImplemented } from '../commit.js'
 import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
@@ -24,7 +24,7 @@ import { raiseQuestion } from '../raise.js'
 import { raiseExpectation } from '../expectations.js'
 import type { RaiseRequest } from '../raise.js'
 import type { ProposeRequest } from '../propose.js'
-import { readChangesets, readExpectations, readQuestions, readTerms } from '../store.js'
+import type { SpecStore } from '../specStore.js'
 import type { TranscriptStore } from '../transcripts.js'
 
 /**
@@ -94,7 +94,7 @@ function describeTerm(terms: Term[], name: string) {
 }
 
 /** Everything pending, flattened into comparable op-lists for the conflict analysis. */
-function pendingItems(changesets: Awaited<ReturnType<typeof readChangesets>>['changesets'], questions: Question[]): PendingItem[] {
+function pendingItems(changesets: Changeset[], questions: Question[]): PendingItem[] {
   const items: PendingItem[] = changesets.map((changeset) => ({
     id: changeset.id,
     kind: 'changeset',
@@ -118,13 +118,13 @@ function pendingItems(changesets: Awaited<ReturnType<typeof readChangesets>>['ch
   return items
 }
 
-export function blueprintTools(transcripts: TranscriptStore) {
+export function blueprintTools(store: SpecStore, transcripts: TranscriptStore) {
   const readGlossary = tool(
     'read_glossary',
     'Read the spec glossary. Omit `term` for every term in summary form; supply one to get its full spec, attributes, subtypes and everything that references it.',
     { term: z.string().optional().describe('A single term name, e.g. "Task"') },
     async (args) => {
-      const { terms, problems } = await readTerms()
+      const { terms, problems } = await store.readTerms()
 
       if (args.term) {
         const described = describeTerm(terms, args.term)
@@ -157,7 +157,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
       status: z.enum(['open', 'answered', 'all']).optional().describe('Defaults to "all"'),
     },
     async (args) => {
-      const { questions, problems } = await readQuestions()
+      const { questions, problems } = await store.readQuestions()
       const status = args.status ?? 'all'
       const filtered = questions.filter((question) =>
         status === 'all' ? true : status === 'open' ? !question.answer : Boolean(question.answer),
@@ -202,7 +202,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     'Read changesets: `outstanding` are applied but not yet implemented — the work, and where to find the id mark_implemented wants. `pending` are proposed and awaiting human review; do not implement those, they may still be rejected or changed. `implemented` is history.',
     {},
     async () => {
-      const { changesets, applied, problems } = await readChangesets()
+      const { changesets, applied, problems } = await store.readChangesets()
 
       const describe = (changeset: (typeof applied)[number]) => ({
         id: changeset.id,
@@ -231,9 +231,9 @@ export function blueprintTools(transcripts: TranscriptStore) {
     {},
     async () => {
       const [{ terms }, { changesets }, { questions }] = await Promise.all([
-        readTerms(),
-        readChangesets(),
-        readQuestions(),
+        store.readTerms(),
+        store.readChangesets(),
+        store.readQuestions(),
       ])
 
       const items = pendingItems(changesets, questions)
@@ -281,8 +281,8 @@ export function blueprintTools(transcripts: TranscriptStore) {
     },
     async (args) => {
       const [{ terms }, { expectations, retired, problems }] = await Promise.all([
-        readTerms(),
-        readExpectations(),
+        store.readTerms(),
+        store.readExpectations(),
       ])
 
       if (args.coverage) {
@@ -361,10 +361,10 @@ export function blueprintTools(transcripts: TranscriptStore) {
       // a real disagreement should still be able to record it, and a tool that silently
       // discarded the finding would leave the write looking clean — which is the failure this
       // whole field exists to prevent.
-      const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+      const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
       const report = await checkExpectation(draft, terms, expectations)
 
-      const outcome = await raiseExpectation({
+      const outcome = await raiseExpectation(store, {
         ...draft,
         pass: args.pass,
         from: args.from,
@@ -425,7 +425,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
         .describe('Candidate answers; may be empty when only the human can write the spec'),
     },
     async (args) => {
-      const outcome = await raiseQuestion({
+      const outcome = await raiseQuestion(store, {
         asks: args.asks,
         because: args.because,
         pass: args.pass,
@@ -465,7 +465,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
         .describe('Id of an already-answered question this follows from, if any'),
     },
     async (args) => {
-      const outcome = await proposeChangeset({
+      const outcome = await proposeChangeset(store, {
         summary: args.summary,
         ops: args.ops as ProposeRequest['ops'],
         tests: args.tests,
@@ -510,7 +510,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     'Record that code has been written for an applied changeset. Call this only after the code actually matches what the changeset says — it is what stops the change showing as outstanding work in the UI. Refused unless your stored specs snapshot is at the current version, since otherwise the code was written against a contract that has since moved.',
     { id: z.string().describe('The applied changeset id, e.g. "cs-001"') },
     async (args) => {
-      const current = (await currentSnapshot()).version
+      const current = (await currentSnapshot(store)).version
       const deployed = await deployedVersion()
 
       if (deployed === null) {
@@ -529,7 +529,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
         })
       }
 
-      const outcome = await markImplemented(args.id, new Date().toISOString())
+      const outcome = await markImplemented(store, args.id, new Date().toISOString())
       return say(outcome.ok ? { marked: args.id, file: outcome.file } : { error: outcome.error })
     },
   )
@@ -539,7 +539,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
     'Fetch the specs contract at its current version. Store the returned JSON verbatim wherever your project keeps it, and commit it with the code: it is what lets the code be checked against the specs offline, and its version is what mark_implemented is checked against. Refresh it before an implementation pass. It carries names, kinds and hashes, not spec text — it tells you *which* terms moved, and read_glossary tells you what they now say. Do not hand-edit it.',
     {},
     async () => {
-      const snapshot = await currentSnapshot()
+      const snapshot = await currentSnapshot(store)
       recordExport(snapshot, new Date().toISOString())
       return say(snapshot)
     },
@@ -578,7 +578,7 @@ export function blueprintTools(transcripts: TranscriptStore) {
         ...result,
         content: [
           ...result.content,
-          { type: 'text' as const, text: JSON.stringify({ specsVersion: (await currentSnapshot()).version }) },
+          { type: 'text' as const, text: JSON.stringify({ specsVersion: (await currentSnapshot(store)).version }) },
         ],
       }
     },
@@ -586,9 +586,9 @@ export function blueprintTools(transcripts: TranscriptStore) {
 }
 
 /** The subset a given agent may call, resolved from its definition. */
-export function toolsFor(transcripts: TranscriptStore, names: readonly string[]) {
+export function toolsFor(store: SpecStore, transcripts: TranscriptStore, names: readonly string[]) {
   const wanted = new Set(names)
-  return blueprintTools(transcripts).filter((candidate) => wanted.has((candidate as { name: string }).name))
+  return blueprintTools(store, transcripts).filter((candidate) => wanted.has((candidate as { name: string }).name))
 }
 
 export function qualified(names: readonly string[]): string[] {

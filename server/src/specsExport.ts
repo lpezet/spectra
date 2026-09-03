@@ -29,7 +29,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { Expectation, Term } from '@tb/shared'
 import { CODER_URL } from './sandbox.js'
-import { SPECS_DIR, readExpectations, readTerms } from './store.js'
+import { SPECS_DIR } from './config.js'
+import type { SpecStore } from './specStore.js'
 import { DATA_DIR } from './transcripts.js'
 
 /** Where the last export is remembered. Not in specs/ — it records no decision. */
@@ -130,8 +131,8 @@ export function specsSnapshot(terms: Term[], expectations: Expectation[]): Snaps
  * caller from passing terms alone and computing a version nobody else agrees with — the failure
  * would be a silent mismatch, which is the worst shape for a bug in a version check to take.
  */
-export async function currentSnapshot(): Promise<Snapshot> {
-  const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+export async function currentSnapshot(store: SpecStore): Promise<Snapshot> {
+  const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
   return specsSnapshot(terms, expectations)
 }
 

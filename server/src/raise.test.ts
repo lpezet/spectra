@@ -2,11 +2,13 @@ import { mkdtemp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { FileSystemSpecStore } from './fileSystemSpecStore.js'
+import { raiseQuestion } from './raise.js'
 
-// store.ts resolves SPECS_DIR at module load, so the sandbox has to exist and be pointed
-// at before anything imports it — hence the dynamic import below.
+// The store is constructor-injected now, so the temp glossary is just a directory we point a
+// FileSystemSpecStore at — no module-load env dance.
 let specs: string
-let raiseQuestion: typeof import('./raise.js').raiseQuestion
+let store: FileSystemSpecStore
 
 beforeAll(async () => {
   specs = await mkdtemp(path.join(tmpdir(), 'tb-raise-'))
@@ -16,8 +18,7 @@ beforeAll(async () => {
     path.join(specs, 'terms', 'task.json'),
     JSON.stringify({ name: 'Task', type: 'entity', spec: 'A task.', parent: null, tags: [], attributes: [] }),
   )
-  process.env.SPECS_DIR = specs
-  ;({ raiseQuestion } = await import('./raise.js'))
+  store = new FileSystemSpecStore(specs)
 })
 
 const BASE = {
@@ -33,7 +34,7 @@ async function questionFiles(): Promise<string[]> {
 
 describe('raiseQuestion', () => {
   it('writes a question with no options — some can only be answered in prose', async () => {
-    const outcome = await raiseQuestion({ ...BASE, options: [] })
+    const outcome = await raiseQuestion(store, { ...BASE, options: [] })
 
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
@@ -45,17 +46,17 @@ describe('raiseQuestion', () => {
   })
 
   it('numbers the next question above the highest already there', async () => {
-    const second = await raiseQuestion({ ...BASE, asks: 'Second question?', options: [] })
+    const second = await raiseQuestion(store, { ...BASE, asks: 'Second question?', options: [] })
     expect(second.ok && second.id).toBe('q-002')
   })
 
   it('names the file from the id and the question', async () => {
-    const outcome = await raiseQuestion({ ...BASE, asks: 'Should a Task have an owner?', options: [] })
+    const outcome = await raiseQuestion(store, { ...BASE, asks: 'Should a Task have an owner?', options: [] })
     expect(outcome.ok && outcome.file).toMatch(/^q-003-should-a-task-have-an-owner\.json$/)
   })
 
   it('keeps a proposal on an option and defaults the others to null', async () => {
-    const outcome = await raiseQuestion({
+    const outcome = await raiseQuestion(store, {
       ...BASE,
       asks: 'Add an owner?',
       options: [
@@ -79,7 +80,7 @@ describe('raiseQuestion', () => {
 
   it('refuses a proposal with an invalid valueType instead of writing it', async () => {
     const before = await questionFiles()
-    const outcome = await raiseQuestion({
+    const outcome = await raiseQuestion(store, {
       ...BASE,
       asks: 'Bad op?',
       options: [
@@ -101,8 +102,8 @@ describe('raiseQuestion', () => {
   })
 
   it('never overwrites an existing file when two questions collide on a name', async () => {
-    const first = await raiseQuestion({ ...BASE, asks: 'Same wording', options: [] })
-    const second = await raiseQuestion({ ...BASE, asks: 'Same wording', options: [] })
+    const first = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] })
+    const second = await raiseQuestion(store, { ...BASE, asks: 'Same wording', options: [] })
 
     expect(first.ok && second.ok).toBe(true)
     if (!first.ok || !second.ok) return

@@ -29,11 +29,12 @@ import { AGENTS } from './agents.js'
 import type { AgentName } from './agents.js'
 import { toolsFor } from './tools.js'
 import type { TranscriptStore } from '../transcripts.js'
+import type { SpecStore } from '../specStore.js'
 
 /** The name the tools appear under, and so the `mcp__blueprints__` prefix on the far side. */
 const SERVER_NAME = 'blueprints'
 
-export function mcpRoutes(transcripts: TranscriptStore): Router {
+export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Router {
   const router = Router()
 
   /**
@@ -49,7 +50,7 @@ export function mcpRoutes(transcripts: TranscriptStore): Router {
     }
     res.json({
       agent: agent.name,
-      tools: toolsFor(transcripts, agent.domainTools).map((entry) => ({
+      tools: toolsFor(store, transcripts, agent.domainTools).map((entry) => ({
         name: entry.name,
         description: entry.description,
       })),
@@ -80,7 +81,7 @@ export function mcpRoutes(transcripts: TranscriptStore): Router {
       builtins: agent.builtins,
       autoApprove: agent.autoApprove,
       disallowedTools: agent.disallowedTools ?? [],
-      tools: toolsFor(transcripts, agent.domainTools).map((entry) => entry.name),
+      tools: toolsFor(store, transcripts, agent.domainTools).map((entry) => entry.name),
     })
   })
 
@@ -108,7 +109,7 @@ export function mcpRoutes(transcripts: TranscriptStore): Router {
       handler: (args: Record<string, unknown>) => unknown,
     ) => void
 
-    for (const entry of toolsFor(transcripts, agent.domainTools)) {
+    for (const entry of toolsFor(store, transcripts, agent.domainTools)) {
       register(
         entry.name,
         { description: entry.description, inputSchema: entry.inputSchema },

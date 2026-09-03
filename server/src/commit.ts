@@ -6,7 +6,7 @@
  */
 import { applyOps } from '@tb/shared'
 import type { Diagnostic } from '@tb/shared'
-import { store } from './store.js'
+import type { SpecStore } from './specStore.js'
 
 // termFileName used to live here; kept re-exported from its new home so importers are unmoved.
 export { termFileName } from './serialize.js'
@@ -36,7 +36,11 @@ export interface ApplyRequest {
   acknowledgeWarnings?: boolean
 }
 
-export async function applyChangeset(id: string, request: ApplyRequest): Promise<CommitOutcome> {
+export async function applyChangeset(
+  store: SpecStore,
+  id: string,
+  request: ApplyRequest,
+): Promise<CommitOutcome> {
   const changeset = await store.findChangeset(id)
   if (!changeset) return { ok: false, status: 404, error: `No pending changeset with id "${id}".` }
 
@@ -117,6 +121,7 @@ export async function applyChangeset(id: string, request: ApplyRequest): Promise
  * read — this is the first tool it should get.
  */
 export async function markImplemented(
+  store: SpecStore,
   id: string,
   at: string,
 ): Promise<{ ok: boolean; status?: number; error?: string; file?: string }> {
@@ -125,7 +130,7 @@ export async function markImplemented(
   return { ok: true, file }
 }
 
-export async function rejectChangeset(id: string): Promise<CommitOutcome> {
+export async function rejectChangeset(store: SpecStore, id: string): Promise<CommitOutcome> {
   const resolvedTo = await store.rejectChangeset(id)
   if (resolvedTo === null) return { ok: false, status: 404, error: `No pending changeset with id "${id}".` }
 

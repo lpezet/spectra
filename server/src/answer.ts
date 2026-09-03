@@ -9,7 +9,7 @@
  */
 import type { Answer, Changeset } from '@tb/shared'
 import { slug } from './files.js'
-import { store } from './store.js'
+import type { SpecStore } from './specStore.js'
 
 export type AnswerOutcome =
   | { ok: false; status: 404; error: string }
@@ -32,7 +32,11 @@ export interface AnswerRequest {
   answeredAt: string
 }
 
-export async function answerQuestion(id: string, request: AnswerRequest): Promise<AnswerOutcome> {
+export async function answerQuestion(
+  store: SpecStore,
+  id: string,
+  request: AnswerRequest,
+): Promise<AnswerOutcome> {
   const question = await store.findQuestion(id)
   if (!question) return { ok: false, status: 404, error: `No question with id "${id}".` }
 
