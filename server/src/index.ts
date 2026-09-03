@@ -12,13 +12,17 @@ import { computeCoverage } from '@tb/shared'
 import { checkExpectation } from './expectationCheck.js'
 import { raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
-import { SPECS_DIR, readChangesets, readExpectations, readQuestions, readTerms } from './store.js'
+import { SPECS_DIR } from './config.js'
+import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
 
+// The composition root: one store, constructed here and threaded into everything that reads or
+// writes the glossary. A hosted deployment resolves this per tenant instead — same seam.
+const store = new FileSystemSpecStore(SPECS_DIR)
 const transcripts = new TranscriptStore()
-const runner = new AgentRunner(transcripts)
+const runner = new AgentRunner(store, transcripts)
 
 const app = express()
 
@@ -30,11 +34,11 @@ app.use(express.json())
 app.use('/api/chat', chatRoutes(transcripts, runner))
 // Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
 // over the internal docker network by an agent in another container.
-app.use('/mcp', mcpRoutes(transcripts))
+app.use('/mcp', mcpRoutes(store, transcripts))
 
 app.get('/api/terms', async (_req, res, next) => {
   try {
-    res.json(await readTerms())
+    res.json(await store.readTerms())
   } catch (error) {
     next(error)
   }
@@ -42,7 +46,7 @@ app.get('/api/terms', async (_req, res, next) => {
 
 app.get('/api/changesets', async (_req, res, next) => {
   try {
-    res.json(await readChangesets())
+    res.json(await store.readChangesets())
   } catch (error) {
     next(error)
   }
@@ -56,7 +60,7 @@ app.post('/api/changesets/:id/apply', async (req, res, next) => {
       return
     }
 
-    const outcome = await applyChangeset(req.params.id, {
+    const outcome = await applyChangeset(store, req.params.id, {
       opIndices: body.opIndices as number[],
       acknowledgeWarnings: body.acknowledgeWarnings === true,
     })
@@ -68,7 +72,7 @@ app.post('/api/changesets/:id/apply', async (req, res, next) => {
 
 app.post('/api/changesets/:id/reject', async (req, res, next) => {
   try {
-    const outcome = await rejectChangeset(req.params.id)
+    const outcome = await rejectChangeset(store, req.params.id)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)
@@ -77,7 +81,7 @@ app.post('/api/changesets/:id/reject', async (req, res, next) => {
 
 app.post('/api/changesets/:id/implemented', async (req, res, next) => {
   try {
-    const outcome = await markImplemented(req.params.id, new Date().toISOString())
+    const outcome = await markImplemented(store, req.params.id, new Date().toISOString())
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
@@ -99,7 +103,7 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
 app.get('/api/specs/version', async (_req, res, next) => {
   try {
     res.json({
-      specsVersion: (await currentSnapshot()).version,
+      specsVersion: (await currentSnapshot(store)).version,
       snapshotVersion: await deployedVersion(),
       lastExport: lastExport(),
     })
@@ -176,7 +180,7 @@ app.post('/api/speech', async (req, res, next) => {
 
 app.get('/api/expectations', async (_req, res, next) => {
   try {
-    res.json(await readExpectations())
+    res.json(await store.readExpectations())
   } catch (error) {
     next(error)
   }
@@ -197,7 +201,7 @@ app.post('/api/expectations/check', async (req, res, next) => {
       return
     }
 
-    const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+    const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
 
     // A replacement is prefilled from the expectation it replaces, so comparing it against
     // that expectation reports a duplicate of the very thing being retired. Excluded rather
@@ -242,7 +246,7 @@ app.post('/api/expectations', async (req, res, next) => {
       return
     }
 
-    const outcome = await raiseExpectation({
+    const outcome = await raiseExpectation(store, {
       kind: body.kind,
       terms: Array.isArray(body.terms) ? body.terms : [],
       given: typeof body.given === 'string' ? body.given : '',
@@ -269,8 +273,8 @@ app.post('/api/expectations', async (req, res, next) => {
  */
 app.post('/api/expectations/:id/recheck', async (req, res, next) => {
   try {
-    const [{ terms }] = await Promise.all([readTerms()])
-    const outcome = await recheckExpectation(req.params.id, async (expectation, others) => {
+    const [{ terms }] = await Promise.all([store.readTerms()])
+    const outcome = await recheckExpectation(store, req.params.id, async (expectation, others) => {
       const report = await checkExpectation(
         {
           kind: expectation.kind,
@@ -298,7 +302,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
       return
     }
 
-    const outcome = await supersedeExpectation(req.params.id, {
+    const outcome = await supersedeExpectation(store, req.params.id, {
       note: body.note,
       ...(body.replacement ? { replacement: body.replacement } : {}),
     })
@@ -318,7 +322,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
  */
 app.get('/api/coverage', async (req, res, next) => {
   try {
-    const [{ terms }, { expectations }] = await Promise.all([readTerms(), readExpectations()])
+    const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
     const distance = Number(req.query.distance ?? 2)
     res.json(
       computeCoverage(terms, expectations, {
@@ -332,7 +336,7 @@ app.get('/api/coverage', async (req, res, next) => {
 
 app.get('/api/questions', async (_req, res, next) => {
   try {
-    res.json(await readQuestions())
+    res.json(await store.readQuestions())
   } catch (error) {
     next(error)
   }
@@ -347,7 +351,7 @@ app.post('/api/questions/:id/answer', async (req, res, next) => {
       return
     }
 
-    const outcome = await answerQuestion(req.params.id, {
+    const outcome = await answerQuestion(store, req.params.id, {
       chose,
       note: typeof body?.note === 'string' ? body.note : '',
       answeredAt: new Date().toISOString(),

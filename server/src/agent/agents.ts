@@ -11,7 +11,7 @@
  * decision still lands as an artifact you approved.
  */
 import path from 'node:path'
-import { SPECS_DIR } from '../store.js'
+import { SPECS_DIR } from '../config.js'
 import type { Author } from '../transcripts.js'
 
 const REPO = path.resolve(SPECS_DIR, '..')

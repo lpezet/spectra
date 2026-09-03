@@ -20,7 +20,7 @@
  */
 import { parseExpectation } from '@tb/shared'
 import type { Clash, Expectation, ExpectationKind } from '@tb/shared'
-import { store } from './store.js'
+import type { SpecStore } from './specStore.js'
 
 export interface RaiseExpectationRequest {
   kind: ExpectationKind
@@ -44,7 +44,10 @@ export type ExpectationOutcome =
   | { ok: false; error: string; status?: number }
   | { ok: true; id: string; file: string; expectation: Expectation }
 
-export async function raiseExpectation(request: RaiseExpectationRequest): Promise<ExpectationOutcome> {
+export async function raiseExpectation(
+  store: SpecStore,
+  request: RaiseExpectationRequest,
+): Promise<ExpectationOutcome> {
   const id = await store.nextExpectationId()
 
   const expectation: Expectation = {
@@ -85,6 +88,7 @@ export async function raiseExpectation(request: RaiseExpectationRequest): Promis
  * the disagreement survives, the expectation stays live and contested and a human decides.
  */
 export async function recheckExpectation(
+  store: SpecStore,
   id: string,
   check: (expectation: Expectation, others: Expectation[]) => Promise<Clash[]>,
 ): Promise<ExpectationOutcome> {
@@ -122,6 +126,7 @@ export type SupersedeOutcome =
  * twice is noise someone will notice, and one silently missing is the failure that matters.
  */
 export async function supersedeExpectation(
+  store: SpecStore,
   id: string,
   request: SupersedeRequest,
 ): Promise<SupersedeOutcome> {
@@ -131,7 +136,7 @@ export async function supersedeExpectation(
   let replacement: Expectation | null = null
 
   if (request.replacement) {
-    const raised = await raiseExpectation({
+    const raised = await raiseExpectation(store, {
       ...request.replacement,
       pass: request.replacement.pass ?? 'supersedes',
       from: id,

@@ -14,6 +14,7 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptStore } from '../transcripts.js'
+import type { SpecStore } from '../specStore.js'
 import { CODER_URL, probeSandbox } from '../sandbox.js'
 import { AGENTS } from './agents.js'
 import type { AgentName } from './agents.js'
@@ -61,7 +62,10 @@ export class AgentRunner {
    */
   private readonly unattended = new Set<string>()
 
-  constructor(private readonly transcripts: TranscriptStore) {}
+  constructor(
+    private readonly store: SpecStore,
+    private readonly transcripts: TranscriptStore,
+  ) {}
 
   /**
    * Two ways to authenticate, and they are not interchangeable. A console API key
@@ -159,7 +163,7 @@ export class AgentRunner {
     const server = createSdkMcpServer({
       name: 'blueprints',
       version: '1.0.0',
-      tools: toolsFor(this.transcripts, agent.domainTools),
+      tools: toolsFor(this.store, this.transcripts, agent.domainTools),
     })
 
     const key = `${sessionId}:${to}`

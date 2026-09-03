@@ -7,7 +7,7 @@
  */
 import { parseQuestion } from '@tb/shared'
 import type { Proposal, Question, QuestionOption } from '@tb/shared'
-import { store } from './store.js'
+import type { SpecStore } from './specStore.js'
 
 export interface RaiseRequest {
   asks: string
@@ -22,7 +22,7 @@ export type RaiseOutcome =
   | { ok: false; error: string }
   | { ok: true; id: string; file: string; question: Question }
 
-export async function raiseQuestion(request: RaiseRequest): Promise<RaiseOutcome> {
+export async function raiseQuestion(store: SpecStore, request: RaiseRequest): Promise<RaiseOutcome> {
   const id = await store.nextQuestionId()
 
   const options: QuestionOption[] = request.options.map((option) => ({

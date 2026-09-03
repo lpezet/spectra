@@ -8,7 +8,7 @@
  */
 import { parseChangeset } from '@tb/shared'
 import type { Changeset, Op } from '@tb/shared'
-import { store } from './store.js'
+import type { SpecStore } from './specStore.js'
 
 export interface ProposeRequest {
   summary: string
@@ -22,7 +22,10 @@ export type ProposeOutcome =
   | { ok: false; error: string }
   | { ok: true; id: string; file: string; changeset: Changeset }
 
-export async function proposeChangeset(request: ProposeRequest): Promise<ProposeOutcome> {
+export async function proposeChangeset(
+  store: SpecStore,
+  request: ProposeRequest,
+): Promise<ProposeOutcome> {
   const id = await store.nextChangesetId()
   const changeset: Changeset = {
     id,
