@@ -21,6 +21,17 @@ export interface Author {
   user?: string
 }
 
+/**
+ * Whether a human-authored artifact is still being drafted or has been published to the team.
+ *
+ * `ready` is the published state — it counts as coverage, rides in the versioned contract, and
+ * the agents see it. `draft` is author-only and part of nothing until it is published, the same
+ * way a draft PR is not yet a request for review. Optional on the records below: absent means
+ * `ready`, so the specs already on disk (all published) need no rewrite. Agents always raise
+ * `ready`; drafting is a human convenience.
+ */
+export type RecordStatus = 'draft' | 'ready'
+
 export type TermType = 'entity' | 'event' | 'function' | 'attribute-type'
 
 export const TERM_TYPES: readonly TermType[] = [
@@ -107,6 +118,8 @@ export interface Question {
   raisedBy: QuestionOrigin
   /** Who raised it. Absent on questions raised before identity was tracked. */
   author?: Author
+  /** Draft or published. Absent means `ready`. Agent-raised questions are always `ready`. */
+  status?: RecordStatus
   /**
    * Candidate answers. The count is the answer shape, so there is no separate field to
    * keep in sync: one option is approve-or-decline, several is a choice, none means only
@@ -211,6 +224,11 @@ export interface Expectation {
   kind: ExpectationKind
   /** Who raised it. Absent on expectations raised before identity was tracked. */
   author?: Author
+  /**
+   * Draft or published. Absent means `ready`. A draft counts toward nothing — not coverage,
+   * not the versioned contract, and the agents do not see it — until it is published.
+   */
+  status?: RecordStatus
   /** Glossary terms this concerns. May be empty for a non-functional expectation that scopes to the whole app. */
   terms: string[]
   /** The situation. Empty when the expectation is unconditional. */

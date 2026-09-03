@@ -56,8 +56,13 @@ export interface QuestionFeed {
 }
 
 export interface ExpectationFeed {
-  /** Live expectations — what is currently expected to hold. */
+  /** Published, live expectations — what is currently expected to hold. Excludes drafts. */
   expectations: Expectation[]
+  /**
+   * Drafts — live but not yet published, so they count toward nothing (coverage, the versioned
+   * contract, the agents' view) and are returned only for their author's own authoring UI.
+   */
+  drafts: Expectation[]
   /** Superseded ones, kept so a test citing a retired id still resolves and the reason survives. */
   retired: Expectation[]
   problems: SourceProblem[]

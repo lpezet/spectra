@@ -6,7 +6,7 @@
  * runs through the human. That is why this needs no approval prompt while `proposeChangeset` will.
  */
 import { parseQuestion } from '@tb/shared'
-import type { Author, Proposal, Question, QuestionOption } from '@tb/shared'
+import type { Author, Proposal, Question, QuestionOption, RecordStatus } from '@tb/shared'
 import type { SpecStore } from './specStore.js'
 
 export interface RaiseRequest {
@@ -16,6 +16,8 @@ export interface RaiseRequest {
   file?: string
   terms: string[]
   options: Array<{ label: string; detail?: string; proposal?: Proposal | null }>
+  /** Draft or published. Absent means `ready`; agents always raise `ready`. */
+  status?: RecordStatus
 }
 
 export type RaiseOutcome =
@@ -45,6 +47,7 @@ export async function raiseQuestion(
       terms: request.terms,
     },
     author,
+    status: request.status ?? 'ready',
     options,
     answer: null,
   }
