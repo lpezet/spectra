@@ -1,17 +1,15 @@
 /**
- * Answering a question. Two things happen and both matter: the answer is written back
- * into the question file, where it stays as the record of *why* the glossary says what it
- * says, and the chosen option's proposal is minted into the pending changeset queue,
- * where it goes through the same review the human already has.
+ * Answering a question. Two things happen and both matter: the answer is written back into the
+ * question, where it stays as the record of *why* the glossary says what it says, and the
+ * chosen option's proposal is minted into the pending changeset queue, where it goes through
+ * the same review the human already has.
  *
- * Note what does not happen: nothing is applied. Answering a question decides the
- * intent; applying the changeset it produces is still a separate, deliberate act.
+ * Note what does not happen: nothing is applied. Answering a question decides the intent;
+ * applying the changeset it produces is still a separate, deliberate act.
  */
-import path from 'node:path'
-import { mkdir } from 'node:fs/promises'
-import type { Answer, Changeset, Question } from '@tb/shared'
-import { CHANGESETS_DIR, QUESTIONS_DIR, findQuestionEntry } from './store.js'
-import { slug, uniquePath, writeAtomic } from './files.js'
+import type { Answer, Changeset } from '@tb/shared'
+import { slug } from './files.js'
+import { store } from './store.js'
 
 export type AnswerOutcome =
   | { ok: false; status: 404; error: string }
@@ -35,10 +33,8 @@ export interface AnswerRequest {
 }
 
 export async function answerQuestion(id: string, request: AnswerRequest): Promise<AnswerOutcome> {
-  const entry = await findQuestionEntry(id)
-  if (!entry) return { ok: false, status: 404, error: `No question with id "${id}".` }
-
-  const { question, file } = entry
+  const question = await store.findQuestion(id)
+  if (!question) return { ok: false, status: 404, error: `No question with id "${id}".` }
 
   // A decision is a record, not a setting. Changing your mind means a new question (or a
   // hand-edit), so the reasoning that was acted on cannot be quietly overwritten.
@@ -84,16 +80,14 @@ export async function answerQuestion(id: string, request: AnswerRequest): Promis
       fromQuestion: question.id,
     }
 
-    await mkdir(CHANGESETS_DIR, { recursive: true })
-    const target = await uniquePath(CHANGESETS_DIR, `${changesetId}.json`)
-    await writeAtomic(target, `${JSON.stringify(changeset, null, 2)}\n`)
-
+    // Written before the answer: if the process dies between the two, an unreferenced changeset
+    // in the queue is noise someone notices, where an answer citing a changeset that was never
+    // written is a dangling reference.
+    changesetFile = await store.addChangeset(changeset)
     answer.changesetId = changesetId
-    changesetFile = path.basename(target)
   }
 
-  const answered: Question = { ...question, answer }
-  await writeAtomic(path.join(QUESTIONS_DIR, file), `${JSON.stringify(answered, null, 2)}\n`)
+  await store.writeAnswer(id, answer)
 
   return {
     ok: true,
