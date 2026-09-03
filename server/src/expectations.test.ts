@@ -50,6 +50,8 @@ describe('raiseExpectation', () => {
     expect(written.author).toEqual({ kind: 'human' })
     // Published by default — a raise with no status is ready, not a draft.
     expect(written.status).toBe('ready')
+    // Born at revision 1.
+    expect(written.rev).toBe(1)
   })
 
   it('numbers the next above the highest already there', async () => {
@@ -176,5 +178,53 @@ describe('draft expectations', () => {
     expect(missing.ok).toBe(false)
     if (missing.ok) return
     expect(missing.status).toBe(404)
+  })
+})
+
+describe('optimistic concurrency', () => {
+  it('bumps the rev on every write', async () => {
+    const raised = await raiseExpectation(store, { ...BASE, expect: 'rev climbs on write' }, BY)
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+    expect(raised.expectation.rev).toBe(1)
+
+    const first = await publishExpectation(store, raised.id)
+    expect(first.ok && first.expectation.rev).toBe(2)
+
+    const second = await publishExpectation(store, raised.id)
+    expect(second.ok && second.expectation.rev).toBe(3)
+  })
+
+  it('refuses a write whose expected rev has been overtaken, naming where it is now', async () => {
+    const raised = await raiseExpectation(store, { ...BASE, expect: 'guarded against a stale write' }, BY)
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    // Someone else's write lands first, taking it from rev 1 to rev 2.
+    const ahead = await publishExpectation(store, raised.id, 1)
+    expect(ahead.ok && ahead.expectation.rev).toBe(2)
+
+    // A write still holding rev 1 is refused, and told the record is now at 2 — no verdict.
+    const stale = await publishExpectation(store, raised.id, 1)
+    expect(stale.ok).toBe(false)
+    if (stale.ok) return
+    expect(stale.status).toBe(409)
+    expect(stale.currentRev).toBe(2)
+
+    // Re-reading and retrying at the current rev succeeds.
+    const retried = await publishExpectation(store, raised.id, 2)
+    expect(retried.ok && retried.expectation.rev).toBe(3)
+  })
+
+  it('guards supersede too — a stale rev is a 409', async () => {
+    const raised = await raiseExpectation(store, { ...BASE, expect: 'superseding needs a fresh rev' }, BY)
+    expect(raised.ok).toBe(true)
+    if (!raised.ok) return
+
+    const outcome = await supersedeExpectation(store, raised.id, { note: 'dropping it' }, BY, 99)
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.status).toBe(409)
+    expect(outcome.currentRev).toBe(1)
   })
 })

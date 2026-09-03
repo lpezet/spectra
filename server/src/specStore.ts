@@ -101,6 +101,19 @@ export interface CommitResult {
   resolvedTo: string
 }
 
+/**
+ * The result of a mutation guarded by optimistic concurrency.
+ *
+ * `conflict` carries the revision the record is actually at, never a verdict — the caller
+ * compares it to what it expected, the same way `/api/specs/version` reports two numbers. When
+ * the caller supplies no `expectedRev`, the write proceeds and only ever returns `ok` or
+ * `not-found`; the conflict case appears only for a caller that opted into the check.
+ */
+export type MutationResult =
+  | { ok: true; rev: number; at: StoredAt }
+  | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'conflict'; currentRev: number }
+
 export interface SpecStore {
   // ── Reads ──────────────────────────────────────────────────────────────────────────
   // Partitioned by state, returning domain objects. No file handles.
@@ -134,11 +147,14 @@ export interface SpecStore {
   /** Record code written against an applied changeset. Where it lives, or null if none matched. */
   markImplemented(id: string, at: string): Promise<StoredAt | null>
 
-  /** Write an answer into an open question (open → answered), in place. */
-  writeAnswer(questionId: string, answer: Answer): Promise<void>
+  /**
+   * Write an answer into an open question (open → answered), in place, bumping its rev. When
+   * `expectedRev` is given and the question has moved past it, the write is refused as a conflict.
+   */
+  writeAnswer(questionId: string, answer: Answer, expectedRev?: number): Promise<MutationResult>
 
-  /** Move a live expectation to retired, storing the given retired record. False if none live. */
-  retireExpectation(id: string, retired: Expectation): Promise<boolean>
-  /** Rewrite a live expectation in place (e.g. after a recheck). Where it lives, or null if none. */
-  rewriteExpectation(expectation: Expectation): Promise<StoredAt | null>
+  /** Move a live expectation to retired (bumps its rev). `expectedRev` guards it, as above. */
+  retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult>
+  /** Rewrite a live expectation in place, bumping its rev — e.g. after a recheck or a publish. */
+  rewriteExpectation(expectation: Expectation, expectedRev?: number): Promise<MutationResult>
 }

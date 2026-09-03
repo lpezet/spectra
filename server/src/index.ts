@@ -30,6 +30,12 @@ const runner = new AgentRunner(store, transcripts)
 // `user` fills in once there is auth; until then the actor kind is what we can honestly record.
 const HUMAN: Author = { kind: 'human' }
 
+/** The revision the client last read, if it sent one — the opt-in for optimistic concurrency. */
+const expectedRevOf = (body: unknown): number | undefined => {
+  const value = (body as { expectedRev?: unknown } | null)?.expectedRev
+  return typeof value === 'number' ? value : undefined
+}
+
 const app = express()
 
 // Before express.json(), and that ordering is load-bearing: the proxy forwards the request
@@ -274,7 +280,7 @@ app.post('/api/expectations', async (req, res, next) => {
 /** Publish a draft expectation. draft → ready, and only then does it count. */
 app.post('/api/expectations/:id/publish', async (req, res, next) => {
   try {
-    const outcome = await publishExpectation(store, req.params.id)
+    const outcome = await publishExpectation(store, req.params.id, expectedRevOf(req.body))
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
@@ -304,7 +310,7 @@ app.post('/api/expectations/:id/recheck', async (req, res, next) => {
         others,
       )
       return report.findings
-    })
+    }, expectedRevOf(req.body))
 
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
@@ -323,7 +329,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
     const outcome = await supersedeExpectation(store, req.params.id, {
       note: body.note,
       ...(body.replacement ? { replacement: body.replacement } : {}),
-    }, HUMAN)
+    }, HUMAN, expectedRevOf(req.body))
 
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {

@@ -20,7 +20,7 @@
  */
 import { parseExpectation } from '@tb/shared'
 import type { Author, Clash, Expectation, ExpectationKind, RecordStatus } from '@tb/shared'
-import type { SpecStore } from './specStore.js'
+import type { MutationResult, SpecStore } from './specStore.js'
 
 export interface RaiseExpectationRequest {
   kind: ExpectationKind
@@ -43,8 +43,24 @@ export interface RaiseExpectationRequest {
 }
 
 export type ExpectationOutcome =
-  | { ok: false; error: string; status?: number }
+  | { ok: false; error: string; status?: number; currentRev?: number }
   | { ok: true; id: string; file: string; expectation: Expectation }
+
+/** Maps a store mutation onto an ExpectationOutcome — not-found → 404, a stale rev → 409. */
+function fromMutation(
+  id: string,
+  result: MutationResult,
+  written: Expectation,
+): ExpectationOutcome {
+  if (result.ok) return { ok: true, id, file: result.at, expectation: { ...written, rev: result.rev } }
+  if (result.reason === 'not-found') return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+  return {
+    ok: false,
+    status: 409,
+    error: `"${id}" moved since you last read it — it is now at revision ${result.currentRev}.`,
+    currentRev: result.currentRev,
+  }
+}
 
 export async function raiseExpectation(
   store: SpecStore,
@@ -58,6 +74,7 @@ export async function raiseExpectation(
     kind: request.kind,
     author,
     status: request.status ?? 'ready',
+    rev: 1,
     terms: request.terms,
     given: request.given ?? '',
     expect: request.expect,
@@ -88,15 +105,16 @@ export async function raiseExpectation(
  * keeps its id and its file. Idempotent: publishing an already-ready expectation just restamps
  * it `ready`.
  */
-export async function publishExpectation(store: SpecStore, id: string): Promise<ExpectationOutcome> {
+export async function publishExpectation(
+  store: SpecStore,
+  id: string,
+  expectedRev?: number,
+): Promise<ExpectationOutcome> {
   const expectation = await store.findExpectation(id)
   if (!expectation) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
 
   const updated: Expectation = { ...expectation, status: 'ready' }
-  const file = await store.rewriteExpectation(updated)
-  if (file === null) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
-
-  return { ok: true, id, file, expectation: updated }
+  return fromMutation(id, await store.rewriteExpectation(updated, expectedRev), updated)
 }
 
 /**
@@ -116,6 +134,7 @@ export async function recheckExpectation(
   store: SpecStore,
   id: string,
   check: (expectation: Expectation, others: Expectation[]) => Promise<Clash[]>,
+  expectedRev?: number,
 ): Promise<ExpectationOutcome> {
   const expectation = await store.findExpectation(id)
   if (!expectation) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
@@ -126,10 +145,7 @@ export async function recheckExpectation(
   const contested = await check(expectation, others)
   const updated: Expectation = { ...expectation, contested }
 
-  const file = await store.rewriteExpectation(updated)
-  if (file === null) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
-
-  return { ok: true, id, file, expectation: updated }
+  return fromMutation(id, await store.rewriteExpectation(updated, expectedRev), updated)
 }
 
 export interface SupersedeRequest {
@@ -140,7 +156,7 @@ export interface SupersedeRequest {
 }
 
 export type SupersedeOutcome =
-  | { ok: false; error: string; status: number }
+  | { ok: false; error: string; status: number; currentRev?: number }
   | { ok: true; retired: string; replacement: Expectation | null }
 
 /**
@@ -155,6 +171,7 @@ export async function supersedeExpectation(
   id: string,
   request: SupersedeRequest,
   author: Author,
+  expectedRev?: number,
 ): Promise<SupersedeOutcome> {
   const original = await store.findExpectation(id)
   if (!original) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
@@ -181,8 +198,18 @@ export async function supersedeExpectation(
     retiredBecause: request.note,
   }
 
-  const moved = await store.retireExpectation(id, retired)
-  if (!moved) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+  // A stale rev leaves the replacement written but the original un-retired — a duplicate-looking
+  // pair, which is exactly the failure the replacement-first order already tolerates over a gap.
+  const moved = await store.retireExpectation(id, retired, expectedRev)
+  if (!moved.ok) {
+    if (moved.reason === 'not-found') return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+    return {
+      ok: false,
+      status: 409,
+      error: `"${id}" moved since you last read it — it is now at revision ${moved.currentRev}.`,
+      currentRev: moved.currentRev,
+    }
+  }
 
   return { ok: true, retired: id, replacement }
 }

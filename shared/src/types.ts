@@ -121,6 +121,12 @@ export interface Question {
   /** Draft or published. Absent means `ready`. Agent-raised questions are always `ready`. */
   status?: RecordStatus
   /**
+   * Bumped by the store on every write. A caller that read revision N can send it back as the
+   * expected revision on its next write; the store refuses if the record has moved since. Absent
+   * means 1 — the birth value and what a record predating this reads as.
+   */
+  rev?: number
+  /**
    * Candidate answers. The count is the answer shape, so there is no separate field to
    * keep in sync: one option is approve-or-decline, several is a choice, none means only
    * the human can write the spec text.
@@ -229,6 +235,8 @@ export interface Expectation {
    * not the versioned contract, and the agents do not see it — until it is published.
    */
   status?: RecordStatus
+  /** Store revision, bumped on every write; the basis for optimistic concurrency. Absent means 1. */
+  rev?: number
   /** Glossary terms this concerns. May be empty for a non-functional expectation that scopes to the whole app. */
   terms: string[]
   /** The situation. Empty when the expectation is unconditional. */

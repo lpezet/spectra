@@ -94,7 +94,13 @@ export async function answerQuestion(
     answer.changesetId = changesetId
   }
 
-  await store.writeAnswer(id, answer)
+  // No expectedRev here: a question's one mutation is being answered, and the "already answered"
+  // guard above is that record's optimistic-concurrency check. writeAnswer still bumps the rev.
+  const written = await store.writeAnswer(id, answer)
+  if (!written.ok) {
+    // Only 'not-found' is reachable without an expectedRev — the question vanished mid-answer.
+    return { ok: false, status: 404, error: `No question with id "${id}".` }
+  }
 
   return {
     ok: true,

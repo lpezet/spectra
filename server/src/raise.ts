@@ -48,6 +48,7 @@ export async function raiseQuestion(
     },
     author,
     status: request.status ?? 'ready',
+    rev: 1,
     options,
     answer: null,
   }
