@@ -23,6 +23,7 @@ import type {
   CommitResult,
   ExpectationFeed,
   Glossary,
+  MutationResult,
   PendingChangesets,
   QuestionFeed,
   SpecStore,
@@ -86,6 +87,23 @@ export class FileSystemSpecStore implements SpecStore {
 
   private expectationFileName(expectation: Expectation): string {
     return `${expectation.id}-${slug(expectation.expect)}.json`
+  }
+
+  /**
+   * The optimistic-concurrency check, best-effort on the filesystem.
+   *
+   * Absent rev reads as 1. When the caller named an `expectedRev` and the record has moved past
+   * it, the write is refused; otherwise it proceeds and the record advances by one. Best-effort
+   * because there is no transaction around the read and the write — fine for a single local
+   * writer, and the reason a SQL backend enforces the same contract for real.
+   */
+  private casCheck(
+    currentRev: number | undefined,
+    expectedRev: number | undefined,
+  ): { ok: true; next: number } | { ok: false; currentRev: number } {
+    const current = currentRev ?? 1
+    if (expectedRev !== undefined && expectedRev !== current) return { ok: false, currentRev: current }
+    return { ok: true, next: current + 1 }
   }
 
   // ── Term reads ─────────────────────────────────────────────────────────────────────────
@@ -496,29 +514,45 @@ export class FileSystemSpecStore implements SpecStore {
     return null
   }
 
-  async writeAnswer(questionId: string, answer: Answer): Promise<void> {
+  async writeAnswer(questionId: string, answer: Answer, expectedRev?: number): Promise<MutationResult> {
     const entry = await this.findQuestionEntry(questionId)
-    if (!entry) throw new Error(`No question with id "${questionId}".`)
-    await this.writeJson(path.join(this.questionsDir, entry.file), { ...entry.question, answer })
+    if (!entry) return { ok: false, reason: 'not-found' }
+
+    const cas = this.casCheck(entry.question.rev, expectedRev)
+    if (!cas.ok) return { ok: false, reason: 'conflict', currentRev: cas.currentRev }
+
+    await this.writeJson(path.join(this.questionsDir, entry.file), {
+      ...entry.question,
+      answer,
+      rev: cas.next,
+    })
+    return { ok: true, rev: cas.next, at: entry.file }
   }
 
-  async retireExpectation(id: string, retired: Expectation): Promise<boolean> {
+  async retireExpectation(id: string, retired: Expectation, expectedRev?: number): Promise<MutationResult> {
     const entry = await this.findExpectationEntry(id)
-    if (!entry) return false
+    if (!entry) return { ok: false, reason: 'not-found' }
+
+    const cas = this.casCheck(entry.expectation.rev, expectedRev)
+    if (!cas.ok) return { ok: false, reason: 'conflict', currentRev: cas.currentRev }
 
     // Retiring outright leaves `supersededBy: null`, which reads exactly like a live
     // expectation — so the directory is what carries that fact.
     await mkdir(this.retiredDir, { recursive: true })
     const target = await uniquePath(this.retiredDir, this.expectationFileName(retired))
-    await this.writeJson(target, retired)
+    await this.writeJson(target, { ...retired, rev: cas.next })
     await rm(path.join(this.expectationsDir, entry.file))
-    return true
+    return { ok: true, rev: cas.next, at: path.basename(target) }
   }
 
-  async rewriteExpectation(expectation: Expectation): Promise<StoredAt | null> {
+  async rewriteExpectation(expectation: Expectation, expectedRev?: number): Promise<MutationResult> {
     const entry = await this.findExpectationEntry(expectation.id)
-    if (!entry) return null
-    await this.writeJson(path.join(this.expectationsDir, entry.file), expectation)
-    return entry.file
+    if (!entry) return { ok: false, reason: 'not-found' }
+
+    const cas = this.casCheck(entry.expectation.rev, expectedRev)
+    if (!cas.ok) return { ok: false, reason: 'conflict', currentRev: cas.currentRev }
+
+    await this.writeJson(path.join(this.expectationsDir, entry.file), { ...expectation, rev: cas.next })
+    return { ok: true, rev: cas.next, at: entry.file }
   }
 }
