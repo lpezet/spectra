@@ -4,9 +4,8 @@
  * **Adding is free.** A new expectation changes no term, applies no op, and cannot alter what
  * the app does. The most it can do is turn a check red, which is the direction that reveals a
  * defect rather than hiding one. That makes it safe by construction in exactly the sense
- * `raiseQuestion` is, and it is what lets an expectation be captured the moment someone
- * notices it while *using* the thing — which is where most of them will come from, and a
- * moment that does not survive a review queue.
+ * `raiseQuestion` is, and it is what lets an expectation be captured the moment someone notices
+ * it while *using* the thing — a moment that does not survive a review queue.
  *
  * **Weakening is reviewed.** Superseding replaces a statement someone is relying on, and it is
  * the one move that can turn a red check green without touching a line of code. So it does not
@@ -19,17 +18,9 @@
  * is a human act, because "this expectation was wrong" is a product judgement and the agent
  * that would most like to make it is the one whose code just failed it.
  */
-import path from 'node:path'
-import { mkdir, readdir, rm } from 'node:fs/promises'
 import { parseExpectation } from '@tb/shared'
 import type { Clash, Expectation, ExpectationKind } from '@tb/shared'
-import { slug, uniquePath, writeAtomic } from './files.js'
-import {
-  EXPECTATIONS_DIR,
-  RETIRED_DIR,
-  findExpectationEntry,
-  readExpectationEntries,
-} from './store.js'
+import { store } from './store.js'
 
 export interface RaiseExpectationRequest {
   kind: ExpectationKind
@@ -53,34 +44,8 @@ export type ExpectationOutcome =
   | { ok: false; error: string; status?: number }
   | { ok: true; id: string; file: string; expectation: Expectation }
 
-/** `e-004` after `e-003`. Retired ids count too, or a superseded one would be handed out twice. */
-async function nextExpectationId(): Promise<string> {
-  const { entries } = await readExpectationEntries()
-  const live = entries.map((entry) => entry.expectation.id)
-
-  // Retired filenames are enough — they start with the id — and reading them beats parsing a
-  // history this only needs numbers from.
-  let retired: string[] = []
-  try {
-    retired = (await readdir(RETIRED_DIR)).filter((file) => file.endsWith('.json'))
-  } catch {
-    // No retired directory yet is the normal case, not an error.
-  }
-
-  const highest = [...live, ...retired].reduce((max, value) => {
-    const match = /^e-(\d+)/.exec(value)
-    return match ? Math.max(max, Number(match[1])) : max
-  }, 0)
-
-  return `e-${String(highest + 1).padStart(3, '0')}`
-}
-
-function fileNameFor(expectation: Expectation): string {
-  return `${expectation.id}-${slug(expectation.expect)}.json`
-}
-
 export async function raiseExpectation(request: RaiseExpectationRequest): Promise<ExpectationOutcome> {
-  const id = await nextExpectationId()
+  const id = await store.nextExpectationId()
 
   const expectation: Expectation = {
     id,
@@ -102,51 +67,40 @@ export async function raiseExpectation(request: RaiseExpectationRequest): Promis
   const parsed = parseExpectation(expectation)
   if (!parsed.ok) return { ok: false, error: parsed.errors.join('; '), status: 400 }
 
-  await mkdir(EXPECTATIONS_DIR, { recursive: true })
-  const target = await uniquePath(EXPECTATIONS_DIR, fileNameFor(expectation))
-  await writeAtomic(target, `${JSON.stringify(expectation, null, 2)}\n`)
-
-  return { ok: true, id, file: path.basename(target), expectation }
+  const file = await store.addExpectation(expectation)
+  return { ok: true, id, file, expectation }
 }
 
 /**
  * Re-reads a live expectation against the specs as they are now, and rewrites what it clashes
  * with.
  *
- * `contested` is a snapshot of a disagreement, and the specs move underneath it. When q-009
- * was answered, unarchiveProject's spec was rewritten and e-011 was left quoting a sentence
- * that no longer exists anywhere — still flagged, still out of coverage, and now for a reason
- * nobody could check. @coder found that and correctly refused to act on it.
+ * `contested` is a snapshot of a disagreement, and the specs move underneath it. When q-009 was
+ * answered, unarchiveProject's spec was rewritten and e-011 was left quoting a sentence that no
+ * longer exists anywhere — still flagged, still out of coverage, and now for a reason nobody
+ * could check. @coder found that and correctly refused to act on it.
  *
  * Rewriting rather than clearing is the point. A clash that is gone should disappear, and one
- * that has merely *changed* should say what it clashes with now — e-011 is the second kind:
- * the spec it contradicted was replaced by one it is merely broader than, which is a different
- * conversation and needs different words.
- *
- * It never retires anything. If the disagreement survives the re-check, the expectation stays
- * live and contested and a human still decides which side gives.
+ * that has merely *changed* should say what it clashes with now. It never retires anything: if
+ * the disagreement survives, the expectation stays live and contested and a human decides.
  */
 export async function recheckExpectation(
   id: string,
   check: (expectation: Expectation, others: Expectation[]) => Promise<Clash[]>,
 ): Promise<ExpectationOutcome> {
-  const entry = await findExpectationEntry(id)
-  if (!entry) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+  const expectation = await store.findExpectation(id)
+  if (!expectation) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
 
-  const { entries } = await readExpectationEntries()
-  const others = entries
-    .map((candidate) => candidate.expectation)
-    .filter((candidate) => candidate.id !== id)
+  const { expectations } = await store.readExpectations()
+  const others = expectations.filter((candidate) => candidate.id !== id)
 
-  const contested = await check(entry.expectation, others)
-  const updated: Expectation = { ...entry.expectation, contested }
+  const contested = await check(expectation, others)
+  const updated: Expectation = { ...expectation, contested }
 
-  await writeAtomic(
-    path.join(EXPECTATIONS_DIR, entry.file),
-    `${JSON.stringify(updated, null, 2)}\n`,
-  )
+  const file = await store.rewriteExpectation(updated)
+  if (file === null) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
 
-  return { ok: true, id, file: entry.file, expectation: updated }
+  return { ok: true, id, file, expectation: updated }
 }
 
 export interface SupersedeRequest {
@@ -171,8 +125,8 @@ export async function supersedeExpectation(
   id: string,
   request: SupersedeRequest,
 ): Promise<SupersedeOutcome> {
-  const entry = await findExpectationEntry(id)
-  if (!entry) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+  const original = await store.findExpectation(id)
+  if (!original) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
 
   let replacement: Expectation | null = null
 
@@ -187,18 +141,13 @@ export async function supersedeExpectation(
   }
 
   const retired: Expectation = {
-    ...entry.expectation,
+    ...original,
     supersededBy: replacement?.id ?? null,
     retiredBecause: request.note,
   }
 
-  // Retiring outright leaves `supersededBy: null`, which on its own reads exactly like a live
-  // expectation — so the directory is what carries that fact, and `readExpectations` reports
-  // the two sets separately rather than merging them.
-  await mkdir(RETIRED_DIR, { recursive: true })
-  const target = await uniquePath(RETIRED_DIR, fileNameFor(retired))
-  await writeAtomic(target, `${JSON.stringify(retired, null, 2)}\n`)
-  await rm(path.join(EXPECTATIONS_DIR, entry.file))
+  const moved = await store.retireExpectation(id, retired)
+  if (!moved) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
 
   return { ok: true, retired: id, replacement }
 }
