@@ -4,7 +4,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import type { Author } from '@tb/shared'
-import { raiseExpectation, supersedeExpectation } from './expectations.js'
+import { publishExpectation, raiseExpectation, supersedeExpectation } from './expectations.js'
 
 const BY: Author = { kind: 'human' }
 
@@ -48,6 +48,8 @@ describe('raiseExpectation', () => {
     expect(written.raisedBy).toEqual({ pass: 'implementation' })
     // Identity is stamped by the caller and persisted alongside the origin.
     expect(written.author).toEqual({ kind: 'human' })
+    // Published by default — a raise with no status is ready, not a draft.
+    expect(written.status).toBe('ready')
   })
 
   it('numbers the next above the highest already there', async () => {
@@ -134,5 +136,45 @@ describe('supersedeExpectation', () => {
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
     expect(outcome.status).toBe(404)
+  })
+})
+
+describe('draft expectations', () => {
+  it('keeps a draft out of the published set and in its own, then publishing moves it', async () => {
+    const draft = await raiseExpectation(store, { ...BASE, expect: 'still being worked out', status: 'draft' }, BY)
+    expect(draft.ok).toBe(true)
+    if (!draft.ok) return
+    expect(draft.expectation.status).toBe('draft')
+
+    // A draft counts toward nothing: it is absent from the published list and present only
+    // among the drafts.
+    const before = await store.readExpectations()
+    expect(before.expectations.map((e) => e.id)).not.toContain(draft.id)
+    expect(before.drafts.map((e) => e.id)).toContain(draft.id)
+
+    const published = await publishExpectation(store, draft.id)
+    expect(published.ok).toBe(true)
+    if (!published.ok) return
+    expect(published.expectation.status).toBe('ready')
+
+    // Published: now in the live set, gone from drafts, same id and file.
+    const after = await store.readExpectations()
+    expect(after.expectations.map((e) => e.id)).toContain(draft.id)
+    expect(after.drafts.map((e) => e.id)).not.toContain(draft.id)
+    expect(published.file).toBe(draft.file)
+  })
+
+  it('publishing is idempotent and 404s on an unknown id', async () => {
+    const ready = await raiseExpectation(store, { ...BASE, expect: 'already published' }, BY)
+    expect(ready.ok).toBe(true)
+    if (!ready.ok) return
+
+    const again = await publishExpectation(store, ready.id)
+    expect(again.ok && again.expectation.status).toBe('ready')
+
+    const missing = await publishExpectation(store, 'e-999')
+    expect(missing.ok).toBe(false)
+    if (missing.ok) return
+    expect(missing.status).toBe(404)
   })
 })

@@ -11,7 +11,7 @@ import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@tb/shared'
 import type { Author } from '@tb/shared'
 import { checkExpectation } from './expectationCheck.js'
-import { raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
+import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR } from './config.js'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
@@ -261,8 +261,20 @@ app.post('/api/expectations', async (req, res, next) => {
       ...(typeof body.from === 'string' ? { from: body.from } : {}),
       ...(typeof body.file === 'string' ? { file: body.file } : {}),
       ...(Array.isArray(body.contested) ? { contested: body.contested } : {}),
+      // A person may save a draft; anything else publishes. Agents never reach here.
+      ...(body.status === 'draft' ? { status: 'draft' as const } : {}),
     }, HUMAN)
 
+    res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
+  } catch (error) {
+    next(error)
+  }
+})
+
+/** Publish a draft expectation. draft → ready, and only then does it count. */
+app.post('/api/expectations/:id/publish', async (req, res, next) => {
+  try {
+    const outcome = await publishExpectation(store, req.params.id)
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)

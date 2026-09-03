@@ -19,7 +19,7 @@
  * that would most like to make it is the one whose code just failed it.
  */
 import { parseExpectation } from '@tb/shared'
-import type { Author, Clash, Expectation, ExpectationKind } from '@tb/shared'
+import type { Author, Clash, Expectation, ExpectationKind, RecordStatus } from '@tb/shared'
 import type { SpecStore } from './specStore.js'
 
 export interface RaiseExpectationRequest {
@@ -30,6 +30,8 @@ export interface RaiseExpectationRequest {
   pass: string
   from?: string
   file?: string
+  /** Draft or published. Absent means `ready` — agents omit it; a human may save a draft. */
+  status?: RecordStatus
   /**
    * What the check found and the author went ahead regardless.
    *
@@ -55,6 +57,7 @@ export async function raiseExpectation(
     id,
     kind: request.kind,
     author,
+    status: request.status ?? 'ready',
     terms: request.terms,
     given: request.given ?? '',
     expect: request.expect,
@@ -74,6 +77,26 @@ export async function raiseExpectation(
 
   const file = await store.addExpectation(expectation)
   return { ok: true, id, file, expectation }
+}
+
+/**
+ * Publish a draft expectation — draft → ready.
+ *
+ * A draft counts toward nothing while it is a draft; publishing is the act that puts it into
+ * coverage and the versioned contract and shows it to the agents. Rewrites in place (a draft
+ * already lives in the same directory as a published one — only its status differs), so it
+ * keeps its id and its file. Idempotent: publishing an already-ready expectation just restamps
+ * it `ready`.
+ */
+export async function publishExpectation(store: SpecStore, id: string): Promise<ExpectationOutcome> {
+  const expectation = await store.findExpectation(id)
+  if (!expectation) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+
+  const updated: Expectation = { ...expectation, status: 'ready' }
+  const file = await store.rewriteExpectation(updated)
+  if (file === null) return { ok: false, error: `No live expectation "${id}".`, status: 404 }
+
+  return { ok: true, id, file, expectation: updated }
 }
 
 /**

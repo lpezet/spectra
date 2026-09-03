@@ -326,7 +326,15 @@ export class FileSystemSpecStore implements SpecStore {
       this.readExpectationEntries(),
       this.readRetired(),
     ])
-    return { expectations: entries.map((entry) => entry.expectation), retired, problems }
+    // Drafts share the live directory with published expectations — status is data, not a
+    // location — so the split happens here rather than by folder. Absent status reads as ready.
+    const live = entries.map((entry) => entry.expectation)
+    return {
+      expectations: live.filter((expectation) => expectation.status !== 'draft'),
+      drafts: live.filter((expectation) => expectation.status === 'draft'),
+      retired,
+      problems,
+    }
   }
 
   private async findExpectationEntry(id: string): Promise<ExpectationEntry | null> {

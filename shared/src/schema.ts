@@ -111,6 +111,7 @@ export const questionSchema = z
       )
       .default([]),
     author: authorSchema.optional(),
+    status: z.enum(['draft', 'ready']).default('ready'),
     answer: z
       .object({
         chose: z.string().nullable(),
@@ -141,6 +142,7 @@ export const expectationSchema = z
     id: z.string().min(1),
     kind: z.enum(['functional', 'non-functional']),
     author: authorSchema.optional(),
+    status: z.enum(['draft', 'ready']).default('ready'),
     terms: z.array(termName).default([]),
     given: z.string().default(''),
     expect: z.string().min(1),
