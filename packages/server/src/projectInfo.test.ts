@@ -11,6 +11,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Term } from '@spectra/core'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import { buildAgents } from './agent/agents.js'
 
@@ -49,6 +50,34 @@ describe('FileSystemSpecStore.projectInfo', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const info = await new FileSystemSpecStore(specs).projectInfo()
     expect(info.name).toBe('Untitled project')
+  })
+})
+
+describe('FileSystemSpecStore.commitApplication against an empty store', () => {
+  it('creates terms/ on the first apply rather than ENOENTing', async () => {
+    // A store the engine ships with: no terms/ dir exists yet. The first applied changeset
+    // must create it, the same way every other write here mkdirs its dir first.
+    const term: Term = {
+      name: 'Widget',
+      type: 'entity',
+      spec: 'A widget.',
+      parent: null,
+      tags: [],
+      attributes: [],
+    }
+    const store = new FileSystemSpecStore(specs)
+    // The pending changeset writer mkdirs changesets/ — but terms/ still does not exist.
+    await store.addChangeset({ id: 'cs-first', summary: 'add Widget', ops: [], tests: [] })
+    const result = await store.commitApplication({
+      changesetId: 'cs-first',
+      nextTerms: [term],
+      appliedOps: [],
+      remainingOps: [],
+      appliedAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(result.written).toContain('widget.json')
+    const glossary = await store.readTerms()
+    expect(glossary.terms.map((t) => t.name)).toContain('Widget')
   })
 })
 

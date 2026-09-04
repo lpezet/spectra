@@ -33,9 +33,16 @@ There is no linter or formatter configured. `npm run typecheck` and the tests ar
 
 ## Spectra is the tool; the consumer project is separate
 
-This repo is **Spectra** — the spec tool (`shared/`, `server/`, `web/`): a glossary of Terms in
-`specs/*.json`, edited only through structured changesets, plus a chat dock running two agents.
-`specs/` here is the example glossary the tool operates on.
+This repo is **Spectra** — the spec tool (`packages/core`, `packages/server`, `packages/web`): a
+glossary of Terms in `specs/*.json`, edited only through structured changesets, plus a chat dock
+running two agents.
+
+**The engine ships empty** — like a database with no data, it carries no glossary of its own.
+The ToDo glossary this repo grew up around now lives at `examples/todo/specs/` as a *sample to
+point at*, not content baked into the tool. `npm run dev` sets `SPECS_DIR` to it; run the server
+with `SPECS_DIR` unset and it operates on an empty glossary (the default is a gitignored
+`.dev/specs` scratch dir). A configured install will supply the path later, via the CLI/link
+layer.
 
 There used to be a second half in `app/` — a ToDo app written *from* `specs/terms/`, the output
 side of the loop. It has been **sidelined** to the `backup/todo-app` branch (a full snapshot,
@@ -188,13 +195,15 @@ string `proxied-by-the-spec-tool` instead of a credential.
 
 Code lives under `packages/` (`core`, `server`, `web`, `coder`); `core`/`server`/`web` are
 npm workspaces under the `@spectra/*` scope, `coder` is standalone (its own lockfile, the
-sandbox image builds from it). `specs/` and `data/` sit at the repo root.
+sandbox image builds from it). The engine ships with **no glossary** — the example one lives
+under `examples/todo/specs/`; `data/` (runtime, gitignored) sits at the repo root, and
+`.dev/specs` is the gitignored default an unconfigured run reads.
 
 ```
-specs/terms/*.json                    source of truth, hand-editable
-specs/project.json                    the glossary's identity (name, domain) — via SpecStore.projectInfo()
-specs/changesets/                     pending; applied/ and rejected/ are the history
-specs/questions/                      what the glossary does not settle, and what was decided
+examples/todo/specs/terms/*.json      source of truth, hand-editable (the example glossary)
+examples/todo/specs/project.json      the glossary's identity (name, domain) — via SpecStore.projectInfo()
+examples/todo/specs/changesets/       pending; applied/ and rejected/ are the history
+examples/todo/specs/questions/        what the glossary does not settle, and what was decided
 packages/core/src/                    the engine — types, valueType grammar, backlinks, conflicts, changeset ops
 packages/server/src/agent/agents.ts   the single definition of who @spec and @coder are
 packages/server/src/agent/runner.ts   runs a turn, streams it, blocks on approvals

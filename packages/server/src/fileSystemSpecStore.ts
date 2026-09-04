@@ -500,6 +500,10 @@ export class FileSystemSpecStore implements SpecStore {
     const written: string[] = []
     const deleted: string[] = []
 
+    // The first apply against a fresh store has no terms/ dir yet — create it before writing,
+    // as every other writer here does. Reads already tolerate its absence (listJsonFiles).
+    await mkdir(this.termsDir, { recursive: true })
+
     for (const term of application.nextTerms) {
       const target = fileByName.get(term.name) ?? termFileName(term.name)
       const contents = serializeTerm(term)

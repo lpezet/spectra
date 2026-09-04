@@ -46,7 +46,9 @@ services:
       - /stack/packages/server/node_modules
       # Read-write, unlike coder's: express owns every write to the glossary. That is the
       # rule the whole tool rests on, and here it is a mount flag rather than a convention.
-      - ./specs:/stack/specs
+      # The engine ships empty, so there is nothing to point at by default — the example
+      # glossary is mounted in explicitly and named by SPECS_DIR below.
+      - ./examples/todo/specs:/stack/specs
       - ./data:/stack/data
 
     networks:
@@ -62,6 +64,9 @@ services:
 
     environment:
       - PORT=5174
+      # The engine's default SPECS_DIR is an empty scratch dir (it ships with no glossary),
+      # so the glossary this container operates on is named here, matching the mount above.
+      - SPECS_DIR=/stack/specs
       # Passed through, never baked: an image containing a token is a token you cannot
       # rotate. This is the only service that gets one.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
