@@ -250,10 +250,21 @@ touching `web` carries `--profile web`. Verbs are up/down (not start/stop) to ma
 `down` is `rm -sf <svc>` (that one service), whole-stack `down` is the project teardown. There is no
 `install`: `up` builds a missing image on its own, and `build` is only for pre-build/rebuild.
 `--compose-file` repeats to layer a base and an override (`-f default.yaml -f <project>.yaml`) — the
-seam `spectra init` will use. The argv→compose translation is a pure function (`commands.ts`), fully
-tested without a docker daemon; `--dry-run` prints the command it would run. Not yet a `bin` on PATH
-— that, plus `spectra init`/`link` and the `curl|bash` bootstrap, is the next CLI work. Run it in dev
-with `npm run spectra -w @spectra/cli -- up`.
+seam `spectra init` uses. The argv→compose translation is a pure function (`commands.ts`), fully
+tested without a docker daemon; `--dry-run` prints the command it would run.
+
+`spectra init --name … --domain …` links a repo to a project (`init.ts`, pure `planInit`). It writes
+three things in three places, per the corrected model above: `.spectra/config.json` in the repo (the
+*link* — project id + identity + optional Server URL), the **server-side** glossary's `project.json`
+under the XDG data home (`~/.local/share/spectra/projects/<id>/specs/` — the glossary is the Server's,
+never the repo), and a per-project compose override under `~/.config/spectra/projects/<id>/` (mounts
+that glossary + data into `spec`, and the repo — `--dir` for a subdir — into `coder` at `/work/project`).
+Projects are keyed by **id**, not folder path. Two follow-ups: the CLI auto-discovering the override
+(so `spectra up` needs no `-f`), and @coder's container actually *using* `/work/project` (the rest of
+blocker E — the mount is wired, the coder code still targets the old `APP_DIR`).
+
+Not yet a `bin` on PATH — that plus the `curl|bash` bootstrap is the remaining CLI work. Run in dev
+with `npm run spectra -w @spectra/cli -- up` (or `… -- init --name X --domain Y`).
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to
