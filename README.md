@@ -1,4 +1,4 @@
-# todo-blueprints
+# Spectra
 
 A shared, structured vocabulary that a human (product/end-user) and an AI coding agent can
 both read and write, sitting *above* the code. The human authors and evolves the spec
