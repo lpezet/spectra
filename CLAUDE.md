@@ -233,6 +233,16 @@ service is behind a compose **profile** so plain `docker compose up` (what `dev:
 leaves it out and its 5173 does not collide with host Vite — start it explicitly with
 `docker compose up web`.
 
+There are two compose files. `docker-compose.yml` is the **contributors'** file — services build
+from the working tree (`context: .`). `default.yaml` is the **distribution** file — services build
+from a *remote git context pinned to a release* (`context: github…#${SPECTRA_REF}`), so an install
+needs neither a clone nor a registry, just this file (this is SAL's model: a compose template
+fetched from a pinned release, used verbatim). `default.yaml` is only the shared *base*: the
+project-specific bits — `SPECS_DIR`, data persistence, and @coder's mount — come from a per-project
+override that `spectra init` writes, layered with `-f default.yaml -f <project>.yaml`. Keep the two
+files in structural sync; they differ only in build context and in that the project mounts live in
+the override.
+
 `packages/cli` (`@spectra/cli`) wraps this compose: `spectra <server|coder|web> start|stop|restart|status|logs`
 maps to the matching `docker compose` call (`server` → the `spec` service; `web` carries
 `--profile web`). The argv→compose translation is a pure function (`commands.ts`), so it is fully
