@@ -157,6 +157,7 @@ export function parseArgs(argv: string[]): Parsed {
 export const USAGE = `spectra — control the Spectra stack (a thin wrapper over docker compose)
 
 Usage:
+  spectra init --name "<name>" --domain "<text>" [options]   (see: spectra init --help)
   spectra <component> <verb> [options]
   spectra up | down | build [component] [options]
 
