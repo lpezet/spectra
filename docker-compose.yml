@@ -49,6 +49,8 @@ services:
       # The engine ships empty, so there is nothing to point at by default — the example
       # glossary is mounted in explicitly and named by SPECS_DIR below.
       - ./examples/todo/specs:/stack/specs
+      # Runtime data (transcripts, export ledger). Its default is now the XDG data home, so
+      # like SPECS_DIR it is named explicitly below to match this mount.
       - ./data:/stack/data
 
     networks:
@@ -67,6 +69,8 @@ services:
       # The engine's default SPECS_DIR is an empty scratch dir (it ships with no glossary),
       # so the glossary this container operates on is named here, matching the mount above.
       - SPECS_DIR=/stack/specs
+      # DATA_DIR defaults to the XDG data home; named here to match the ./data mount.
+      - DATA_DIR=/stack/data
       # Passed through, never baked: an image containing a token is a token you cannot
       # rotate. This is the only service that gets one.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}

@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "SPECS_DIR=\"$PWD/examples/todo/specs\" npm run dev -w @spectra/server",
+    "dev:server": "SPECS_DIR=\"$PWD/examples/todo/specs\" DATA_DIR=\"$PWD/.dev/data\" npm run dev -w @spectra/server",
     "dev:web": "npm run dev -w @spectra/web",
     "dev:sandbox": "docker compose up -d --build && npm run dev:web",
     "sandbox:logs": "docker compose logs -f",

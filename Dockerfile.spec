@@ -43,8 +43,9 @@ COPY packages/server/ packages/server/
 RUN chown -R node:node /stack
 USER node
 
-# DATA_DIR defaults to /stack/data, matching the mount. SPECS_DIR no longer defaults to a
-# baked-in project (the engine ships empty), so compose sets it to /stack/specs explicitly.
+# Neither SPECS_DIR nor DATA_DIR defaults into the image any more — SPECS_DIR because the
+# engine ships empty, DATA_DIR because runtime data now defaults to the XDG data home. Compose
+# sets both (/stack/specs, /stack/data) to match the mounts.
 ENV NODE_ENV=development
 EXPOSE 5174
 CMD ["node", "node_modules/.bin/tsx", "watch", "packages/server/src/main.ts"]

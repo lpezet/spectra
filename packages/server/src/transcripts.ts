@@ -17,9 +17,18 @@
  */
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-export const DATA_DIR = process.env.DATA_DIR ?? path.resolve(import.meta.dirname, '../../../data')
+/**
+ * Runtime data — the transcripts DB and the export ledger — does not belong in the source
+ * tree, the same way SPECS_DIR no longer does. The default is the XDG data home
+ * (`$XDG_DATA_HOME` or `~/.local/share`) under `spectra/`, which is where an installed copy
+ * writes; `npm run dev` overrides DATA_DIR to a gitignored `.dev/data` so a dev checkout keeps
+ * its scratch state local and out of git. Override either with DATA_DIR / TRANSCRIPTS_DB.
+ */
+const XDG_DATA_HOME = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share')
+export const DATA_DIR = process.env.DATA_DIR ?? path.join(XDG_DATA_HOME, 'spectra')
 export const TRANSCRIPTS_DB = process.env.TRANSCRIPTS_DB ?? path.join(DATA_DIR, 'transcripts.db')
 
 /**
