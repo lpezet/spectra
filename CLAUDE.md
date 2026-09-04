@@ -9,14 +9,14 @@ stated "and here is why the obvious alternative is wrong" attached.
 ## Commands
 
 ```bash
-npm install                    # root workspaces (shared, server, web)
+npm install                    # root workspaces (packages/core, packages/server, packages/web)
 
 npm run dev                    # spec tool, unsandboxed: express :5174 + vite :5173
 npm run dev:sandbox            # same, with express and @coder in containers + vite on host
                                #   @coder has no project to point at yet — see "The consumer project" below
 
-npm test                       # shared, server, web (each is a separate vitest run)
-npm run typecheck              # tsc across shared, server, web
+npm test                       # core, server, web (each is a separate vitest run)
+npm run typecheck              # tsc across core, server, web
 
 npm run sandbox:logs           # docker compose logs -f
 npm run sandbox:down           # docker compose down
@@ -25,8 +25,8 @@ npm run sandbox:down           # docker compose down
 Single test file / single test name (vitest per workspace, so target the workspace first):
 
 ```bash
-npm test -w shared -- src/changeset.test.ts
-npm test -w server -- -t 'refuses when the snapshot is behind'
+npm test -w @spectra/core -- src/changeset.test.ts
+npm test -w @spectra/server -- -t 'refuses when the snapshot is behind'
 ```
 
 There is no linter or formatter configured. `npm run typecheck` and the tests are the whole gate.
@@ -47,7 +47,7 @@ standalone-by-construction (its own `node_modules`/`tsconfig`, never an npm work
 
 `@coder`'s working directory and only sandbox mount were `app/`. With `app/` gone, **the
 sandboxed `@coder` has no project to point at**: `npm run dev:sandbox` runs, but a coder turn
-targets `APP_DIR` (`server/src/agent/agents.ts`) / the `./app:/work/app` mount in
+targets `APP_DIR` (`packages/server/src/agent/agents.ts`) / the `./app:/work/app` mount in
 `docker-compose.yml`, which no longer exist — and `docker compose up` will create an empty
 `./app` on the host. Running `@coder` is therefore inert until the project target is made
 configurable. That work — pointing the coder at a chosen project, and where the drift check
@@ -66,7 +66,7 @@ and each is enforced by construction rather than by a prompt asking nicely:
 
 - **Changesets only.** No direct term editor exists in the UI, and `@spec` has `builtins: []`
   — no filesystem tools at all, so it *cannot* bypass the rule.
-- **Which tools each agent gets is decided server-side**, in `server/src/agent/agents.ts`.
+- **Which tools each agent gets is decided server-side**, in `packages/server/src/agent/agents.ts`.
   That file is the single definition of who `@spec` and `@coder` are: prompt, builtins,
   auto-approvals, tool list. The sandboxed container fetches it from `/mcp/coder/profile` at
   the start of every run rather than carrying its own copy, so an attacker inside the box
@@ -75,7 +75,7 @@ and each is enforced by construction rather than by a prompt asking nicely:
   (`serializeTerm` in `commit.ts`). Break this and every applied changeset reformats the files
   it touches and buries the real diff.
 
-`server/src/store.ts` is the only module that reads the filesystem, and every read goes back to
+`packages/server/src/store.ts` is the only module that reads the filesystem, and every read goes back to
 disk — the files are the source of truth and may have been hand-edited between two requests.
 A file that fails to parse becomes a `problem` in the response, never an exception.
 
@@ -85,11 +85,11 @@ set of rules, so the preview cannot disagree with the result.
 
 ## The snapshot and the version check
 
-The *protocol* below lives in the tool (`server/src/specsExport.ts`, `GET /api/specs/version`,
+The *protocol* below lives in the tool (`packages/server/src/specsExport.ts`, `GET /api/specs/version`,
 `mark_implemented`) and is unaffected by the app removal. The two concrete files it names —
 `specs.snapshot.json` and `implements.test.ts` — lived in the sidelined `app/` (still on
 `backup/todo-app`) and move with the consumer project when it is wired back (blocker E). The
-snapshot fallback path (`server/src/specsExport.ts`, `APP_SNAPSHOT`) now points at an absent
+snapshot fallback path (`packages/server/src/specsExport.ts`, `APP_SNAPSHOT`) now points at an absent
 file and degrades to "no readable snapshot" rather than crashing. Read the rest as describing
 how the guard works against *whatever* project holds the snapshot.
 
@@ -130,7 +130,7 @@ with no route out. `app/` is `coder`'s only mount. The container reaches the mod
 express's `/anthropic` proxy and the glossary through `/mcp/coder`, and holds the literal
 string `proxied-by-the-spec-tool` instead of a credential.
 
-- The `/anthropic` proxy is mounted **before `express.json()`** in `server/src/index.ts`, and
+- The `/anthropic` proxy is mounted **before `express.json()`** in `packages/server/src/index.ts`, and
   that ordering is load-bearing — a JSON parser upstream would consume the body stream.
 - `/mcp` is deliberately outside `/api`: it is the sandbox's surface, not the UI's.
 - **Port 5174 collides silently.** Docker publishes by DNAT, so a host server already on 5174
@@ -186,20 +186,24 @@ string `proxied-by-the-spec-tool` instead of a credential.
 
 ## Where things live
 
+Code lives under `packages/` (`core`, `server`, `web`, `coder`); `core`/`server`/`web` are
+npm workspaces under the `@spectra/*` scope, `coder` is standalone (its own lockfile, the
+sandbox image builds from it). `specs/` and `data/` sit at the repo root.
+
 ```
-specs/terms/*.json            source of truth, hand-editable
-specs/project.json            the glossary's identity (name, domain) — via SpecStore.projectInfo()
-specs/changesets/             pending; applied/ and rejected/ are the history
-specs/questions/              what the glossary does not settle, and what was decided
-shared/src/                   the engine — types, valueType grammar, backlinks, conflicts, changeset ops
-server/src/agent/agents.ts    the single definition of who @spec and @coder are
-server/src/agent/runner.ts    runs a turn, streams it, blocks on approvals
-server/src/agent/tools.ts     domain tools; mcpHttp.ts is the same tools over HTTP
-server/src/specsExport.ts     the snapshot + version (README calls this glossaryExport.ts)
-server/src/commit.ts          the only writer of specs/
-server/src/specStore.ts       the storage seam (FileSystemSpecStore today, SqlSpecStore next)
-coder/src/main.ts             the sandboxed half of @coder (target project unconfigured — blocker E)
-data/transcripts.db           chat history — gitignored, prunable, never the record
+specs/terms/*.json                    source of truth, hand-editable
+specs/project.json                    the glossary's identity (name, domain) — via SpecStore.projectInfo()
+specs/changesets/                     pending; applied/ and rejected/ are the history
+specs/questions/                      what the glossary does not settle, and what was decided
+packages/core/src/                    the engine — types, valueType grammar, backlinks, conflicts, changeset ops
+packages/server/src/agent/agents.ts   the single definition of who @spec and @coder are
+packages/server/src/agent/runner.ts   runs a turn, streams it, blocks on approvals
+packages/server/src/agent/tools.ts    domain tools; mcpHttp.ts is the same tools over HTTP
+packages/server/src/specsExport.ts    the snapshot + version (README calls this glossaryExport.ts)
+packages/server/src/commit.ts         the only writer of specs/
+packages/server/src/specStore.ts      the storage seam (FileSystemSpecStore today, SqlSpecStore next)
+packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
+data/transcripts.db                   chat history — gitignored, prunable, never the record
 ```
 
 The consumer project (`app/`, holding `specs.snapshot.json` and the `implements` drift check)

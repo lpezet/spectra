@@ -38,12 +38,12 @@ services:
     volumes:
       # Source, not baked, so `tsx watch` reloads on save and the dev loop survives
       # containerisation.
-      - ./server:/stack/server
-      - ./shared:/stack/shared
+      - ./packages/server:/stack/packages/server
+      - ./packages/core:/stack/packages/core
       # Dependencies come from the image. Without this, the mount above would hide the
-      # image's server/node_modules — which is where the SDK and its zod 4 live — and the
-      # server would start against whatever the host happened to have.
-      - /stack/server/node_modules
+      # image's packages/server/node_modules — which is where the SDK and its zod 4 live —
+      # and the server would start against whatever the host happened to have.
+      - /stack/packages/server/node_modules
       # Read-write, unlike coder's: express owns every write to the glossary. That is the
       # rule the whole tool rests on, and here it is a mount flag rather than a convention.
       - ./specs:/stack/specs
