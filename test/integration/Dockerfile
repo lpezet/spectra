@@ -12,17 +12,12 @@
 
 FROM node:22-slim
 
-# The workspaces' package.json files, so `npm ci` sees the whole lockfile tree.
+# Source first, THEN install. The `spectra` bin is a source file (the repo has no build step), so
+# npm must see it to create the node_modules/.bin/spectra link — installing before the copy would
+# link a target that does not exist yet. (This costs layer caching, which a test image does not need.)
 WORKDIR /src
-COPY package.json package-lock.json ./
-COPY packages/core/package.json packages/core/
-COPY packages/server/package.json packages/server/
-COPY packages/web/package.json packages/web/
-COPY packages/cli/package.json packages/cli/
-RUN npm ci
-
-# The source, over the top of the installed deps.
 COPY . .
+RUN npm ci
 
 # A non-root user with its own home — the realistic shape of an install, and what proves the CLI
 # does not depend on running as root or on the repo being the home directory.
