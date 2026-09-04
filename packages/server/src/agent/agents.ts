@@ -16,7 +16,10 @@ import { SPECS_DIR } from '../config.js'
 import type { Author } from '../transcripts.js'
 
 const REPO = path.resolve(SPECS_DIR, '..')
-const APP_DIR = path.join(REPO, 'app')
+// The project the in-process (unsandboxed) @coder implements into — its cwd. Configurable via
+// CODER_DIR; the default sits beside the glossary, which is where a bare checkout would keep it.
+// (The sandboxed @coder uses its own container path instead — APP_DIR in packages/coder/src/main.ts.)
+const APP_DIR = process.env.CODER_DIR ?? path.join(REPO, 'app')
 
 export type AgentName = Extract<Author, 'spec' | 'coder'>
 

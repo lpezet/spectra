@@ -53,16 +53,21 @@ incl. `app/`), because Spectra ships as the tool and the *consumer project it im
 a separate thing* — kept elsewhere, or external. The removal was clean because `app/` was
 standalone-by-construction (its own `node_modules`/`tsconfig`, never an npm workspace).
 
-### The consumer project (currently unconfigured — blocker E)
+### The consumer project (configurable target — blocker E, part 1 done)
 
-`@coder`'s working directory and only sandbox mount were `app/`. With `app/` gone, **the
-sandboxed `@coder` has no project to point at**: `npm run dev:sandbox` runs, but a coder turn
-targets `APP_DIR` (`packages/server/src/agent/agents.ts`) / the `./app:/work/app` mount in
-`docker-compose.yml`, which no longer exist — and `docker compose up` will create an empty
-`./app` on the host. Running `@coder` is therefore inert until the project target is made
-configurable. That work — pointing the coder at a chosen project, and where the drift check
-lives — is the deferred **blocker E** ("drift-check fork"); the rest of the tool (glossary,
-changesets, `@spec`, MCP, version guard) is unaffected and its tests pass.
+`@coder`'s working directory and only mount is the project it implements into, at
+**`/work/project`** in the container (`APP_DIR` in `packages/coder/src/main.ts`, overridable).
+An installed run gets the repo mounted there by `spectra init`; this dev `docker-compose.yml`
+has no consumer project, so it mounts a placeholder `./app` at `/work/project` and `@coder` is
+**inert in dev** until a real project is configured (a bare `docker compose up` still creates an
+empty `./app` on the host). The in-process (unsandboxed) coder's cwd is `APP_DIR` in
+`packages/server/src/agent/agents.ts` (`CODER_DIR` env, default `<repo>/app`).
+
+What remains of **blocker E** is the *drift check* ("drift-check fork") — the `specs.snapshot.json`
++ `implements.test.ts` that lived in `app/`. `@coder` still reads a snapshot at
+`APP_DIR/specs.snapshot.json` and degrades to "no snapshot" when absent; where that check finally
+lives is tied to the store-version-query direction (a live query may replace the snapshot). The
+rest of the tool (glossary, changesets, `@spec`, MCP, version guard) is unaffected and its tests pass.
 
 The design principle to preserve when that project is wired back: the consumer project stays
 **standalone** — its own `node_modules`/`tsconfig`, buildable in a bare copy — which is what
@@ -136,9 +141,9 @@ Expose versions both sides can compare, not a `stale: true` the server computed.
 ## Sandbox
 
 `docker-compose.yml` puts `spec` on two networks and `coder` on one `internal: true` network
-with no route out. `app/` is `coder`'s only mount. The container reaches the model through
-express's `/anthropic` proxy and the glossary through `/mcp/coder`, and holds the literal
-string `proxied-by-the-spec-tool` instead of a credential.
+with no route out. The project at `/work/project` is `coder`'s only mount. The container reaches
+the model through express's `/anthropic` proxy and the glossary through `/mcp/coder`, and holds
+the literal string `proxied-by-the-spec-tool` instead of a credential.
 
 - The `/anthropic` proxy is mounted **before `express.json()`** in `packages/server/src/index.ts`, and
   that ordering is load-bearing — a JSON parser upstream would consume the body stream.

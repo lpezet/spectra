@@ -35,9 +35,10 @@ COPY packages/coder/ ./
 RUN chown -R node:node /agent
 USER node
 
-# /work/app is the only mount and the only writable thing. The glossary is not on this
-# filesystem in any form — it arrives as tool calls to the spec tool.
-WORKDIR /work/app
+# /work/project is the project @coder implements into — the only mount and the only writable
+# thing. The glossary is not on this filesystem in any form; it arrives as tool calls to the
+# spec tool. (Override with APP_DIR if the project is mounted elsewhere.)
+WORKDIR /work/project
 
 ENV NODE_ENV=production
 EXPOSE 5177
