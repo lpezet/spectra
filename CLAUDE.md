@@ -276,8 +276,20 @@ back to the repo's `docker-compose.yml` (the contributors' file). One follow-up 
 @coder's container actually *using* `/work/project` (the rest of blocker E — the mount is wired, the
 coder code still targets the old `APP_DIR`).
 
-Not yet a `bin` on PATH — that plus the `curl|bash` bootstrap is the remaining CLI work. Run in dev
-with `npm run spectra -w @spectra/cli -- up` (or `… -- init --name X --domain Y`).
+Distribution (like SAL: build in CI, download prebuilt in the installer):
+- `npm run build -w @spectra/cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a single
+  dependency-free `packages/cli/dist/cli.mjs` that runs on plain `node` (version inlined via a
+  `define`; no `tsx` at runtime). `dist/` is gitignored.
+- `.github/workflows/release.yml` runs that build on a `v*` tag and attaches the bundle (as
+  `spectra`), `default.yaml`, and `SHASUMS256.txt` to the GitHub release.
+- `install.sh` (repo root) **downloads** those release assets (checksum-verified), installs the bin
+  at `~/.local/bin/spectra`, and scaffolds `~/.config/spectra/default.yaml` — which is why discovery
+  prefers the installed `default.yaml`. It never clones or builds; `SPECTRA_ASSETS=<dir>` installs
+  from local prebuilt assets instead of downloading (the test path).
+
+Run in dev without installing via `npm run spectra -w @spectra/cli -- up`. `npm run
+test:install:docker` builds the assets once (a builder stage, as CI does) then installs and
+exercises the prebuilt bin. The download path itself needs a published release (push a `v*` tag).
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to

@@ -14,16 +14,36 @@ Inspired by Unreal Blueprints, minus two things on purpose: there is no node/wir
 and there is no runtime to debug against (this is design-time only, so tests are the
 observability layer).
 
-## Running it
+## Install
 
-Two separate things run here, each with its own command.
+Spectra runs as a small set of Docker services, driven by a `spectra` CLI. Install the CLI:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
+# curl -fsSL .../install.sh | bash -s -- v0.1.0     # pin a release
+```
+
+It **downloads** a single self-contained `spectra` (a prebuilt file from the GitHub release,
+checksum-verified) into `~/.local/bin` — no clone, no build; you need `node` only to *run* it —
+and scaffolds `~/.config/spectra` with the distribution compose. Then, in your project's repo:
+
+```bash
+spectra init         # link this repo to a Spectra project (names it, points @coder at your code)
+spectra up           # build + start the stack (needs Docker running)
+```
+
+`spectra up` brings up the spec tool (:5174), the web UI (:5173), and the sandboxed `@coder`. See
+`spectra --help` and `spectra init --help`.
+
+## Running it (from a checkout)
+
+Working *on* Spectra rather than installing it? Two things run, each with its own command.
 
 ```bash
 npm install
 
 npm run dev          # the spec tool, all on the host — express :5174, vite :5173
 npm run dev:sandbox  # the same, with express and @coder in containers (see Sandbox below)
-npm run dev:app      # the ToDo app implemented from those specs → http://localhost:5175
 
 # Chat needs a credential — see .env.example. One of:
 #   ANTHROPIC_API_KEY=sk-ant-api...        console key from console.anthropic.com

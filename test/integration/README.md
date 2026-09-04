@@ -43,3 +43,15 @@ project is configured, and skipping it avoids the stray `./app` the compose woul
 
 Note the readiness wait uses `curl --retry-all-errors`: docker publishes the port before the server
 inside is listening, so a plain `--retry-connrefused` would give up on the first empty reply.
+
+## Install e2e (`Dockerfile.install` + `installed.sh`)
+
+```bash
+npm run test:install:docker   # runs install.sh in a clean container, then the installed bin
+```
+
+Proves the real `curl | bash` install path — where `install.sh` **downloads a prebuilt** bundle and
+places it (it never builds). A builder stage produces the release assets once, as CI does on a tag;
+the runtime stage runs `install.sh` with `SPECTRA_ASSETS` (install from local prebuilt, no network),
+then `installed.sh` runs the **installed** bin (no repo, no `node_modules` beside it) — it is on
+PATH, `init` links a repo, and `up` auto-discovers the *installed* `default.yaml`.

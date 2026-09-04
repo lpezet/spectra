@@ -34,9 +34,12 @@ function composeFilesFor(explicit: string[]): string[] {
   })
 }
 
+declare const __SPECTRA_VERSION__: string | undefined
 function version(): string {
-  const pkg = JSON.parse(readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8'))
-  return pkg.version as string
+  // The bundled build inlines the version (esbuild `define`); running from source (tsx) has no
+  // such constant and reads package.json instead — a single-file bundle has no package.json beside it.
+  if (typeof __SPECTRA_VERSION__ !== 'undefined') return __SPECTRA_VERSION__
+  return JSON.parse(readFileSync(path.resolve(import.meta.dirname, '../package.json'), 'utf8')).version as string
 }
 
 /** XDG homes, matching how the server resolves DATA_DIR. */

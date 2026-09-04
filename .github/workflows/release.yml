@@ -1,0 +1,32 @@
+# Cut a release from a tag: build the single-file CLI bundle and attach it (plus default.yaml and
+# checksums) as release assets. install.sh downloads these — it never builds. Push a tag to run:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build -w @spectra/cli
+      - name: Assemble release assets
+        run: |
+          mkdir -p out
+          cp packages/cli/dist/cli.mjs out/spectra
+          cp default.yaml out/default.yaml
+          ( cd out && sha256sum spectra default.yaml > SHASUMS256.txt )
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" out/spectra out/default.yaml out/SHASUMS256.txt --generate-notes
