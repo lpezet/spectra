@@ -5,7 +5,14 @@
  * that touches a real daemon, and it is deliberately thin.
  */
 import { describe, expect, it } from 'vitest'
-import { COMPONENTS, VERBS, composeArgv, parseArgs } from './commands.js'
+import {
+  COMPONENTS,
+  VERBS,
+  composeArgv,
+  composeInstallArgv,
+  composeStackArgv,
+  parseArgs,
+} from './commands.js'
 
 const FILE = '/repo/docker-compose.yml'
 
@@ -35,6 +42,27 @@ describe('composeArgv', () => {
         expect(argv.length).toBeGreaterThan(2)
       }
     }
+  })
+})
+
+describe('composeStackArgv', () => {
+  it('brings the whole stack up with the web profile enabled', () => {
+    expect(composeStackArgv('up', FILE)).toEqual(['-f', FILE, '--profile', 'web', 'up', '-d'])
+  })
+  it('tears it all down without a profile (down ignores profiles)', () => {
+    expect(composeStackArgv('down', FILE)).toEqual(['-f', FILE, 'down'])
+  })
+})
+
+describe('composeInstallArgv', () => {
+  it('builds everything (web profile enabled) when no component is named', () => {
+    expect(composeInstallArgv(undefined, FILE)).toEqual(['-f', FILE, '--profile', 'web', 'build'])
+  })
+  it('builds a single service, translating server -> spec', () => {
+    expect(composeInstallArgv('server', FILE)).toEqual(['-f', FILE, 'build', 'spec'])
+  })
+  it('carries the web profile when building web', () => {
+    expect(composeInstallArgv('web', FILE)).toEqual(['-f', FILE, '--profile', 'web', 'build', 'web'])
   })
 })
 
@@ -70,6 +98,25 @@ describe('parseArgs', () => {
   it('errors on an unknown component or verb, naming the valid set', () => {
     expect(parseArgs(['nope', 'start'])).toMatchObject({ kind: 'error' })
     expect(parseArgs(['server', 'fly'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('parses whole-stack up/down', () => {
+    expect(parseArgs(['up'])).toMatchObject({ kind: 'stack', action: 'up' })
+    expect(parseArgs(['down', '--dry-run'])).toMatchObject({ kind: 'stack', action: 'down', dryRun: true })
+  })
+
+  it('errors when up/down is given a stray argument', () => {
+    expect(parseArgs(['up', 'server'])).toMatchObject({ kind: 'error' })
+  })
+
+  it('parses install with no component, with "all", and with a component', () => {
+    expect(parseArgs(['install'])).toMatchObject({ kind: 'install', component: undefined })
+    expect(parseArgs(['install', 'all'])).toMatchObject({ kind: 'install', component: undefined })
+    expect(parseArgs(['install', 'web'])).toMatchObject({ kind: 'install', component: 'web' })
+  })
+
+  it('errors on install with an unknown component', () => {
+    expect(parseArgs(['install', 'nope'])).toMatchObject({ kind: 'error' })
   })
 
   it('errors when a component is given without a verb', () => {

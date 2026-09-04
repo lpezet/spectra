@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { composeArgv, parseArgs, USAGE } from './commands.js'
+import { composeArgv, composeInstallArgv, composeStackArgv, parseArgs, USAGE } from './commands.js'
 
 /**
  * Where the compose file lives. Build-local v1 drives the compose that ships with the source,
@@ -40,9 +40,16 @@ async function main(): Promise<number> {
       console.error(parsed.message)
       console.error('\nRun `spectra --help` for usage.')
       return 2
-    case 'run': {
+    case 'run':
+    case 'stack':
+    case 'install': {
       const composeFile = parsed.composeFile ?? defaultComposeFile()
-      const args = composeArgv(parsed.component, parsed.verb, composeFile)
+      const args =
+        parsed.kind === 'run'
+          ? composeArgv(parsed.component, parsed.verb, composeFile)
+          : parsed.kind === 'stack'
+            ? composeStackArgv(parsed.action, composeFile)
+            : composeInstallArgv(parsed.component, composeFile)
       if (parsed.dryRun) {
         console.log(['docker', 'compose', ...args].join(' '))
         return 0
