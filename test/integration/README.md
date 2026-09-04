@@ -23,7 +23,23 @@ It covers install + CLI behavior: the bin runs, `init` lays out the three homes 
 compose commands translate right (checked via `--dry-run`, so no docker daemon is needed — this runs
 in plain CI).
 
-It does **not** boot the stack. `spectra up` for real calls `docker compose up`, which needs a
-daemon *inside* the test. Building the images (from the pinned git context) and curling the running
-web UI is a heavier **docker-in-docker** tier, tracked separately — that is the first place the
-containers actually execute.
+It does **not** boot the stack — that is `stack.sh` below.
+
+## Full-stack e2e (`stack.sh`)
+
+```bash
+npm run test:integration:stack    # builds the images, boots spec + web, asserts, tears down
+```
+
+This is the tier where the **containers actually execute**. It builds from `docker-compose.yml`
+(local `context: .`, so it does not need the repo public / the git build context), boots `spec` +
+`web`, and asserts the running stack serves: `spec` answers `/api` directly, `web` serves the SPA,
+`/api` is proxied through nginx to `spec` (with terms coming back), and SPA deep-links fall back to
+`index.html`. It needs a **Docker daemon** and tears the stack down on exit.
+
+Credential-free: the read API serves with an empty `ANTHROPIC_API_KEY` (the agent is only needed to
+run a chat turn), so this runs in CI with no secret. `@coder` is not started — it is inert until a
+project is configured, and skipping it avoids the stray `./app` the compose would otherwise create.
+
+Note the readiness wait uses `curl --retry-all-errors`: docker publishes the port before the server
+inside is listening, so a plain `--retry-connrefused` would give up on the first empty reply.
