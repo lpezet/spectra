@@ -25,10 +25,10 @@ RUN apt-get update \
 # failed — a patch release of the Agent SDK tightened its zod peer and the build broke
 # without a line of this repo changing.
 WORKDIR /agent
-COPY coder/package.json coder/package-lock.json ./
+COPY packages/coder/package.json packages/coder/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY coder/ ./
+COPY packages/coder/ ./
 
 # Never root. A container that runs as root and mounts your source is a smaller
 # improvement over no container than it looks.

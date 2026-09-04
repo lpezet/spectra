@@ -327,8 +327,8 @@ specs/                      the source of truth — plain JSON, hand-editable
   changesets/rejected/      what was turned down
   questions/*.json          what the glossary does not settle, and what was decided
 data/transcripts.db         chat history — gitignored, prunable, never the record
-shared/src/                 the engine: types, value-type grammar, backlinks, conflicts
-server/src/                 express — spec files, transcripts, and the two agents
+packages/core/src/          the engine: types, value-type grammar, backlinks, conflicts
+packages/server/src/        express — spec files, transcripts, and the two agents
   agent/agents.ts           who @spec and @coder are, and what each may reach
   agent/runner.ts           runs a turn, streams it, blocks on approvals
   agent/tools.ts            the domain tools both agents call
@@ -336,10 +336,8 @@ server/src/                 express — spec files, transcripts, and the two age
   anthropicProxy.ts         the model API, relayed so the sandbox needs no egress or key
   glossaryExport.ts         the contract as a file, so app/ can check itself offline
   sandbox.ts                whether the @coder container is up, asked from inside its network
-web/src/                    react — browse, search, review, apply, chat
-app/specs.snapshot.json     the glossary contract, committed — what the drift check reads
-app/src/                    the ToDo app, written *from* specs/terms — the output side
-coder/src/                  the sandboxed half of @coder — no history, no writes to specs/
+packages/web/src/           react — browse, search, review, apply, chat
+packages/coder/src/         the sandboxed half of @coder — no history, no writes to specs/
 Dockerfile.spec             express, on both networks
 Dockerfile.coder            @coder, on the internal one
 docker-compose.yml          the boundary between them
