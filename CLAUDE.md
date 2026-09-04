@@ -10,14 +10,13 @@ stated "and here is why the obvious alternative is wrong" attached.
 
 ```bash
 npm install                    # root workspaces (shared, server, web)
-npm run install:app            # app/ has its OWN node_modules — not a workspace
 
 npm run dev                    # spec tool, unsandboxed: express :5174 + vite :5173
 npm run dev:sandbox            # same, with express and @coder in containers + vite on host
-npm run dev:app                # the ToDo app implemented from the specs → :5175
+                               #   @coder has no project to point at yet — see "The consumer project" below
 
-npm test                       # shared, server, web, then app (each is a separate vitest run)
-npm run typecheck              # tsc across shared, server, web, app
+npm test                       # shared, server, web (each is a separate vitest run)
+npm run typecheck              # tsc across shared, server, web
 
 npm run sandbox:logs           # docker compose logs -f
 npm run sandbox:down           # docker compose down
@@ -28,27 +27,37 @@ Single test file / single test name (vitest per workspace, so target the workspa
 ```bash
 npm test -w shared -- src/changeset.test.ts
 npm test -w server -- -t 'refuses when the snapshot is behind'
-npm --prefix app test -- src/domain/domain.test.ts
 ```
 
 There is no linter or formatter configured. `npm run typecheck` and the tests are the whole gate.
 
-## The two halves
+## Spectra is the tool; the consumer project is separate
 
-Two independent things share this repo and nothing else:
+This repo is **Spectra** — the spec tool (`shared/`, `server/`, `web/`): a glossary of Terms in
+`specs/*.json`, edited only through structured changesets, plus a chat dock running two agents.
+`specs/` here is the example glossary the tool operates on.
 
-- **The spec tool** (`shared/`, `server/`, `web/`) — a glossary of Terms in `specs/*.json`,
-  edited only through structured changesets, plus a chat dock running two agents.
-- **`app/`** — a ToDo app written *from* `specs/terms/`, and the output side of the loop.
+There used to be a second half in `app/` — a ToDo app written *from* `specs/terms/`, the output
+side of the loop. It has been **sidelined** to the `backup/todo-app` branch (a full snapshot,
+incl. `app/`), because Spectra ships as the tool and the *consumer project it implements into is
+a separate thing* — kept elsewhere, or external. The removal was clean because `app/` was
+standalone-by-construction (its own `node_modules`/`tsconfig`, never an npm workspace).
 
-`app/` is deliberately **not** an npm workspace: its own `node_modules`, `tsconfig`, and
-TypeScript. Copy the directory anywhere and `npm install && npm test && npm run build` works
-with no repo around it. That is what lets the sandbox mount `app/` and nothing else — do not
-"fix" this by folding it into the root workspaces. It also means dependency changes in `app/`
-need `npm --prefix app install`, not a root install.
+### The consumer project (currently unconfigured — blocker E)
 
-`app/` has never heard of `specs/` at runtime. The only link between the halves is a human or
-`@coder` editing `app/` to match `specs/`.
+`@coder`'s working directory and only sandbox mount were `app/`. With `app/` gone, **the
+sandboxed `@coder` has no project to point at**: `npm run dev:sandbox` runs, but a coder turn
+targets `APP_DIR` (`server/src/agent/agents.ts`) / the `./app:/work/app` mount in
+`docker-compose.yml`, which no longer exist — and `docker compose up` will create an empty
+`./app` on the host. Running `@coder` is therefore inert until the project target is made
+configurable. That work — pointing the coder at a chosen project, and where the drift check
+lives — is the deferred **blocker E** ("drift-check fork"); the rest of the tool (glossary,
+changesets, `@spec`, MCP, version guard) is unaffected and its tests pass.
+
+The design principle to preserve when that project is wired back: the consumer project stays
+**standalone** — its own `node_modules`/`tsconfig`, buildable in a bare copy — which is what
+lets the sandbox mount it and nothing else. Do not fold it into the root workspaces. It has
+never heard of `specs/` at runtime; the only link is a human or `@coder` editing it to match.
 
 ## The write path, and why it is shaped this way
 
@@ -76,10 +85,18 @@ set of rules, so the preview cannot disagree with the result.
 
 ## The snapshot and the version check
 
-`app/specs.snapshot.json` is the glossary contract as a committed file — names, kinds, and a
-hash of each term's spec/parent/attributes. `app/src/implements.test.ts` checks the
-`// implements: termName` markers against it, which is what makes the drift check work both in
-a bare copy of `app/` and inside a sandbox that cannot see `specs/`.
+The *protocol* below lives in the tool (`server/src/specsExport.ts`, `GET /api/specs/version`,
+`mark_implemented`) and is unaffected by the app removal. The two concrete files it names —
+`specs.snapshot.json` and `implements.test.ts` — lived in the sidelined `app/` (still on
+`backup/todo-app`) and move with the consumer project when it is wired back (blocker E). The
+snapshot fallback path (`server/src/specsExport.ts`, `APP_SNAPSHOT`) now points at an absent
+file and degrades to "no readable snapshot" rather than crashing. Read the rest as describing
+how the guard works against *whatever* project holds the snapshot.
+
+`specs.snapshot.json` is the glossary contract as a committed file — names, kinds, and a hash of
+each term's spec/parent/attributes. The project's `implements.test.ts` checks the
+`// implements: termName` markers against it, which is what makes the drift check work both in a
+bare copy of the project and inside a sandbox that cannot see `specs/`.
 
 The staleness guard is modelled on `git push`:
 
@@ -179,13 +196,18 @@ server/src/agent/runner.ts    runs a turn, streams it, blocks on approvals
 server/src/agent/tools.ts     domain tools; mcpHttp.ts is the same tools over HTTP
 server/src/specsExport.ts     the snapshot + version (README calls this glossaryExport.ts)
 server/src/commit.ts          the only writer of specs/
-app/specs.snapshot.json       the committed contract the drift check reads
-coder/src/main.ts             the sandboxed half of @coder
+server/src/specStore.ts       the storage seam (FileSystemSpecStore today, SqlSpecStore next)
+coder/src/main.ts             the sandboxed half of @coder (target project unconfigured — blocker E)
 data/transcripts.db           chat history — gitignored, prunable, never the record
 ```
 
+The consumer project (`app/`, holding `specs.snapshot.json` and the `implements` drift check)
+was sidelined to the `backup/todo-app` branch — see "Spectra is the tool" above.
+
 Ports: **5173** spec tool UI, **5174** its API (serves no HTML — a 404 in the browser is
-correct), **5175** the ToDo app, **5177** the coder container.
+correct), **5177** the coder container. (5175 was the ToDo app's dev server, now on
+`backup/todo-app`.)
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
-`specs/terms/` and update `app/` to match, using the `// implements:` markers to target it.
+`specs/terms/` and update the consumer project to match, using the `// implements:` markers to
+target it — inert until that project is configured (blocker E).

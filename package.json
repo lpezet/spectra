@@ -1,5 +1,5 @@
 {
-  "name": "todo-blueprints",
+  "name": "spectra",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -11,13 +11,11 @@
     "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
-    "dev:app": "npm --prefix app run dev",
     "dev:sandbox": "docker compose up -d --build && npm run dev:web",
     "sandbox:logs": "docker compose logs -f",
     "sandbox:down": "docker compose down",
-    "test": "npm run test -w shared && npm run test -w server && npm run test -w web && npm --prefix app test",
-    "typecheck": "tsc -p shared && tsc -p server && tsc -p web && npm --prefix app run typecheck",
-    "install:app": "npm --prefix app install"
+    "test": "npm run test -w shared && npm run test -w server && npm run test -w web",
+    "typecheck": "tsc -p shared && tsc -p server && tsc -p web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
