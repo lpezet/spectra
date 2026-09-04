@@ -259,9 +259,14 @@ three things in three places, per the corrected model above: `.spectra/config.js
 under the XDG data home (`~/.local/share/spectra/projects/<id>/specs/` — the glossary is the Server's,
 never the repo), and a per-project compose override under `~/.config/spectra/projects/<id>/` (mounts
 that glossary + data into `spec`, and the repo — `--dir` for a subdir — into `coder` at `/work/project`).
-Projects are keyed by **id**, not folder path. Two follow-ups: the CLI auto-discovering the override
-(so `spectra up` needs no `-f`), and @coder's container actually *using* `/work/project` (the rest of
-blocker E — the mount is wired, the coder code still targets the old `APP_DIR`).
+Projects are keyed by **id**, not folder path. `--name`/`--domain` default to the repo folder name.
+
+Compose-file resolution (`discovery.ts`, pure `resolveComposeFiles`) then makes `spectra up` inside an
+inited repo need no `-f`: explicit `--compose-file` flags win, else `SPECTRA_COMPOSE_FILE`, else it
+walks up for `.spectra/config.json` and layers `default.yaml` + that project's override, else falls
+back to the repo's `docker-compose.yml` (the contributors' file). One follow-up remains on this path:
+@coder's container actually *using* `/work/project` (the rest of blocker E — the mount is wired, the
+coder code still targets the old `APP_DIR`).
 
 Not yet a `bin` on PATH — that plus the `curl|bash` bootstrap is the remaining CLI work. Run in dev
 with `npm run spectra -w @spectra/cli -- up` (or `… -- init --name X --domain Y`).
