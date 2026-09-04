@@ -12,18 +12,26 @@ import { existsSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { composeArgv, composeBuildArgv, composeStackArgv, parseArgs, USAGE } from './commands.js'
+import { discover, resolveComposeFiles } from './discovery.js'
 import { INIT_USAGE, applyInitPlan, parseInitArgs, planInit } from './init.js'
 
+/** Repo-root path resolved relative to this package (packages/cli/src -> repo root). */
+function repoFile(name: string): string {
+  return path.resolve(import.meta.dirname, '../../..', name)
+}
+
 /**
- * The compose files to drive when none are given on the command line. Default is the repo's
- * `docker-compose.yml`, resolved relative to this package (packages/cli/src -> repo root) — the
- * contributors' file. SPECTRA_COMPOSE_FILE overrides it, and `--compose-file` (repeatable) takes
- * precedence entirely. Once `spectra init` exists it will point this at `default.yaml` plus a
- * per-project override.
+ * The compose files a command runs against. Explicit `--compose-file` flags win; then
+ * SPECTRA_COMPOSE_FILE; then auto-discovery of a linked project (`default.yaml` + its override);
+ * then the contributors' `docker-compose.yml`. See discovery.ts for the precedence.
  */
-function defaultComposeFiles(): string[] {
-  if (process.env.SPECTRA_COMPOSE_FILE) return [process.env.SPECTRA_COMPOSE_FILE]
-  return [path.resolve(import.meta.dirname, '../../..', 'docker-compose.yml')]
+function composeFilesFor(explicit: string[]): string[] {
+  return resolveComposeFiles({
+    explicit,
+    envFile: process.env.SPECTRA_COMPOSE_FILE,
+    discovered: discover(process.cwd(), configHome(), repoFile('default.yaml')),
+    fallback: repoFile('docker-compose.yml'),
+  })
 }
 
 function version(): string {
@@ -88,9 +96,7 @@ function runInit(argv: string[]): number {
   console.log(`  link:     ${linkPath}`)
   console.log(`  glossary: ${plan.glossaryDir}`)
   console.log(`  coder:    ${plan.coderMount}`)
-  console.log('\nStart it with:')
-  console.log(`  spectra up --compose-file default.yaml --compose-file ${plan.overridePath}`)
-  console.log('(auto-discovery of the override is coming; for now pass it explicitly.)')
+  console.log('\nStart it from this repo with:  spectra up')
   return 0
 }
 
@@ -113,7 +119,7 @@ async function main(): Promise<number> {
     case 'run':
     case 'stack':
     case 'build': {
-      const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : defaultComposeFiles()
+      const composeFiles = composeFilesFor(parsed.composeFiles)
       const args =
         parsed.kind === 'run'
           ? composeArgv(parsed.component, parsed.verb, composeFiles)
