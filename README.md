@@ -320,7 +320,7 @@ Verified by adding a term to `specs/`, re-exporting, and watching the check fail
 ## Layout
 
 ```
-specs/                      the source of truth — plain JSON, hand-editable
+examples/todo/specs/        the example glossary — plain JSON, hand-editable (engine ships empty)
   terms/*.json              one file per term
   changesets/*.json         pending proposals
   changesets/applied/       what landed

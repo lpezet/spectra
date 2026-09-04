@@ -43,8 +43,8 @@ COPY packages/server/ packages/server/
 RUN chown -R node:node /stack
 USER node
 
-# Defaults already resolve here — SPECS_DIR to /stack/specs, DATA_DIR to /stack/data —
-# so the mounts below need no env to match them.
+# DATA_DIR defaults to /stack/data, matching the mount. SPECS_DIR no longer defaults to a
+# baked-in project (the engine ships empty), so compose sets it to /stack/specs explicitly.
 ENV NODE_ENV=development
 EXPOSE 5174
 CMD ["node", "node_modules/.bin/tsx", "watch", "packages/server/src/main.ts"]
