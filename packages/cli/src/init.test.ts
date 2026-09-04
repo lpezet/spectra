@@ -66,9 +66,12 @@ describe('parseInitArgs', () => {
     ).toMatchObject({ kind: 'ok', options: { coderDir: 'api', server: 'http://x', force: true, dryRun: true } })
   })
 
-  it('requires name and domain', () => {
-    expect(parseInitArgs(['--domain', 'b'])).toMatchObject({ kind: 'error' })
-    expect(parseInitArgs(['--name', 'A'])).toMatchObject({ kind: 'error' })
+  it('leaves name and domain undefined when omitted (caller defaults to the folder name)', () => {
+    expect(parseInitArgs([])).toEqual({
+      kind: 'ok',
+      options: { name: undefined, domain: undefined, coderDir: undefined, server: undefined, force: false, dryRun: false },
+    })
+    expect(parseInitArgs(['--name', 'A'])).toMatchObject({ kind: 'ok', options: { name: 'A', domain: undefined } })
   })
 
   it('help and unknown/valueless flags', () => {

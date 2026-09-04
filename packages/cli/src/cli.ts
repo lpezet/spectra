@@ -64,10 +64,12 @@ function runInit(argv: string[]): number {
     return 1
   }
 
+  // Both default to the repo folder name; edit them later in the glossary's project.json.
+  const folder = path.basename(repoDir)
   const plan = planInit({
     repoDir,
-    name: parsed.options.name,
-    domain: parsed.options.domain,
+    name: parsed.options.name ?? folder,
+    domain: parsed.options.domain ?? folder,
     coderDir: parsed.options.coderDir,
     server: parsed.options.server,
     configHome: configHome(),

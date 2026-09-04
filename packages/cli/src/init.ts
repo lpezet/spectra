@@ -137,8 +137,9 @@ export function applyInitPlan(plan: InitPlan): void {
 }
 
 export interface InitOptions {
-  name: string
-  domain: string
+  /** Undefined when not given — the caller defaults both to the repo folder name. */
+  name?: string
+  domain?: string
   coderDir?: string
   server?: string
   force: boolean
@@ -173,12 +174,10 @@ export function parseInitArgs(argv: string[]): InitParse {
     }
   }
 
-  if (!flags.name) return { kind: 'error', message: 'init needs --name "<project name>".' }
-  if (!flags.domain) return { kind: 'error', message: 'init needs --domain "<what the glossary describes>".' }
-
   return {
     kind: 'ok',
     options: {
+      // Both optional — the caller fills them from the repo folder name when absent.
       name: flags.name,
       domain: flags.domain,
       coderDir: flags.dir,
@@ -192,11 +191,11 @@ export function parseInitArgs(argv: string[]): InitParse {
 export const INIT_USAGE = `spectra init — link this repo to a Spectra project
 
 Usage:
-  spectra init --name "<name>" --domain "<what the glossary describes>" [options]
+  spectra init [--name "<name>"] [--domain "<what the glossary describes>"] [options]
 
 Options:
-  --name <name>      the project's name        (required)
-  --domain <text>    what the glossary is about (required)
+  --name <name>      the project's name         (default: the repo folder name)
+  --domain <text>    what the glossary is about (default: the repo folder name)
   --dir <subdir>     what @coder mounts, relative to the repo (default: the repo root)
   --server <url>     Server URL for the link   (default: none — a local install uses the CLI's)
   --force            overwrite an existing .spectra/config.json
