@@ -16,8 +16,7 @@ import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptStore } from '../transcripts.js'
 import type { SpecStore } from '../specStore.js'
 import { CODER_URL, probeSandbox } from '../sandbox.js'
-import { AGENTS } from './agents.js'
-import type { AgentName } from './agents.js'
+import type { AgentDefinition, AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
 
 /** How long a pending approval waits before giving up, so a run cannot hang forever. */
@@ -65,6 +64,8 @@ export class AgentRunner {
   constructor(
     private readonly store: SpecStore,
     private readonly transcripts: TranscriptStore,
+    /** Built once in the composition root from the project's identity, then threaded in here. */
+    private readonly agents: Record<AgentName, AgentDefinition>,
   ) {}
 
   /**
@@ -159,7 +160,7 @@ export class AgentRunner {
   }
 
   private async run(sessionId: string, prompt: string, to: AgentName): Promise<void> {
-    const agent = AGENTS[to]
+    const agent = this.agents[to]
     const server = createSdkMcpServer({
       name: 'blueprints',
       version: '1.0.0',

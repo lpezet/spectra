@@ -14,8 +14,22 @@
  */
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { parseChangeset, parseExpectation, parseQuestion, parseTerm } from '@tb/shared'
-import type { Answer, Changeset, Expectation, Question, SourceProblem, Term } from '@tb/shared'
+import {
+  parseChangeset,
+  parseExpectation,
+  parseProjectInfo,
+  parseQuestion,
+  parseTerm,
+} from '@tb/shared'
+import type {
+  Answer,
+  Changeset,
+  Expectation,
+  ProjectInfo,
+  Question,
+  SourceProblem,
+  Term,
+} from '@tb/shared'
 import { slug, uniquePath, writeAtomic } from './files.js'
 import { serializeChangeset, serializeTerm, termFileName } from './serialize.js'
 import type {
@@ -29,6 +43,16 @@ import type {
   SpecStore,
   StoredAt,
 } from './specStore.js'
+
+/**
+ * What `projectInfo()` returns when `specs/project.json` is absent or will not parse. Neutral on
+ * purpose: it must not smuggle a real project's name back in, so an unconfigured glossary reads as
+ * exactly that rather than borrowing this example's identity.
+ */
+const FALLBACK_PROJECT_INFO: ProjectInfo = {
+  name: 'Untitled project',
+  domain: 'a shared glossary',
+}
 
 interface TermEntry {
   file: string
@@ -55,6 +79,7 @@ export class FileSystemSpecStore implements SpecStore {
   private readonly questionsDir: string
   private readonly expectationsDir: string
   private readonly retiredDir: string
+  private readonly projectFile: string
 
   constructor(specsDir: string) {
     this.termsDir = path.join(specsDir, 'terms')
@@ -64,6 +89,36 @@ export class FileSystemSpecStore implements SpecStore {
     this.questionsDir = path.join(specsDir, 'questions')
     this.expectationsDir = path.join(specsDir, 'expectations')
     this.retiredDir = path.join(this.expectationsDir, 'retired')
+    // Beside the four collection dirs, never inside one, so the collection readers never see it.
+    this.projectFile = path.join(specsDir, 'project.json')
+  }
+
+  /**
+   * Read `specs/project.json`. Missing or malformed degrades to {@link FALLBACK_PROJECT_INFO} —
+   * a bad hand-edit must not crash the server or the agents, the same graceful-degradation the
+   * record reads use. A parse failure is logged so the reason is not silent.
+   */
+  async projectInfo(): Promise<ProjectInfo> {
+    let raw: string
+    try {
+      raw = await readFile(this.projectFile, 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return FALLBACK_PROJECT_INFO
+      throw error
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(raw)
+    } catch (error) {
+      console.warn(`[specs] project.json is not valid JSON: ${(error as Error).message}`)
+      return FALLBACK_PROJECT_INFO
+    }
+    const parsed = parseProjectInfo(data)
+    if (!parsed.ok) {
+      console.warn(`[specs] project.json is invalid: ${parsed.errors.join('; ')}`)
+      return FALLBACK_PROJECT_INFO
+    }
+    return parsed.value
   }
 
   // ── Low-level ────────────────────────────────────────────────────────────────────────

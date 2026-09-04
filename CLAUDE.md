@@ -188,6 +188,7 @@ string `proxied-by-the-spec-tool` instead of a credential.
 
 ```
 specs/terms/*.json            source of truth, hand-editable
+specs/project.json            the glossary's identity (name, domain) — via SpecStore.projectInfo()
 specs/changesets/             pending; applied/ and rejected/ are the history
 specs/questions/              what the glossary does not settle, and what was decided
 shared/src/                   the engine — types, valueType grammar, backlinks, conflicts, changeset ops

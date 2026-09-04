@@ -30,7 +30,16 @@
  * `app/specs.snapshot.json` (tabled — a `version()` method belongs here eventually, once the
  * snapshot is reworked into a queryable authority; deliberately left out of this first slice).
  */
-import type { Answer, Changeset, Expectation, Op, Question, SourceProblem, Term } from '@tb/shared'
+import type {
+  Answer,
+  Changeset,
+  Expectation,
+  Op,
+  ProjectInfo,
+  Question,
+  SourceProblem,
+  Term,
+} from '@tb/shared'
 
 // ── Partitioned read shapes (relocated here from store.ts — this interface is their home) ──
 
@@ -115,6 +124,14 @@ export type MutationResult =
   | { ok: false; reason: 'conflict'; currentRev: number }
 
 export interface SpecStore {
+  /**
+   * Who this glossary is — its display name and one-line domain. Glossary content, not
+   * deployment config: the filesystem backend reads it from `specs/project.json`, a SQL backend
+   * from a row, a hosted one per tenant. A missing or malformed source degrades to a neutral
+   * default rather than throwing, the same way an unreadable record becomes a `problem`.
+   */
+  projectInfo(): Promise<ProjectInfo>
+
   // ── Reads ──────────────────────────────────────────────────────────────────────────
   // Partitioned by state, returning domain objects. No file handles.
   readTerms(): Promise<Glossary>

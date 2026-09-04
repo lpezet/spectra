@@ -4,7 +4,7 @@
  */
 import { z } from 'zod'
 import { TERM_TYPES } from './types.js'
-import type { Changeset, Expectation, Question, Term } from './types.js'
+import type { Changeset, Expectation, ProjectInfo, Question, Term } from './types.js'
 import { describeValueTypeError, isValueType } from './valueType.js'
 
 const termName = z
@@ -23,6 +23,14 @@ const authorSchema = z
   .object({
     kind: z.enum(['human', 'spec', 'coder']),
     user: z.string().min(1).optional(),
+  })
+  .strict()
+
+/** Project identity, hand-editable in `specs/project.json`. Both fields are required and non-empty. */
+export const projectInfoSchema = z
+  .object({
+    name: z.string().min(1),
+    domain: z.string().min(1),
   })
   .strict()
 
@@ -227,5 +235,12 @@ export function parseExpectation(data: unknown): ParseResult<Expectation> {
   const result = expectationSchema.safeParse(data)
   return result.success
     ? { ok: true, value: result.data as Expectation }
+    : { ok: false, errors: formatIssues(result.error) }
+}
+
+export function parseProjectInfo(data: unknown): ParseResult<ProjectInfo> {
+  const result = projectInfoSchema.safeParse(data)
+  return result.success
+    ? { ok: true, value: result.data as ProjectInfo }
     : { ok: false, errors: formatIssues(result.error) }
 }

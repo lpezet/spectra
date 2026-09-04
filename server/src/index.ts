@@ -5,6 +5,7 @@ import { applyChangeset, markImplemented, rejectChangeset } from './commit.js'
 import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
+import { buildAgents } from './agent/agents.js'
 import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
@@ -23,7 +24,13 @@ const PORT = Number(process.env.PORT ?? 5174)
 // writes the glossary. A hosted deployment resolves this per tenant instead — same seam.
 const store = new FileSystemSpecStore(SPECS_DIR)
 const transcripts = new TranscriptStore()
-const runner = new AgentRunner(store, transcripts)
+
+// The project's identity is glossary content, read from the store once at startup and threaded
+// into the agents (whose shared prompt names it) and the /api/project endpoint (the UI title).
+// A change to specs/project.json takes effect on restart — it is config, not live glossary data.
+const project = await store.projectInfo()
+const agents = buildAgents(project)
+const runner = new AgentRunner(store, transcripts, agents)
 
 // Every write over the HTTP API is a person acting in the browser. Stamped here, server-side —
 // never taken from the request body — the same reason the agent's identity comes from its route.
@@ -43,10 +50,16 @@ const app = express()
 app.use('/anthropic', anthropicProxy())
 
 app.use(express.json())
-app.use('/api/chat', chatRoutes(transcripts, runner))
+app.use('/api/chat', chatRoutes(transcripts, runner, agents))
 // Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
 // over the internal docker network by an agent in another container.
-app.use('/mcp', mcpRoutes(store, transcripts))
+app.use('/mcp', mcpRoutes(store, transcripts, agents))
+
+// The project's identity, for the UI title. Served from the value loaded at startup, so it
+// matches exactly what the agents were built with.
+app.get('/api/project', (_req, res) => {
+  res.json(project)
+})
 
 app.get('/api/terms', async (_req, res, next) => {
   try {

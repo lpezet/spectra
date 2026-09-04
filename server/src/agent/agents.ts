@@ -11,6 +11,7 @@
  * decision still lands as an artifact you approved.
  */
 import path from 'node:path'
+import type { ProjectInfo } from '@tb/shared'
 import { SPECS_DIR } from '../config.js'
 import type { Author } from '../transcripts.js'
 
@@ -39,7 +40,9 @@ export interface AgentDefinition {
   disallowedTools?: string[]
 }
 
-const SHARED = `You are one of two agents in a channel with a human, working on todo-blueprints: a shared glossary that a human and an AI coder both work from. The glossary lives in specs/terms as JSON — Terms with a spec, a parent, and typed attributes — and app/ is a ToDo app implemented from it.
+// The project's name and domain are threaded in, not hardcoded — they come from the SpecStore
+// (specs/project.json today), so the same server serves whatever glossary it is pointed at.
+const sharedPrompt = (project: ProjectInfo): string => `You are one of two agents in a channel with a human, working on ${project.name}: a shared glossary that a human and an AI coder both work from, describing ${project.domain}. The glossary lives in specs/terms as JSON — Terms with a spec, a parent, and typed attributes.
 
 The other agent is addressed as @spec or @coder. You cannot message them; only the human can. If work belongs to the other one, say so and let the human hand it over.
 
@@ -51,7 +54,17 @@ Lead with the conclusion. The first sentence of your final message must be a sin
 
 That sentence is not a summary of your whole reply and should not try to be. If the work had one outcome, say it. If it had two, say the one that decides what happens next.`
 
-export const AGENTS: Record<AgentName, AgentDefinition> = {
+/**
+ * The two agent definitions, built for a given project so their shared prompt names the real
+ * glossary. Constructed once in the composition root (index.ts) from `store.projectInfo()` and
+ * threaded into the runner and the MCP routes — the same "compose here, thread explicitly"
+ * shape as the store itself, so there is no module-level singleton carrying the definition.
+ */
+export function buildAgents(project: ProjectInfo): Record<AgentName, AgentDefinition> {
+  const SHARED = sharedPrompt(project)
+  // The object below keeps its original indentation — its systemPrompt template literals are
+  // multi-line, so re-indenting would corrupt the prompt text.
+  return {
   spec: {
     name: 'spec',
     label: 'spec',
@@ -164,6 +177,9 @@ You have a shell. Every command that changes anything is shown to the human befo
 
 If an ambiguity is cheap to get wrong, pick a reading, say which you picked and why, and move on. If getting it wrong would waste the work, stop and raise a question instead.`,
   },
+  }
 }
 
-export const AGENT_NAMES = Object.keys(AGENTS) as AgentName[]
+// Static: the roster is fixed by construction, not derived from a built instance, so it needs
+// no ProjectInfo and callers can validate an agent name without building the definitions.
+export const AGENT_NAMES: AgentName[] = ['spec', 'coder']

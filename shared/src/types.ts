@@ -32,6 +32,21 @@ export interface Author {
  */
 export type RecordStatus = 'draft' | 'ready'
 
+/**
+ * Who this glossary is, in one place. `name` is the display title (the UI header) and what the
+ * agents are told they are working on; `domain` is a one-line description of the subject the
+ * glossary describes — the framing an agent reads before it has read a single term.
+ *
+ * This is glossary *content*, not deployment config: it describes the project itself, so it is
+ * retrieved through the SpecStore (a file for the filesystem backend, a row for SQL, per-tenant
+ * once hosted) rather than baked into a prompt string. The *link* to a hosted project — endpoint,
+ * project id, credentials — is a separate, bootstrap concern and does not live here.
+ */
+export interface ProjectInfo {
+  name: string
+  domain: string
+}
+
 export type TermType = 'entity' | 'event' | 'function' | 'attribute-type'
 
 export const TERM_TYPES: readonly TermType[] = [
