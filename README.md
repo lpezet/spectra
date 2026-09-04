@@ -4,11 +4,10 @@ A shared, structured vocabulary that a human (product/end-user) and an AI coding
 both read and write, sitting *above* the code. The human authors and evolves the spec
 through a UI without ever looking at code; the agent implements it however it likes.
 
-Phase 1 pilot of the Spec DSL / glossary concept — see `genesis.md` for the why and
-`specs.md` for the scope. **This repo is the tool.** The ToDo domain in `specs/terms/` is
-seed content, picked because it is boring enough not to distract and still has real edge
-cases worth pinning down (`completeTask` on an already-done task, `deleteProject` with
-tasks still inside).
+**This repo is the tool.** The engine ships with no glossary of its own; the ToDo domain
+under `examples/todo/specs/` is an example to point at, picked because it is boring enough
+not to distract and still has real edge cases worth pinning down (`completeTask` on an
+already-done task, `deleteProject` with tasks still inside).
 
 Inspired by Unreal Blueprints, minus two things on purpose: there is no node/wire canvas
 (positions cost maintenance without adding meaning — this is search-first with backlinks),
