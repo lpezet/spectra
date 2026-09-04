@@ -276,8 +276,13 @@ back to the repo's `docker-compose.yml` (the contributors' file). One follow-up 
 @coder's container actually *using* `/work/project` (the rest of blocker E — the mount is wired, the
 coder code still targets the old `APP_DIR`).
 
-Not yet a `bin` on PATH — that plus the `curl|bash` bootstrap is the remaining CLI work. Run in dev
-with `npm run spectra -w @spectra/cli -- up` (or `… -- init --name X --domain Y`).
+Distribution: `npm run build -w @spectra/cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a
+single dependency-free `packages/cli/dist/cli.mjs` that runs on plain `node` (version inlined via a
+`define`; no `tsx` at runtime). `install.sh` (repo root) fetches the repo at a ref, builds that
+bundle, drops it at `~/.local/bin/spectra`, and scaffolds `~/.config/spectra/default.yaml` — which
+is why discovery prefers the installed `default.yaml`. Run in dev without installing via
+`npm run spectra -w @spectra/cli -- up`. The `curl|bash` install and the installed bin are covered
+by `npm run test:install:docker`.
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to

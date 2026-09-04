@@ -1,0 +1,20 @@
+# Runs install.sh in a clean container against the local checkout (SPECTRA_SRC — no network fetch),
+# then exercises the INSTALLED bin from ~/.local/bin. This proves the real curl|bash install path
+# end to end: build the self-contained bundle, drop it on PATH, scaffold the config dir, and run it
+# with no repo or node_modules beside the bin.
+#
+#   docker build -f test/integration/Dockerfile.install -t spectra-install .
+#   docker run --rm spectra-install
+FROM node:22-slim
+
+# git is not required (SPECTRA_SRC skips the fetch); node + npm come with the base image.
+RUN useradd --create-home tester
+USER tester
+WORKDIR /home/tester
+
+COPY --chown=tester:tester . /src
+
+# Install from the local source, as a normal user, into ~/.local and ~/.config.
+RUN SPECTRA_SRC=/src bash /src/install.sh
+
+CMD ["bash", "/src/test/integration/installed.sh"]
