@@ -1,0 +1,90 @@
+# The distributed compose — the stack as an end user runs it, NOT from a checkout.
+#
+# The one structural difference from docker-compose.yml (the contributors' file, which builds
+# from the working tree at `context: .`): every service builds from a REMOTE GIT context pinned
+# to a Spectra release. Docker/BuildKit fetches the source itself at build time, so an install
+# needs neither a clone nor an image registry — just this file. Set SPECTRA_REF to a release tag
+# to pin it; it defaults to `main` until the first tagged release exists.
+#
+# What this file deliberately does NOT carry: the project-specific bits — which glossary
+# (SPECS_DIR) the server operates on, where its data persists, and what @coder mounts. Those
+# differ per project and come from the override that `spectra init` writes, layered on top:
+#
+#     docker compose -f default.yaml -f ~/.config/spectra/projects/<id>/compose.yaml up -d
+#
+# So this file is the shared *base*. On its own it is intentionally not runnable — the server has
+# no glossary to point at and @coder has nothing to mount until the override supplies them.
+#
+# NOTE: keep this in structural sync with docker-compose.yml; the two differ only in build
+# context (remote git vs local `.`) and in that the project mounts live in the override here.
+
+x-git-context: &git-context
+  context: "https://github.com/lpezet/spectra.git#${SPECTRA_REF:-main}"
+
+services:
+  # The spec tool: glossary, transcripts, the credential, and the only egress. See
+  # docker-compose.yml for the full reasoning behind the two-network shape.
+  spec:
+    build:
+      <<: *git-context
+      dockerfile: Dockerfile.spec
+    networks:
+      - sandbox
+      - egress
+    ports:
+      - '127.0.0.1:5174:5174'
+    environment:
+      - PORT=5174
+      # Credentials are passed through, never baked. Sourced from the environment the CLI runs
+      # with (e.g. from ~/.config/spectra); an image carrying a token would be one you cannot rotate.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_SPEC_VOICE_ID=${ELEVENLABS_SPEC_VOICE_ID:-}
+      - ELEVENLABS_CODER_VOICE_ID=${ELEVENLABS_CODER_VOICE_ID:-}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-}
+      - CODER_URL=http://coder:5177
+      # SPECS_DIR and DATA_DIR — and the mounts that back them — come from the project override.
+    restart: unless-stopped
+
+  # The sandbox for @coder: one network, no route out.
+  coder:
+    build:
+      <<: *git-context
+      dockerfile: Dockerfile.coder
+    networks:
+      - sandbox
+    environment:
+      - NODE_ENV=production
+      - SPEC_URL=http://spec:5174
+      - ANTHROPIC_BASE_URL=http://spec:5174/anthropic
+      - ANTHROPIC_API_KEY=proxied-by-the-spec-tool
+    mem_limit: 2g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    # The consumer-project mount (the code @coder edits) comes from the project override — this
+    # is blocker E: which directory, kept clear of the glossary.
+
+  # The web UI: static build behind nginx, proxying /api to spec. Profiled, like in dev.
+  web:
+    build:
+      <<: *git-context
+      dockerfile: Dockerfile.web
+    profiles:
+      - web
+    networks:
+      - egress
+    depends_on:
+      - spec
+    ports:
+      - '127.0.0.1:5173:80'
+    restart: unless-stopped
+
+networks:
+  sandbox:
+    internal: true
+  egress: {}
