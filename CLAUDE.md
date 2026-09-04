@@ -196,8 +196,10 @@ string `proxied-by-the-spec-tool` instead of a credential.
 Code lives under `packages/` (`core`, `server`, `web`, `coder`); `core`/`server`/`web` are
 npm workspaces under the `@spectra/*` scope, `coder` is standalone (its own lockfile, the
 sandbox image builds from it). The engine ships with **no glossary** — the example one lives
-under `examples/todo/specs/`; `data/` (runtime, gitignored) sits at the repo root, and
-`.dev/specs` is the gitignored default an unconfigured run reads.
+under `examples/todo/specs/`. Neither the glossary nor runtime data defaults into the source
+tree: an unconfigured run reads specs from a gitignored `.dev/specs` and writes data under the
+XDG data home (`~/.local/share/spectra`). `npm run dev` overrides both to `examples/todo/specs`
+and a gitignored `.dev/` scratch dir.
 
 ```
 examples/todo/specs/terms/*.json      source of truth, hand-editable (the example glossary)
@@ -212,7 +214,7 @@ packages/server/src/specsExport.ts    the snapshot + version (README calls this 
 packages/server/src/commit.ts         the only writer of specs/
 packages/server/src/specStore.ts      the storage seam (FileSystemSpecStore today, SqlSpecStore next)
 packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
-data/transcripts.db                   chat history — gitignored, prunable, never the record
+~/.local/share/spectra/transcripts.db chat history — XDG data home (dev: .dev/data); prunable, never the record
 ```
 
 The consumer project (`app/`, holding `specs.snapshot.json` and the `implements` drift check)

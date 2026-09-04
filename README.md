@@ -326,7 +326,7 @@ examples/todo/specs/        the example glossary — plain JSON, hand-editable (
   changesets/applied/       what landed
   changesets/rejected/      what was turned down
   questions/*.json          what the glossary does not settle, and what was decided
-data/transcripts.db         chat history — gitignored, prunable, never the record
+~/.local/share/spectra/     runtime data: transcripts.db (dev: .dev/data) — prunable, never the record
 packages/core/src/          the engine: types, value-type grammar, backlinks, conflicts
 packages/server/src/        express — spec files, transcripts, and the two agents
   agent/agents.ts           who @spec and @coder are, and what each may reach
@@ -547,8 +547,9 @@ those.
 
 ### Transcripts
 
-Conversations live in SQLite at `data/transcripts.db` — gitignored, prunable, and
-deliberately not in `specs/`. The specs are the record of what was decided; a transcript is
+Conversations live in SQLite under the XDG data home (`~/.local/share/spectra/transcripts.db`;
+`npm run dev` writes to a gitignored `.dev/data` instead) — prunable, and deliberately not in
+`specs/`. The specs are the record of what was decided; a transcript is
 the workspace that led there. A question may point at the exchange that produced it, but
 must stay readable without it, so losing this database costs context and never costs a
 decision.
