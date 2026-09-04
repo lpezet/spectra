@@ -1,20 +1,30 @@
-# Runs install.sh in a clean container against the local checkout (SPECTRA_SRC — no network fetch),
-# then exercises the INSTALLED bin from ~/.local/bin. This proves the real curl|bash install path
-# end to end: build the self-contained bundle, drop it on PATH, scaffold the config dir, and run it
-# with no repo or node_modules beside the bin.
+# Proves the real install path: install.sh downloads a PREBUILT bundle and places it — it does not
+# build. So the build happens once here in a builder stage (as CI does for a release), and the
+# runtime stage installs those prebuilt assets via install.sh (SPECTRA_ASSETS, no network), then
+# runs the installed bin.
 #
 #   docker build -f test/integration/Dockerfile.install -t spectra-install .
 #   docker run --rm spectra-install
-FROM node:22-slim
 
-# git is not required (SPECTRA_SRC skips the fetch); node + npm come with the base image.
+# Builder: produce the release assets (the single-file CLI + default.yaml), like the release CI.
+FROM node:22-slim AS build
+WORKDIR /src
+COPY . .
+RUN npm ci && npm run build -w @spectra/cli
+RUN mkdir -p /assets \
+  && cp packages/cli/dist/cli.mjs /assets/spectra \
+  && cp default.yaml /assets/default.yaml
+
+# Runtime: a clean box with only the prebuilt assets + the installer + the test. Node is here to
+# RUN the CLI (not to build it).
+FROM node:22-slim
 RUN useradd --create-home tester
 USER tester
 WORKDIR /home/tester
+COPY --from=build --chown=tester:tester /assets /assets
+COPY --chown=tester:tester install.sh ./install.sh
+COPY --chown=tester:tester test/integration/installed.sh ./installed.sh
 
-COPY --chown=tester:tester . /src
+RUN SPECTRA_ASSETS=/assets bash install.sh
 
-# Install from the local source, as a normal user, into ~/.local and ~/.config.
-RUN SPECTRA_SRC=/src bash /src/install.sh
-
-CMD ["bash", "/src/test/integration/installed.sh"]
+CMD ["bash", "installed.sh"]

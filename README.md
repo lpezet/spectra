@@ -20,11 +20,12 @@ Spectra runs as a small set of Docker services, driven by a `spectra` CLI. Insta
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
+# curl -fsSL .../install.sh | bash -s -- v0.1.0     # pin a release
 ```
 
-It builds a single self-contained `spectra` into `~/.local/bin` (no global `node_modules`, no
-`tsx` — just `node` to run it) and scaffolds `~/.config/spectra` with the distribution compose.
-Then, in your project's repo:
+It **downloads** a single self-contained `spectra` (a prebuilt file from the GitHub release,
+checksum-verified) into `~/.local/bin` — no clone, no build; you need `node` only to *run* it —
+and scaffolds `~/.config/spectra` with the distribution compose. Then, in your project's repo:
 
 ```bash
 spectra init         # link this repo to a Spectra project (names it, points @coder at your code)
