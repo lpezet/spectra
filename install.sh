@@ -5,7 +5,7 @@
 # `node` on PATH to *run* it, and Docker to run the stack — but not to install.
 #
 #   curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
-#   curl -fsSL .../install.sh | bash -s -- v0.1.0     # pin a release (default: latest)
+#   curl -fsSL .../install.sh | bash -s v0.1.1        # pin a specific release (default: latest)
 #
 # Env: SPECTRA_REF (release tag or "latest", or the first arg), SPECTRA_PREFIX (default ~/.local),
 # XDG_CONFIG_HOME, and SPECTRA_ASSETS (install from a local dir of prebuilt assets instead of

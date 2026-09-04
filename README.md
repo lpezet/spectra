@@ -20,7 +20,7 @@ Spectra runs as a small set of Docker services, driven by a `spectra` CLI. Insta
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
-# curl -fsSL .../install.sh | bash -s -- v0.1.0     # pin a release
+# curl -fsSL .../install.sh | bash -s v0.1.1        # pin a specific release
 ```
 
 It **downloads** a single self-contained `spectra` (a prebuilt file from the GitHub release,
