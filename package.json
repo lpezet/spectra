@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/core",
     "packages/server",
-    "packages/web"
+    "packages/web",
+    "packages/cli"
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,magenta \"npm:dev:server\" \"npm:dev:web\"",
@@ -14,8 +15,8 @@
     "dev:sandbox": "docker compose up -d --build && npm run dev:web",
     "sandbox:logs": "docker compose logs -f",
     "sandbox:down": "docker compose down",
-    "test": "npm run test -w @spectra/core && npm run test -w @spectra/server && npm run test -w @spectra/web",
-    "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/web"
+    "test": "npm run test -w @spectra/core && npm run test -w @spectra/server && npm run test -w @spectra/web && npm run test -w @spectra/cli",
+    "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

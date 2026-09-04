@@ -214,6 +214,8 @@ packages/server/src/specsExport.ts    the snapshot + version (README calls this 
 packages/server/src/commit.ts         the only writer of specs/
 packages/server/src/specStore.ts      the storage seam (FileSystemSpecStore today, SqlSpecStore next)
 packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
+packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
+packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
 ~/.local/share/spectra/transcripts.db chat history — XDG data home (dev: .dev/data); prunable, never the record
 ```
 
@@ -229,7 +231,14 @@ The three pieces each have a container: `Dockerfile.spec` (server), `Dockerfile.
 (sandbox), `Dockerfile.web` (nginx serving the built UI, proxying `/api` to `spec`). The `web`
 service is behind a compose **profile** so plain `docker compose up` (what `dev:sandbox` runs)
 leaves it out and its 5173 does not collide with host Vite — start it explicitly with
-`docker compose up web`. This is the compose the CLI will wrap (`spectra <piece> start|stop`).
+`docker compose up web`.
+
+`packages/cli` (`@spectra/cli`) wraps this compose: `spectra <server|coder|web> start|stop|restart|status|logs`
+maps to the matching `docker compose` call (`server` → the `spec` service; `web` carries
+`--profile web`). The argv→compose translation is a pure function (`commands.ts`), so it is fully
+tested without a docker daemon; `--dry-run` prints the command it would run. It is not yet a
+`bin` on PATH — that, plus `spectra link`/`install` and the `curl|bash` bootstrap, is the next
+CLI slice. Run it in dev with `npm run spectra -w @spectra/cli -- server start`.
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to
