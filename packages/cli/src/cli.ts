@@ -9,16 +9,18 @@
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { composeArgv, parseArgs, USAGE } from './commands.js'
+import { composeArgv, composeBuildArgv, composeStackArgv, parseArgs, USAGE } from './commands.js'
 
 /**
- * Where the compose file lives. Build-local v1 drives the compose that ships with the source,
- * so the default is resolved relative to this package (packages/cli/src -> repo root). The
- * installer that fetches source keeps the two co-located, so this holds there too; SPECTRA_COMPOSE_FILE
- * and --compose-file override it.
+ * The compose files to drive when none are given on the command line. Default is the repo's
+ * `docker-compose.yml`, resolved relative to this package (packages/cli/src -> repo root) — the
+ * contributors' file. SPECTRA_COMPOSE_FILE overrides it, and `--compose-file` (repeatable) takes
+ * precedence entirely. Once `spectra init` exists it will point this at `default.yaml` plus a
+ * per-project override.
  */
-function defaultComposeFile(): string {
-  return process.env.SPECTRA_COMPOSE_FILE ?? path.resolve(import.meta.dirname, '../../..', 'docker-compose.yml')
+function defaultComposeFiles(): string[] {
+  if (process.env.SPECTRA_COMPOSE_FILE) return [process.env.SPECTRA_COMPOSE_FILE]
+  return [path.resolve(import.meta.dirname, '../../..', 'docker-compose.yml')]
 }
 
 function version(): string {
@@ -40,9 +42,16 @@ async function main(): Promise<number> {
       console.error(parsed.message)
       console.error('\nRun `spectra --help` for usage.')
       return 2
-    case 'run': {
-      const composeFile = parsed.composeFile ?? defaultComposeFile()
-      const args = composeArgv(parsed.component, parsed.verb, composeFile)
+    case 'run':
+    case 'stack':
+    case 'build': {
+      const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : defaultComposeFiles()
+      const args =
+        parsed.kind === 'run'
+          ? composeArgv(parsed.component, parsed.verb, composeFiles)
+          : parsed.kind === 'stack'
+            ? composeStackArgv(parsed.action, composeFiles)
+            : composeBuildArgv(parsed.component, composeFiles)
       if (parsed.dryRun) {
         console.log(['docker', 'compose', ...args].join(' '))
         return 0

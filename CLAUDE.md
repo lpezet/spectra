@@ -243,12 +243,17 @@ override that `spectra init` writes, layered with `-f default.yaml -f <project>.
 files in structural sync; they differ only in build context and in that the project mounts live in
 the override.
 
-`packages/cli` (`@spectra/cli`) wraps this compose: `spectra <server|coder|web> start|stop|restart|status|logs`
-maps to the matching `docker compose` call (`server` → the `spec` service; `web` carries
-`--profile web`). The argv→compose translation is a pure function (`commands.ts`), so it is fully
-tested without a docker daemon; `--dry-run` prints the command it would run. It is not yet a
-`bin` on PATH — that, plus `spectra link`/`install` and the `curl|bash` bootstrap, is the next
-CLI slice. Run it in dev with `npm run spectra -w @spectra/cli -- server start`.
+`packages/cli` (`@spectra/cli`) wraps this compose. Two shapes: per-component
+`spectra <server|coder|web> up|down|restart|status|logs`, and whole-stack `spectra up|down|build [component]`.
+Each maps to the matching `docker compose` call — `server` → the `spec` service, and anything
+touching `web` carries `--profile web`. Verbs are up/down (not start/stop) to match compose; per-component
+`down` is `rm -sf <svc>` (that one service), whole-stack `down` is the project teardown. There is no
+`install`: `up` builds a missing image on its own, and `build` is only for pre-build/rebuild.
+`--compose-file` repeats to layer a base and an override (`-f default.yaml -f <project>.yaml`) — the
+seam `spectra init` will use. The argv→compose translation is a pure function (`commands.ts`), fully
+tested without a docker daemon; `--dry-run` prints the command it would run. Not yet a `bin` on PATH
+— that, plus `spectra init`/`link` and the `curl|bash` bootstrap, is the next CLI work. Run it in dev
+with `npm run spectra -w @spectra/cli -- up`.
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to
