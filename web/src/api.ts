@@ -3,6 +3,7 @@ import type {
   Changeset,
   Diagnostic,
   Expectation,
+  ProjectInfo,
   Question,
   SourceProblem,
   Term,
@@ -39,6 +40,10 @@ async function get<T>(url: string): Promise<T> {
     throw new Error(`${url} — ${response.status} ${response.statusText}`)
   }
   return (await response.json()) as T
+}
+
+export function fetchProject(): Promise<ProjectInfo> {
+  return get<ProjectInfo>('/api/project')
 }
 
 export function fetchGlossary(): Promise<Glossary> {

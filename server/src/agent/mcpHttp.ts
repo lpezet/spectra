@@ -25,8 +25,7 @@
 import { Router } from 'express'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { AGENTS } from './agents.js'
-import type { AgentName } from './agents.js'
+import type { AgentDefinition, AgentName } from './agents.js'
 import { toolsFor } from './tools.js'
 import type { TranscriptStore } from '../transcripts.js'
 import type { SpecStore } from '../specStore.js'
@@ -34,7 +33,11 @@ import type { SpecStore } from '../specStore.js'
 /** The name the tools appear under, and so the `mcp__blueprints__` prefix on the far side. */
 const SERVER_NAME = 'blueprints'
 
-export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Router {
+export function mcpRoutes(
+  store: SpecStore,
+  transcripts: TranscriptStore,
+  agents: Record<AgentName, AgentDefinition>,
+): Router {
   const router = Router()
 
   /**
@@ -43,7 +46,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
    * from the server that decides it rather than from the config that requests them.
    */
   router.get('/:agent/tools', (req, res) => {
-    const agent = AGENTS[req.params.agent as AgentName]
+    const agent = agents[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return
@@ -70,7 +73,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
    * they guarded is gone, and the shell entries are the ones that still do work.
    */
   router.get('/:agent/profile', (req, res) => {
-    const agent = AGENTS[req.params.agent as AgentName]
+    const agent = agents[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return
@@ -86,7 +89,7 @@ export function mcpRoutes(store: SpecStore, transcripts: TranscriptStore): Route
   })
 
   router.post('/:agent', async (req, res) => {
-    const agent = AGENTS[req.params.agent as AgentName]
+    const agent = agents[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return

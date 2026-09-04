@@ -8,20 +8,24 @@
  * id you saw.
  */
 import express from 'express'
-import { AGENTS, AGENT_NAMES } from './agents.js'
-import type { AgentName } from './agents.js'
+import { AGENT_NAMES } from './agents.js'
+import type { AgentDefinition, AgentName } from './agents.js'
 import { AgentRunner } from './runner.js'
 import type { TranscriptStore } from '../transcripts.js'
 
-export function chatRoutes(transcripts: TranscriptStore, runner: AgentRunner): express.Router {
+export function chatRoutes(
+  transcripts: TranscriptStore,
+  runner: AgentRunner,
+  agents: Record<AgentName, AgentDefinition>,
+): express.Router {
   const router = express.Router()
 
   router.get('/agents', (_req, res) => {
     res.json({
       agents: AGENT_NAMES.map((name) => ({
         name,
-        label: AGENTS[name].label,
-        description: AGENTS[name].description,
+        label: agents[name].label,
+        description: agents[name].description,
       })),
     })
   })

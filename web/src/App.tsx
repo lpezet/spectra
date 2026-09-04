@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Changeset, Expectation, HighlightKind, SourceProblem, Term, TermType } from '@tb/shared'
+import type { Changeset, Expectation, HighlightKind, ProjectInfo, SourceProblem, Term, TermType } from '@tb/shared'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@tb/shared'
 import type { ChangesetFeed, ExpectationFeed, Glossary, QuestionFeed } from './api.js'
 import {
@@ -8,6 +8,7 @@ import {
   fetchChangesets,
   fetchExpectations,
   fetchGlossary,
+  fetchProject,
   fetchQuestions,
   markImplemented,
   raiseExpectation,
@@ -34,6 +35,7 @@ const EMPTY_CHANGESETS: Changeset[] = []
 const EMPTY_EXPECTATIONS: Expectation[] = []
 
 export function App() {
+  const [project, setProject] = useState<ProjectInfo | null>(null)
   const [glossary, setGlossary] = useState<Glossary | null>(null)
   const [feed, setFeed] = useState<ChangesetFeed | null>(null)
   const [questionFeed, setQuestionFeed] = useState<QuestionFeed | null>(null)
@@ -67,6 +69,13 @@ export function App() {
   useEffect(() => {
     load().catch((cause: Error) => setError(cause.message))
   }, [load])
+
+  // The project title is identity, not glossary data — fetched once, not on every reload.
+  useEffect(() => {
+    fetchProject()
+      .then(setProject)
+      .catch(() => setProject(null))
+  }, [])
 
   const terms = glossary?.terms ?? EMPTY_TERMS
   const changesets = feed?.changesets ?? EMPTY_CHANGESETS
@@ -306,7 +315,7 @@ export function App() {
     <div className={`app ${chatOpen ? 'app-with-chat' : ''}`}>
       <div className="app-main">
       <header className="app-header">
-        <h1>todo-blueprints</h1>
+        <h1>{project?.name ?? 'Spectra'}</h1>
         <span className="muted">spec glossary</span>
         <HighlightLegend />
         {!chatOpen && (
