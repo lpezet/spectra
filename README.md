@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | ba
 ```
 
 It **downloads** a single self-contained `spectra` (a prebuilt file from the GitHub release,
-checksum-verified) into `~/.local/bin` — no clone, no build; you need `node` only to *run* it —
+checksum-verified) into `~/.local/bin` — no clone, no build; you need `node` (22+) only to *run* it —
 and scaffolds `~/.config/spectra` with the distribution compose. Then, in your project's repo:
 
 ```bash
