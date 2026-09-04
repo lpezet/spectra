@@ -16,6 +16,8 @@
     "sandbox:logs": "docker compose logs -f",
     "sandbox:down": "docker compose down",
     "test": "npm run test -w @spectra/core && npm run test -w @spectra/server && npm run test -w @spectra/web && npm run test -w @spectra/cli",
+    "test:integration": "bash test/integration/run.sh",
+    "test:integration:docker": "docker build -f test/integration/Dockerfile -t spectra-integration . && docker run --rm spectra-integration",
     "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli"
   },
   "devDependencies": {
