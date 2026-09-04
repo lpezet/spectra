@@ -15,8 +15,11 @@ npm run dev                    # spec tool, unsandboxed: express :5174 + vite :5
 npm run dev:sandbox            # same, with express and @coder in containers + vite on host
                                #   @coder has no project to point at yet — see "The consumer project" below
 
-npm test                       # core, server, web (each is a separate vitest run)
-npm run typecheck              # tsc across core, server, web
+npm test                       # unit: core, server, web, cli (each a separate vitest run)
+npm run typecheck              # tsc across core, server, web, cli
+
+npm run test:integration       # e2e: the spectra bin in a throwaway HOME (install + init + up)
+npm run test:integration:docker#   the same, in a clean container (test/integration/)
 
 npm run sandbox:logs           # docker compose logs -f
 npm run sandbox:down           # docker compose down
