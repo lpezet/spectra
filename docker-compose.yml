@@ -151,12 +151,41 @@ services:
 
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------------------
+  # The web UI: static build behind nginx, proxying /api to spec.
+  # ---------------------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: tb-web
+
+    # Opt-in, and deliberately so. Plain `docker compose up` (what `npm run dev:sandbox`
+    # runs) leaves web OUT, so its published 5173 does not collide with the host Vite dev
+    # server on the same port — the sandbox dev loop still serves the UI from Vite. This
+    # container is the *installed* path: `docker compose up web` (or the CLI's `spectra web
+    # start`) names it explicitly, which starts it and its depends_on regardless of profile.
+    profiles: ['web']
+
+    # nginx reaches spec by name here, so web sits on the egress network where spec also is.
+    # It never joins the sandbox network — the browser talks to spec, never to @coder.
+    networks:
+      - egress
+    depends_on:
+      - spec
+
+    # Same 5173 the UI has always been on, now served by nginx instead of Vite.
+    ports:
+      - '127.0.0.1:5173:80'
+
+    restart: unless-stopped
+
 networks:
-  # No route out, and unreachable from the host. Both services are here; it is how express
-  # reaches @coder and how @coder reaches nothing.
+  # No route out, and unreachable from the host. `spec` and `coder` are here; it is how
+  # express reaches @coder and how @coder reaches nothing.
   sandbox:
     internal: true
-  # Only `spec` is on this one.
+  # `spec` and `web` are on this one — it is how nginx reaches spec, and spec the model API.
   egress: {}
 
 # VERIFIED, with `internal: true` exactly as it stands above: @coder runs a full turn with

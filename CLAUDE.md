@@ -220,9 +220,16 @@ packages/coder/src/main.ts            the sandboxed half of @coder (target proje
 The consumer project (`app/`, holding `specs.snapshot.json` and the `implements` drift check)
 was sidelined to the `backup/todo-app` branch — see "Spectra is the tool" above.
 
-Ports: **5173** spec tool UI, **5174** its API (serves no HTML — a 404 in the browser is
-correct), **5177** the coder container. (5175 was the ToDo app's dev server, now on
+Ports: **5173** spec tool UI — Vite in dev, or the `web` container (nginx, `Dockerfile.web`)
+in the containerized/installed path; **5174** its API (serves no HTML — a 404 in the browser
+is correct), **5177** the coder container. (5175 was the ToDo app's dev server, now on
 `backup/todo-app`.)
+
+The three pieces each have a container: `Dockerfile.spec` (server), `Dockerfile.coder`
+(sandbox), `Dockerfile.web` (nginx serving the built UI, proxying `/api` to `spec`). The `web`
+service is behind a compose **profile** so plain `docker compose up` (what `dev:sandbox` runs)
+leaves it out and its 5173 does not collide with host Vite — start it explicitly with
+`docker compose up web`. This is the compose the CLI will wrap (`spectra <piece> start|stop`).
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to

@@ -2,7 +2,7 @@
 # the host would silently win.
 **/node_modules
 data
+.dev
 .env
 .git
-app/dist
-web/dist
+packages/web/dist

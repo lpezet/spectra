@@ -1,0 +1,30 @@
+# The box the web UI ships in.
+#
+# Unlike the server and coder, the web app is *static once built* — plain files a webserver
+# hands out, with no Node process behind it. So this is a two-stage build: node compiles the
+# Vite app to dist/, then nginx serves it. Nothing here runs the tool; it serves the UI and
+# proxies /api to the spec service, which is the only backend the browser ever talks to.
+#
+# The build stage mirrors Dockerfile.spec: every workspace package.json is copied because
+# `npm ci` verifies the whole lockfile tree and fails on a workspace it cannot see — even one
+# the final image keeps nothing from. Only core and web *source* is copied, since that is all
+# `vite build -w @spectra/web` needs (core is bundled in at build time, not resolved at runtime).
+
+FROM node:22-slim AS build
+WORKDIR /stack
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/server/package.json packages/server/
+COPY packages/web/package.json packages/web/
+RUN npm ci
+COPY tsconfig.base.json ./
+COPY packages/core/ packages/core/
+COPY packages/web/ packages/web/
+RUN npm run build -w @spectra/web
+
+# nginx serves the built assets and nothing else. The image carries no source, no node, and
+# no credentials — it is the one piece of the stack that is safe to hand to anyone.
+FROM nginx:1.27-alpine
+COPY nginx.web.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /stack/packages/web/dist /usr/share/nginx/html
+EXPOSE 80
