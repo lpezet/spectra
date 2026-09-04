@@ -108,9 +108,13 @@ services:
       # reading and nothing else — raising a question and marking a changeset implemented are
       # writes, and granting them by mount would have meant granting the ability to rewrite
       # any term. As tools they are two capabilities, executed by the process that owns the
-      # files. What this costs: the implements: drift check in app/ can no longer see the
-      # glossary and now skips, loudly, which is the check that has to move to the spec tool.
-      - ./app:/work/app
+      # files. What this costs: the implements: drift check can no longer see the glossary and
+      # now skips, loudly, which is the check that has to move to the spec tool.
+      #
+      # This dev file has no consumer project to point at (blocker E), so ./app is a placeholder
+      # host dir mounted at the coder's target /work/project — @coder is inert here until a real
+      # project is configured. An installed run gets the repo mounted here by `spectra init`.
+      - ./app:/work/project
 
     # One network, and it has no route out. A shell with no egress cannot exfiltrate the
     # repo or install something unreviewed.
@@ -195,7 +199,7 @@ networks:
 #
 # One thing the testing corrected, worth knowing before trusting the card: for Bash the SDK
 # classifies the command and lets ones it judges read-only through without asking. `pwd &&
-# ls` ran unprompted; `touch /work/app/probe-file` raised a card and was blocked. The card
+# ls` ran unprompted; `touch /work/project/probe-file` raised a card and was blocked. The card
 # covers commands that change things, not every command.
 #
 # The chat panel uses this. Messaging @coder relays the turn to the container and writes

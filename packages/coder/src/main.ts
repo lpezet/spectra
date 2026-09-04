@@ -17,7 +17,10 @@ import path from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 
 const PORT = Number(process.env.PORT ?? 5177)
-const APP_DIR = process.env.APP_DIR ?? '/work/app'
+// The project @coder implements into — its cwd and only writable mount. Configurable so the
+// container can be pointed at whatever project it serves; `spectra init` mounts the repo here.
+// The glossary is NOT under this path — it arrives as tool calls (see SPEC_URL below).
+const APP_DIR = process.env.APP_DIR ?? '/work/project'
 const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
 
 /**
