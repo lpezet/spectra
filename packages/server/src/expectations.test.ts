@@ -14,14 +14,15 @@ let specs: string
 let store: FileSystemSpecStore
 
 beforeAll(async () => {
-  specs = await mkdtemp(path.join(tmpdir(), 'tb-expect-'))
+  const root = await mkdtemp(path.join(tmpdir(), 'tb-expect-'))
+  specs = path.join(root, 'proj', 'specs') // the store scopes to <root>/<projectId>/specs now
   await mkdir(path.join(specs, 'terms'), { recursive: true })
   await mkdir(path.join(specs, 'expectations'), { recursive: true })
   await writeFile(
     path.join(specs, 'terms', 'task.json'),
     JSON.stringify({ name: 'Task', type: 'entity', spec: 'A task.', parent: null, tags: [], attributes: [] }),
   )
-  store = new FileSystemSpecStore(specs)
+  store = new FileSystemSpecStore(root, 'proj')
 })
 
 const BASE = {
