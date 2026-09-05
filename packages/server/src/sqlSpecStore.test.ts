@@ -10,7 +10,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import type { Changeset, Expectation, Question } from '@spectra/core'
+import type { Answer, Changeset, Expectation, Question, Term } from '@spectra/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SqlSpecStore } from './sqlSpecStore.js'
 
@@ -46,6 +46,8 @@ const expectation = (id: string, over: Partial<Expectation> = {}): Expectation =
   contested: [],
   ...over,
 })
+const term = (name: string): Term => ({ name, type: 'entity', spec: `A ${name}.`, parent: null, tags: [], attributes: [] })
+const answer: Answer = { chose: null, note: 'settled in prose', answeredAt: '2026-01-01T00:00:00.000Z' }
 
 describe('SqlSpecStore.projectInfo', () => {
   it('falls back to a neutral default when unset', async () => {
@@ -140,9 +142,102 @@ describe('SqlSpecStore project scoping', () => {
   })
 })
 
-describe('SqlSpecStore write stubs (slice 2)', () => {
-  it('state transitions throw until implemented', async () => {
-    await expect(store.rejectChangeset('chat-001')).rejects.toThrow(/slice 2/)
-    await expect(store.markImplemented('chat-001', 'now')).rejects.toThrow(/slice 2/)
+describe('SqlSpecStore commitApplication', () => {
+  it('reconciles terms and moves the changeset pending → applied atomically', async () => {
+    await store.addChangeset(changeset('chat-001', { summary: 'add Widget' }))
+    const result = await store.commitApplication({
+      changesetId: 'chat-001',
+      nextTerms: [term('Widget')],
+      appliedOps: [],
+      remainingOps: [],
+      appliedAt: '2026-01-01T00:00:00.000Z',
+    })
+    expect(result.written).toEqual(['Widget'])
+    const feed = await store.readChangesets()
+    expect(feed.changesets).toEqual([]) // no remaining ops → pending gone
+    expect(feed.applied.map((c) => c.id)).toEqual(['chat-001'])
+    expect((await store.readTerms()).terms.map((t) => t.name)).toEqual(['Widget'])
+  })
+
+  it('keeps a pending remainder and deletes terms that did not survive', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    await store.commitApplication({
+      changesetId: 'chat-001',
+      nextTerms: [term('A'), term('B')],
+      appliedOps: [],
+      remainingOps: [],
+      appliedAt: 't1',
+    })
+    // A second changeset, applied partially, dropping term B.
+    await store.addChangeset(changeset('chat-002'))
+    await store.commitApplication({
+      changesetId: 'chat-002',
+      nextTerms: [term('A')],
+      appliedOps: [],
+      remainingOps: [{ op: 'remove_entity', term: 'Z' }],
+      appliedAt: 't2',
+    })
+    expect((await store.readTerms()).terms.map((t) => t.name)).toEqual(['A'])
+    const feed = await store.readChangesets()
+    expect(feed.changesets.map((c) => c.id)).toEqual(['chat-002']) // remainder stays pending
+    expect(feed.applied.map((c) => c.id).sort()).toEqual(['chat-001', 'chat-002'])
+  })
+})
+
+describe('SqlSpecStore rejectChangeset / markImplemented', () => {
+  it('rejects a pending changeset; returns null when none is pending', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    expect(await store.rejectChangeset('chat-001')).toMatch(/rejected/)
+    const feed = await store.readChangesets()
+    expect(feed.changesets).toEqual([])
+    expect(feed.rejected.map((c) => c.id)).toEqual(['chat-001'])
+    expect(await store.rejectChangeset('chat-001')).toBeNull()
+  })
+
+  it('marks an applied changeset implemented', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    await store.commitApplication({ changesetId: 'chat-001', nextTerms: [], appliedOps: [], remainingOps: [], appliedAt: 't' })
+    expect(await store.markImplemented('chat-001', '2026-02-02')).toMatch(/applied/)
+    const applied = (await store.readChangesets()).applied.find((c) => c.id === 'chat-001')
+    expect(applied?.implementedAt).toBe('2026-02-02')
+    expect(await store.markImplemented('nope', 't')).toBeNull()
+  })
+})
+
+describe('SqlSpecStore writeAnswer + CAS', () => {
+  it('answers a question, bumping rev; not-found for an unknown id', async () => {
+    await store.addQuestion(question('q-001'))
+    const r = await store.writeAnswer('q-001', answer)
+    expect(r).toEqual({ ok: true, rev: 2, at: 'q-001' })
+    expect((await store.findQuestion('q-001'))?.answer?.note).toBe('settled in prose')
+    expect(await store.writeAnswer('q-404', answer)).toEqual({ ok: false, reason: 'not-found' })
+  })
+
+  it('refuses a stale expectedRev as a conflict, naming the current rev', async () => {
+    await store.addQuestion(question('q-001'))
+    await store.writeAnswer('q-001', answer) // rev 1 → 2
+    expect(await store.writeAnswer('q-001', answer, 1)).toEqual({ ok: false, reason: 'conflict', currentRev: 2 })
+    expect(await store.writeAnswer('q-001', answer, 2)).toMatchObject({ ok: true, rev: 3 })
+  })
+})
+
+describe('SqlSpecStore retire / rewrite expectation + CAS', () => {
+  it('retires a live expectation, bumping rev; guards on expectedRev', async () => {
+    await store.addExpectation(expectation('e-001'))
+    const r = await store.retireExpectation('e-001', expectation('e-001', { supersededBy: 'e-002' }))
+    expect(r).toMatchObject({ ok: true, rev: 2 })
+    const feed = await store.readExpectations()
+    expect(feed.expectations).toEqual([])
+    expect(feed.retired.map((e) => e.id)).toEqual(['e-001'])
+    // already retired → not live → not-found
+    expect(await store.retireExpectation('e-001', expectation('e-001'))).toEqual({ ok: false, reason: 'not-found' })
+  })
+
+  it('rewrites a live expectation in place; stale rev conflicts', async () => {
+    await store.addExpectation(expectation('e-001'))
+    const r = await store.rewriteExpectation(expectation('e-001', { expect: 'reworded' }), 1)
+    expect(r).toMatchObject({ ok: true, rev: 2 })
+    expect((await store.findExpectation('e-001'))?.expect).toBe('reworded')
+    expect(await store.rewriteExpectation(expectation('e-001'), 1)).toEqual({ ok: false, reason: 'conflict', currentRev: 2 })
   })
 })
