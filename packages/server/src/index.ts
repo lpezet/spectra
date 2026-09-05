@@ -14,26 +14,38 @@ import { checkExpectation } from './expectationCheck.js'
 import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR } from './config.js'
-import { buildSpecStore, resolveStoreChoice } from './storeFactory.js'
+import { resolveStoreChoice } from './storeFactory.js'
+import { StoreProvider } from './storeProvider.js'
 import { LocalAuthorizer } from './auth.js'
 import type { Authorizer, Principal } from './auth.js'
+import type { SpecStore } from './specStore.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
 
-// The composition root: one store, constructed here and threaded into everything that reads or
-// writes the glossary. The backend (filesystem or SQL) is chosen from config in storeFactory.ts;
-// the rest of the server sees only the SpecStore interface. A hosted deployment resolves the store
-// per tenant instead — same seam.
-const store = buildSpecStore(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
+// The composition root. The backend (filesystem or SQL) is fixed for the deployment; which project
+// a request is for is resolved per request. The provider turns a projectId into the store for it,
+// building each once and reusing it (storeProvider.ts). A hosted deployment resolves the projectId
+// from auth/URL; today there is one configured project and the resolver below always yields it.
+const provider = new StoreProvider(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
 const transcripts = new TranscriptStore()
+
+// Which project this request is for. Until the org/project URL prefix lands (slice 3) every request
+// is the one configured project; the seam is here so that change touches only this function.
+const resolveProjectId = (_req: express.Request): string => provider.defaultProjectId
+
+// The boot-time store, for the pieces still constructed once: the project identity the agents are
+// built from, and the runner/MCP surface (both request-scoped in later slices — per-project agents,
+// transcripts, coder path). It is the provider's store for the default project, so there is a single
+// place that builds stores even while these consumers are not yet per-request.
+const bootStore = provider.storeFor(provider.defaultProjectId)
 
 // The project's identity is glossary content, read from the store once at startup and threaded
 // into the agents (whose shared prompt names it) and the /api/project endpoint (the UI title).
 // A change to specs/project.json takes effect on restart — it is config, not live glossary data.
-const project = await store.projectInfo()
+const project = await bootStore.projectInfo()
 const agents = buildAgents(project)
-const runner = new AgentRunner(store, transcripts, agents)
+const runner = new AgentRunner(bootStore, transcripts, agents)
 
 // Who a request is, and what it may touch, is the server's call — never the request body, the
 // same reason an agent's identity comes from its route. The authorizer resolves a principal per
@@ -43,6 +55,9 @@ const authorizer: Authorizer = new LocalAuthorizer()
 
 /** The principal the auth middleware resolved for this request. */
 const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
+
+/** The glossary store for this request's project, resolved in the context middleware below. */
+const storeOf = (res: express.Response): SpecStore => res.locals.store as SpecStore
 
 /** The revision the client last read, if it sent one — the opt-in for optimistic concurrency. */
 const expectedRevOf = (body: unknown): number | undefined => {
@@ -58,18 +73,21 @@ app.use('/anthropic', anthropicProxy())
 
 app.use(express.json())
 
-// Resolve the principal once per request and hang it on res.locals, so every handler stamps the
-// same server-decided author. Runs after the /anthropic proxy (which terminates its own requests
-// and needs no principal) and before any route that writes.
+// The request chain, once per request and before any route: authenticate (who), then resolve the
+// project and its store (what). Both land on res.locals so every handler reads the same
+// server-decided principal and the store for this request's project. Runs after the /anthropic
+// proxy, which terminates its own requests and needs neither.
 app.use((req, res, next) => {
   res.locals.principal = authorizer.authenticate(req)
+  res.locals.store = provider.storeFor(resolveProjectId(req))
   next()
 })
 
 app.use('/api/chat', chatRoutes(transcripts, runner, agents))
 // Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
-// over the internal docker network by an agent in another container.
-app.use('/mcp', mcpRoutes(store, transcripts, agents))
+// over the internal docker network by an agent in another container. Still on the boot store —
+// per-project resolution for the coder path is a later slice.
+app.use('/mcp', mcpRoutes(bootStore, transcripts, agents))
 
 // The project's identity, for the UI title. Served from the value loaded at startup, so it
 // matches exactly what the agents were built with.
@@ -79,7 +97,7 @@ app.get('/api/project', (_req, res) => {
 
 app.get('/api/terms', async (_req, res, next) => {
   try {
-    res.json(await store.readTerms())
+    res.json(await storeOf(res).readTerms())
   } catch (error) {
     next(error)
   }
@@ -87,7 +105,7 @@ app.get('/api/terms', async (_req, res, next) => {
 
 app.get('/api/changesets', async (_req, res, next) => {
   try {
-    res.json(await store.readChangesets())
+    res.json(await storeOf(res).readChangesets())
   } catch (error) {
     next(error)
   }
@@ -101,7 +119,7 @@ app.post('/api/changesets/:id/apply', async (req, res, next) => {
       return
     }
 
-    const outcome = await applyChangeset(store, req.params.id, {
+    const outcome = await applyChangeset(storeOf(res), req.params.id, {
       opIndices: body.opIndices as number[],
       acknowledgeWarnings: body.acknowledgeWarnings === true,
     })
@@ -113,7 +131,7 @@ app.post('/api/changesets/:id/apply', async (req, res, next) => {
 
 app.post('/api/changesets/:id/reject', async (req, res, next) => {
   try {
-    const outcome = await rejectChangeset(store, req.params.id)
+    const outcome = await rejectChangeset(storeOf(res), req.params.id)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)
@@ -122,7 +140,7 @@ app.post('/api/changesets/:id/reject', async (req, res, next) => {
 
 app.post('/api/changesets/:id/implemented', async (req, res, next) => {
   try {
-    const outcome = await markImplemented(store, req.params.id, new Date().toISOString())
+    const outcome = await markImplemented(storeOf(res), req.params.id, new Date().toISOString())
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
@@ -144,7 +162,7 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
 app.get('/api/specs/version', async (_req, res, next) => {
   try {
     res.json({
-      specsVersion: (await currentSnapshot(store)).version,
+      specsVersion: (await currentSnapshot(storeOf(res))).version,
       snapshotVersion: await deployedVersion(),
       lastExport: lastExport(),
     })
@@ -221,7 +239,7 @@ app.post('/api/speech', async (req, res, next) => {
 
 app.get('/api/expectations', async (_req, res, next) => {
   try {
-    res.json(await store.readExpectations())
+    res.json(await storeOf(res).readExpectations())
   } catch (error) {
     next(error)
   }
@@ -242,7 +260,7 @@ app.post('/api/expectations/check', async (req, res, next) => {
       return
     }
 
-    const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
+    const [{ terms }, { expectations }] = await Promise.all([storeOf(res).readTerms(), storeOf(res).readExpectations()])
 
     // A replacement is prefilled from the expectation it replaces, so comparing it against
     // that expectation reports a duplicate of the very thing being retired. Excluded rather
@@ -287,7 +305,7 @@ app.post('/api/expectations', async (req, res, next) => {
       return
     }
 
-    const outcome = await raiseExpectation(store, {
+    const outcome = await raiseExpectation(storeOf(res), {
       kind: body.kind,
       terms: Array.isArray(body.terms) ? body.terms : [],
       given: typeof body.given === 'string' ? body.given : '',
@@ -309,7 +327,7 @@ app.post('/api/expectations', async (req, res, next) => {
 /** Publish a draft expectation. draft → ready, and only then does it count. */
 app.post('/api/expectations/:id/publish', async (req, res, next) => {
   try {
-    const outcome = await publishExpectation(store, req.params.id, expectedRevOf(req.body))
+    const outcome = await publishExpectation(storeOf(res), req.params.id, expectedRevOf(req.body))
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
     next(error)
@@ -326,8 +344,8 @@ app.post('/api/expectations/:id/publish', async (req, res, next) => {
  */
 app.post('/api/expectations/:id/recheck', async (req, res, next) => {
   try {
-    const [{ terms }] = await Promise.all([store.readTerms()])
-    const outcome = await recheckExpectation(store, req.params.id, async (expectation, others) => {
+    const [{ terms }] = await Promise.all([storeOf(res).readTerms()])
+    const outcome = await recheckExpectation(storeOf(res), req.params.id, async (expectation, others) => {
       const report = await checkExpectation(
         {
           kind: expectation.kind,
@@ -355,7 +373,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
       return
     }
 
-    const outcome = await supersedeExpectation(store, req.params.id, {
+    const outcome = await supersedeExpectation(storeOf(res), req.params.id, {
       note: body.note,
       ...(body.replacement ? { replacement: body.replacement } : {}),
     }, principalOf(res).author, expectedRevOf(req.body))
@@ -375,7 +393,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
  */
 app.get('/api/coverage', async (req, res, next) => {
   try {
-    const [{ terms }, { expectations }] = await Promise.all([store.readTerms(), store.readExpectations()])
+    const [{ terms }, { expectations }] = await Promise.all([storeOf(res).readTerms(), storeOf(res).readExpectations()])
     const distance = Number(req.query.distance ?? 2)
     res.json(
       computeCoverage(terms, expectations, {
@@ -389,7 +407,7 @@ app.get('/api/coverage', async (req, res, next) => {
 
 app.get('/api/questions', async (_req, res, next) => {
   try {
-    res.json(await store.readQuestions())
+    res.json(await storeOf(res).readQuestions())
   } catch (error) {
     next(error)
   }
@@ -404,7 +422,7 @@ app.post('/api/questions/:id/answer', async (req, res, next) => {
       return
     }
 
-    const outcome = await answerQuestion(store, req.params.id, {
+    const outcome = await answerQuestion(storeOf(res), req.params.id, {
       chose,
       note: typeof body?.note === 'string' ? body.note : '',
       answeredAt: new Date().toISOString(),
