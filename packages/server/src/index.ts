@@ -10,12 +10,13 @@ import { DATA_DIR, TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@spectra/core'
-import type { Author } from '@spectra/core'
 import { checkExpectation } from './expectationCheck.js'
 import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR } from './config.js'
 import { buildSpecStore, resolveStoreChoice } from './storeFactory.js'
+import { LocalAuthorizer } from './auth.js'
+import type { Authorizer, Principal } from './auth.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
@@ -34,10 +35,14 @@ const project = await store.projectInfo()
 const agents = buildAgents(project)
 const runner = new AgentRunner(store, transcripts, agents)
 
-// Every write over the HTTP API is a person acting in the browser. Stamped here, server-side —
-// never taken from the request body — the same reason the agent's identity comes from its route.
-// `user` fills in once there is auth; until then the actor kind is what we can honestly record.
-const HUMAN: Author = { kind: 'human' }
+// Who a request is, and what it may touch, is the server's call — never the request body, the
+// same reason an agent's identity comes from its route. The authorizer resolves a principal per
+// request; locally that is allow-all and stamps a bare human, exactly what this used to hardcode.
+// A hosted deployment swaps the implementation without the routes changing.
+const authorizer: Authorizer = new LocalAuthorizer()
+
+/** The principal the auth middleware resolved for this request. */
+const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
 
 /** The revision the client last read, if it sent one — the opt-in for optimistic concurrency. */
 const expectedRevOf = (body: unknown): number | undefined => {
@@ -52,6 +57,15 @@ const app = express()
 app.use('/anthropic', anthropicProxy())
 
 app.use(express.json())
+
+// Resolve the principal once per request and hang it on res.locals, so every handler stamps the
+// same server-decided author. Runs after the /anthropic proxy (which terminates its own requests
+// and needs no principal) and before any route that writes.
+app.use((req, res, next) => {
+  res.locals.principal = authorizer.authenticate(req)
+  next()
+})
+
 app.use('/api/chat', chatRoutes(transcripts, runner, agents))
 // Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
 // over the internal docker network by an agent in another container.
@@ -284,7 +298,7 @@ app.post('/api/expectations', async (req, res, next) => {
       ...(Array.isArray(body.contested) ? { contested: body.contested } : {}),
       // A person may save a draft; anything else publishes. Agents never reach here.
       ...(body.status === 'draft' ? { status: 'draft' as const } : {}),
-    }, HUMAN)
+    }, principalOf(res).author)
 
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
   } catch (error) {
@@ -344,7 +358,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
     const outcome = await supersedeExpectation(store, req.params.id, {
       note: body.note,
       ...(body.replacement ? { replacement: body.replacement } : {}),
-    }, HUMAN, expectedRevOf(req.body))
+    }, principalOf(res).author, expectedRevOf(req.body))
 
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
@@ -394,7 +408,7 @@ app.post('/api/questions/:id/answer', async (req, res, next) => {
       chose,
       note: typeof body?.note === 'string' ? body.note : '',
       answeredAt: new Date().toISOString(),
-    }, HUMAN)
+    }, principalOf(res).author)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {
     next(error)
