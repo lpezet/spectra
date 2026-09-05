@@ -7,13 +7,16 @@
  * transitions, so here they are only asserted empty; they get populated tests when apply/reject/
  * retire land. The partitioning logic itself mirrors FileSystemSpecStore.
  */
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import type { Changeset, Expectation, Question } from '@spectra/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SqlSpecStore } from './sqlSpecStore.js'
 
 let store: SqlSpecStore
 beforeEach(() => {
-  store = new SqlSpecStore(':memory:')
+  store = new SqlSpecStore(':memory:', 'proj-1')
 })
 
 const changeset = (id: string, over: Partial<Changeset> = {}): Changeset => ({
@@ -110,6 +113,30 @@ describe('SqlSpecStore id allocation', () => {
 
     await store.addExpectation(expectation('e-005'))
     expect(await store.nextExpectationId()).toBe('e-006')
+  })
+})
+
+describe('SqlSpecStore project scoping', () => {
+  it('keeps two projects in one database isolated', async () => {
+    // One shared database file (an in-memory DB is per-connection, so use a temp file).
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'tb-sql-')), 'specs.db')
+    const one = new SqlSpecStore(file, 'proj-1')
+    const two = new SqlSpecStore(file, 'proj-2')
+
+    one.setProjectInfo({ name: 'One', domain: 'first' })
+    two.setProjectInfo({ name: 'Two', domain: 'second' })
+    await one.addChangeset(changeset('chat-001', { summary: 'only in one' }))
+
+    expect((await one.projectInfo()).name).toBe('One')
+    expect((await two.projectInfo()).name).toBe('Two')
+    expect((await one.readChangesets()).changesets.map((c) => c.id)).toEqual(['chat-001'])
+    expect((await two.readChangesets()).changesets).toEqual([])
+    // The same id is free in the other project, and ids are allocated per project.
+    expect(await two.nextChangesetId()).toBe('chat-001')
+    expect(await one.nextChangesetId()).toBe('chat-002')
+
+    one.close()
+    two.close()
   })
 })
 

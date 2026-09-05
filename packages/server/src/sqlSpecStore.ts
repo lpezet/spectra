@@ -6,17 +6,24 @@
  * (and later a hosted, multi-tenant deployment) can reach — the filesystem impl serves a single
  * local checkout; this one serves a database, and the D1 target reuses the same SQL.
  *
+ * **One database, many projects.** The filesystem impl gets away with "one directory = one project"
+ * because a directory *is* the partition. A central DB is the opposite point: it holds every
+ * project's glossary at once — a solo dev's several projects, and later many tenants' — so every
+ * collection row carries a `project_id`, and a store instance is **scoped to one project** (its
+ * `projectId`). Reads and writes filter to it; ids are allocated within it. Resolving *which*
+ * project a request is for — a checkout's `.spectra` link locally, an authenticated tenant when
+ * hosted — happens above this, at the composition root, which constructs the store per project.
+ *
  * The two principles the interface named, made concrete here:
  *   - **State is data, not location.** Where the FS impl moves a file into `applied/` or `retired/`,
  *     this sets a `status` / `lifecycle` column. The partitioned reads are the same query, filtered.
- *   - **Records are addressed by domain id.** The primary key IS the domain id (`term.name`,
- *     `changeset.id`, `q-…`, `e-…`), so a duplicate cannot exist by construction — the FS impl's
- *     duplicate-detection has nothing to report here.
+ *   - **Records are addressed by domain id.** The primary key is `(project_id, domain id)`, so a
+ *     duplicate cannot exist within a project — the FS impl's duplicate-detection has nothing to
+ *     report here — while the same `chat-001` can exist in two different projects.
  *
  * Each row stores the record's full JSON (validated on read the same way, so a somehow-corrupt row
- * becomes a `problem` rather than throwing) plus the few columns the store needs to address and
- * partition it. `node:sqlite` is synchronous; the async method signatures wrap sync calls, and
- * `:memory:` makes the store trivially testable.
+ * becomes a `problem` rather than throwing). `node:sqlite` is synchronous; the async method
+ * signatures wrap sync calls, and `:memory:` makes the store trivially testable.
  *
  * This is slice 1: reads, id allocation, and the simple creates. The state-transition writes
  * (apply, reject, answer, retire, rewrite) and their real optimistic-concurrency enforcement are
@@ -57,30 +64,38 @@ const FALLBACK_PROJECT_INFO: ProjectInfo = {
 }
 
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS project (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   domain TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS terms (
-  name TEXT PRIMARY KEY,
-  json TEXT NOT NULL
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  json TEXT NOT NULL,
+  PRIMARY KEY (project_id, name)
 );
 CREATE TABLE IF NOT EXISTS changesets (
-  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  id TEXT NOT NULL,
   status TEXT NOT NULL,           -- pending | applied | rejected
-  json TEXT NOT NULL
+  json TEXT NOT NULL,
+  PRIMARY KEY (project_id, id)
 );
 CREATE TABLE IF NOT EXISTS questions (
-  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  id TEXT NOT NULL,
   rev INTEGER NOT NULL DEFAULT 1, -- optimistic-concurrency counter (enforced in slice 2)
-  json TEXT NOT NULL
+  json TEXT NOT NULL,
+  PRIMARY KEY (project_id, id)
 );
 CREATE TABLE IF NOT EXISTS expectations (
-  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  id TEXT NOT NULL,
   lifecycle TEXT NOT NULL,        -- live | retired  (draft/ready is inside the record's own status)
   rev INTEGER NOT NULL DEFAULT 1,
-  json TEXT NOT NULL
+  json TEXT NOT NULL,
+  PRIMARY KEY (project_id, id)
 );
 `
 
@@ -96,12 +111,22 @@ function idNumber(id: string): number {
 
 export class SqlSpecStore implements SpecStore {
   private readonly db: DatabaseSync
+  private readonly projectId: string
 
-  /** `file` is a path or `:memory:`, exactly like TranscriptStore. */
-  constructor(file: string) {
+  /**
+   * `file` is a path or `:memory:` (like TranscriptStore); `projectId` scopes every read and write.
+   * The project is registered with a neutral identity if new — the "ship empty" state — which
+   * `setProjectInfo` names later; this also keeps the collections' `project_id` foreign key valid.
+   */
+  constructor(file: string, projectId: string) {
+    this.projectId = projectId
     this.db = new DatabaseSync(file)
+    this.db.exec('PRAGMA foreign_keys = ON')
     if (file !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec(SCHEMA)
+    this.db
+      .prepare('INSERT OR IGNORE INTO projects (id, name, domain) VALUES (?, ?, ?)')
+      .run(projectId, FALLBACK_PROJECT_INFO.name, FALLBACK_PROJECT_INFO.domain)
   }
 
   close(): void {
@@ -111,7 +136,7 @@ export class SqlSpecStore implements SpecStore {
   // ── Project identity ─────────────────────────────────────────────────────────────────
 
   async projectInfo(): Promise<ProjectInfo> {
-    const row = this.db.prepare('SELECT name, domain FROM project WHERE id = 1').get() as
+    const row = this.db.prepare('SELECT name, domain FROM projects WHERE id = ?').get(this.projectId) as
       | { name: string; domain: string }
       | undefined
     if (!row) return FALLBACK_PROJECT_INFO
@@ -120,30 +145,31 @@ export class SqlSpecStore implements SpecStore {
   }
 
   /**
-   * Set the glossary's identity. Not part of {@link SpecStore} — the FS impl gets this from a file
-   * a human or `spectra init` writes; the SQL impl needs a way to seed the row (init, or a test).
+   * Name this project. Not part of {@link SpecStore} — the FS impl gets identity from a file a
+   * human or `spectra init` writes; here it updates the project's row (created at construction).
    */
   setProjectInfo(info: ProjectInfo): void {
     this.db
       .prepare(
-        `INSERT INTO project (id, name, domain) VALUES (1, ?, ?)
+        `INSERT INTO projects (id, name, domain) VALUES (?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET name = excluded.name, domain = excluded.domain`,
       )
-      .run(info.name, info.domain)
+      .run(this.projectId, info.name, info.domain)
   }
 
   // ── Low-level ────────────────────────────────────────────────────────────────────────
 
+  /** Every query is scoped to this project, so projectId is always the first bound parameter. */
   private rows(sql: string, ...params: Array<string | number>): JsonRow[] {
-    return this.db.prepare(sql).all(...params) as unknown as JsonRow[]
+    return this.db.prepare(sql).all(this.projectId, ...params) as unknown as JsonRow[]
   }
 
   /**
-   * Parse each row's JSON with a domain parser, collecting parse failures as `problems` keyed by id
-   * rather than throwing — the same graceful degradation the FS reads give. In practice the store
-   * only ever writes valid JSON, so `problems` is empty; the path exists because the interface keeps it.
+   * Parse each row's JSON with a domain parser, collecting parse failures as `problems` rather than
+   * throwing — the same graceful degradation the FS reads give. In practice the store only ever
+   * writes valid JSON, so `problems` is empty; the path exists because the interface keeps it.
    */
-  private parseRows<T extends { id?: string; name?: string }>(
+  private parseRows<T>(
     rows: JsonRow[],
     parse: (data: unknown) => { ok: true; value: T } | { ok: false; errors: string[] },
   ): { values: T[]; problems: SourceProblem[] } {
@@ -159,7 +185,10 @@ export class SqlSpecStore implements SpecStore {
       }
       const parsed = parse(data)
       if (parsed.ok) values.push(parsed.value)
-      else problems.push({ file: data && typeof data === 'object' ? String((data as { id?: string }).id ?? '(row)') : '(row)', message: parsed.errors.join('; ') })
+      else {
+        const id = data && typeof data === 'object' ? String((data as { id?: string }).id ?? '(row)') : '(row)'
+        problems.push({ file: id, message: parsed.errors.join('; ') })
+      }
     }
     return { values, problems }
   }
@@ -167,15 +196,15 @@ export class SqlSpecStore implements SpecStore {
   // ── Reads ──────────────────────────────────────────────────────────────────────────
 
   async readTerms(): Promise<Glossary> {
-    const { values, problems } = this.parseRows(this.rows('SELECT json FROM terms'), parseTerm)
+    const { values, problems } = this.parseRows(this.rows('SELECT json FROM terms WHERE project_id = ?'), parseTerm)
     values.sort((a, b) => a.name.localeCompare(b.name))
     return { terms: values, problems }
   }
 
   async readChangesets(): Promise<PendingChangesets> {
-    const pending = this.parseRows(this.rows("SELECT json FROM changesets WHERE status = 'pending'"), parseChangeset)
-    const applied = this.parseRows(this.rows("SELECT json FROM changesets WHERE status = 'applied'"), parseChangeset)
-    const rejected = this.parseRows(this.rows("SELECT json FROM changesets WHERE status = 'rejected'"), parseChangeset)
+    const pending = this.parseRows(this.rows("SELECT json FROM changesets WHERE project_id = ? AND status = 'pending'"), parseChangeset)
+    const applied = this.parseRows(this.rows("SELECT json FROM changesets WHERE project_id = ? AND status = 'applied'"), parseChangeset)
+    const rejected = this.parseRows(this.rows("SELECT json FROM changesets WHERE project_id = ? AND status = 'rejected'"), parseChangeset)
     const byAppliedDesc = (a: Changeset, b: Changeset) => (b.appliedAt ?? '').localeCompare(a.appliedAt ?? '')
     return {
       changesets: pending.values,
@@ -186,13 +215,13 @@ export class SqlSpecStore implements SpecStore {
   }
 
   async readQuestions(): Promise<QuestionFeed> {
-    const { values, problems } = this.parseRows(this.rows('SELECT json FROM questions'), parseQuestion)
+    const { values, problems } = this.parseRows(this.rows('SELECT json FROM questions WHERE project_id = ?'), parseQuestion)
     return { questions: values, problems }
   }
 
   async readExpectations(): Promise<ExpectationFeed> {
-    const live = this.parseRows(this.rows("SELECT json FROM expectations WHERE lifecycle = 'live'"), parseExpectation)
-    const retired = this.parseRows(this.rows("SELECT json FROM expectations WHERE lifecycle = 'retired'"), parseExpectation)
+    const live = this.parseRows(this.rows("SELECT json FROM expectations WHERE project_id = ? AND lifecycle = 'live'"), parseExpectation)
+    const retired = this.parseRows(this.rows("SELECT json FROM expectations WHERE project_id = ? AND lifecycle = 'retired'"), parseExpectation)
     live.values.sort((a, b) => a.id.localeCompare(b.id))
     retired.values.sort((a, b) => a.id.localeCompare(b.id))
     // Drafts share the live lifecycle with published ones — status is data. Absent status = ready.
@@ -205,34 +234,38 @@ export class SqlSpecStore implements SpecStore {
   }
 
   private findOne<T>(
-    sql: string,
+    table: string,
     id: string,
     parse: (data: unknown) => { ok: true; value: T } | { ok: false; errors: string[] },
   ): T | null {
-    const row = this.db.prepare(sql).get(id) as JsonRow | undefined
+    const row = this.db
+      .prepare(`SELECT json FROM ${table} WHERE project_id = ? AND id = ?`)
+      .get(this.projectId, id) as JsonRow | undefined
     if (!row) return null
     const parsed = parse(JSON.parse(row.json))
     return parsed.ok ? parsed.value : null
   }
 
   async findChangeset(id: string): Promise<Changeset | null> {
-    return this.findOne('SELECT json FROM changesets WHERE id = ?', id, parseChangeset)
+    return this.findOne('changesets', id, parseChangeset)
   }
 
   async findQuestion(id: string): Promise<Question | null> {
-    return this.findOne('SELECT json FROM questions WHERE id = ?', id, parseQuestion)
+    return this.findOne('questions', id, parseQuestion)
   }
 
   async findExpectation(id: string): Promise<Expectation | null> {
-    return this.findOne('SELECT json FROM expectations WHERE id = ?', id, parseExpectation)
+    return this.findOne('expectations', id, parseExpectation)
   }
 
   // ── Id allocation ──────────────────────────────────────────────────────────────────
-  // A `SELECT max` over the whole table, including resolved/retired rows, so an id is never
-  // handed out twice — the SQL analogue of the FS impl counting every partition directory.
+  // A `SELECT max` over the whole table for this project, including resolved/retired rows, so an id
+  // is never handed out twice — the SQL analogue of the FS impl counting every partition directory.
 
   private nextId(prefix: string, table: string): string {
-    const ids = (this.db.prepare(`SELECT id FROM ${table}`).all() as unknown as Array<{ id: string }>).map((r) => r.id)
+    const ids = (
+      this.db.prepare(`SELECT id FROM ${table} WHERE project_id = ?`).all(this.projectId) as unknown as Array<{ id: string }>
+    ).map((r) => r.id)
     const highest = ids.reduce((max, id) => Math.max(max, idNumber(id)), 0)
     return `${prefix}-${String(highest + 1).padStart(3, '0')}`
   }
@@ -251,22 +284,22 @@ export class SqlSpecStore implements SpecStore {
 
   async addChangeset(changeset: Changeset): Promise<StoredAt> {
     this.db
-      .prepare("INSERT INTO changesets (id, status, json) VALUES (?, 'pending', ?)")
-      .run(changeset.id, JSON.stringify(changeset))
+      .prepare("INSERT INTO changesets (project_id, id, status, json) VALUES (?, ?, 'pending', ?)")
+      .run(this.projectId, changeset.id, JSON.stringify(changeset))
     return changeset.id
   }
 
   async addQuestion(question: Question): Promise<StoredAt> {
     this.db
-      .prepare('INSERT INTO questions (id, rev, json) VALUES (?, ?, ?)')
-      .run(question.id, question.rev ?? 1, JSON.stringify(question))
+      .prepare('INSERT INTO questions (project_id, id, rev, json) VALUES (?, ?, ?, ?)')
+      .run(this.projectId, question.id, question.rev ?? 1, JSON.stringify(question))
     return question.id
   }
 
   async addExpectation(expectation: Expectation): Promise<StoredAt> {
     this.db
-      .prepare("INSERT INTO expectations (id, lifecycle, rev, json) VALUES (?, 'live', ?, ?)")
-      .run(expectation.id, expectation.rev ?? 1, JSON.stringify(expectation))
+      .prepare("INSERT INTO expectations (project_id, id, lifecycle, rev, json) VALUES (?, ?, 'live', ?, ?)")
+      .run(this.projectId, expectation.id, expectation.rev ?? 1, JSON.stringify(expectation))
     return expectation.id
   }
 
