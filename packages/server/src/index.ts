@@ -30,9 +30,10 @@ const PORT = Number(process.env.PORT ?? 5174)
 const provider = new StoreProvider(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
 const transcripts = new TranscriptStore()
 
-// Which project this request is for. Until the org/project URL prefix lands (slice 3) every request
-// is the one configured project; the seam is here so that change touches only this function.
-const resolveProjectId = (_req: express.Request): string => provider.defaultProjectId
+// The org this deployment serves. A grouping/auth label, not a storage key — projectId is globally
+// unique, so the org never reaches the store. Local default is "local"; a hosted deployment sets it.
+// `spectra init` will write it into .spectra/config.json alongside the project id (a later slice).
+const ORG = process.env.ORG ?? 'local'
 
 // The boot-time store, for the pieces still constructed once: the project identity the agents are
 // built from, and the runner/MCP surface (both request-scoped in later slices — per-project agents,
@@ -56,8 +57,16 @@ const authorizer: Authorizer = new LocalAuthorizer()
 /** The principal the auth middleware resolved for this request. */
 const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
 
-/** The glossary store for this request's project, resolved in the context middleware below. */
+/** The glossary store for this request's project, resolved in the glossary router's middleware. */
 const storeOf = (res: express.Response): SpecStore => res.locals.store as SpecStore
+
+/**
+ * org and projectId arrive as URL segments, so a request could put anything there — and projectId
+ * reaches the filesystem backend as a path component (`<root>/<projectId>/specs`). Restrict both to
+ * a safe charset and forbid the two path-relative names, so a crafted id can never escape the root.
+ */
+const SEGMENT = /^[A-Za-z0-9._-]+$/
+const isSafeSegment = (value: string): boolean => SEGMENT.test(value) && value !== '.' && value !== '..'
 
 /** The revision the client last read, if it sent one — the opt-in for optimistic concurrency. */
 const expectedRevOf = (body: unknown): number | undefined => {
@@ -73,14 +82,19 @@ app.use('/anthropic', anthropicProxy())
 
 app.use(express.json())
 
-// The request chain, once per request and before any route: authenticate (who), then resolve the
-// project and its store (what). Both land on res.locals so every handler reads the same
-// server-decided principal and the store for this request's project. Runs after the /anthropic
-// proxy, which terminates its own requests and needs neither.
+// Authenticate every request (who) before any route. The project (what) is resolved from the URL,
+// per glossary route, in the router below. Runs after the /anthropic proxy, which terminates its
+// own requests and needs no principal.
 app.use((req, res, next) => {
   res.locals.principal = authorizer.authenticate(req)
-  res.locals.store = provider.storeFor(resolveProjectId(req))
   next()
+})
+
+// The bootstrap the browser reads first, before it knows which org/project it is looking at. It is
+// deliberately un-prefixed — you cannot ask for a project's routes until you have been told the
+// project. Returns the one configured scope and its identity (saving a round trip for the title).
+app.get('/api/context', (_req, res) => {
+  res.json({ org: ORG, projectId: provider.defaultProjectId, project })
 })
 
 app.use('/api/chat', chatRoutes(transcripts, runner, agents))
@@ -89,13 +103,35 @@ app.use('/api/chat', chatRoutes(transcripts, runner, agents))
 // per-project resolution for the coder path is a later slice.
 app.use('/mcp', mcpRoutes(bootStore, transcripts, agents))
 
-// The project's identity, for the UI title. Served from the value loaded at startup, so it
-// matches exactly what the agents were built with.
-app.get('/api/project', (_req, res) => {
-  res.json(project)
+// Everything about one project lives under /api/orgs/<org>/projects/<projectId>. mergeParams so the
+// handlers below see :org and :projectId from the mount path. This is where "which project" becomes
+// a per-request fact: the middleware validates the ids, asks the principal whether it may act on
+// them (allow-all locally), and resolves the store for the project the rest of the routes then use.
+const glossary = express.Router({ mergeParams: true })
+glossary.use((req, res, next) => {
+  const { org, projectId } = req.params as { org: string; projectId: string }
+  if (!isSafeSegment(org) || !isSafeSegment(projectId)) {
+    res.status(400).json({ error: 'Invalid org or project id.' })
+    return
+  }
+  if (!principalOf(res).can(org, projectId)) {
+    res.status(403).json({ error: `Not authorized for project "${projectId}".` })
+    return
+  }
+  res.locals.store = provider.storeFor(projectId)
+  next()
 })
 
-app.get('/api/terms', async (_req, res, next) => {
+// The project's identity, for the UI title — the request's project, read live from its store.
+glossary.get('/project', async (_req, res, next) => {
+  try {
+    res.json(await storeOf(res).projectInfo())
+  } catch (error) {
+    next(error)
+  }
+})
+
+glossary.get('/terms', async (_req, res, next) => {
   try {
     res.json(await storeOf(res).readTerms())
   } catch (error) {
@@ -103,7 +139,7 @@ app.get('/api/terms', async (_req, res, next) => {
   }
 })
 
-app.get('/api/changesets', async (_req, res, next) => {
+glossary.get('/changesets', async (_req, res, next) => {
   try {
     res.json(await storeOf(res).readChangesets())
   } catch (error) {
@@ -111,7 +147,7 @@ app.get('/api/changesets', async (_req, res, next) => {
   }
 })
 
-app.post('/api/changesets/:id/apply', async (req, res, next) => {
+glossary.post('/changesets/:id/apply', async (req, res, next) => {
   try {
     const body = req.body as { opIndices?: unknown; acknowledgeWarnings?: unknown }
     if (!Array.isArray(body?.opIndices)) {
@@ -129,7 +165,7 @@ app.post('/api/changesets/:id/apply', async (req, res, next) => {
   }
 })
 
-app.post('/api/changesets/:id/reject', async (req, res, next) => {
+glossary.post('/changesets/:id/reject', async (req, res, next) => {
   try {
     const outcome = await rejectChangeset(storeOf(res), req.params.id)
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
@@ -138,7 +174,7 @@ app.post('/api/changesets/:id/reject', async (req, res, next) => {
   }
 })
 
-app.post('/api/changesets/:id/implemented', async (req, res, next) => {
+glossary.post('/changesets/:id/implemented', async (req, res, next) => {
   try {
     const outcome = await markImplemented(storeOf(res), req.params.id, new Date().toISOString())
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
@@ -159,7 +195,7 @@ app.post('/api/changesets/:id/implemented', async (req, res, next) => {
  * is not the same as the file being written — the write still has to pass the approval card
  * — so it is here to answer "how long ago?" and never to decide anything.
  */
-app.get('/api/specs/version', async (_req, res, next) => {
+glossary.get('/specs/version', async (_req, res, next) => {
   try {
     res.json({
       specsVersion: (await currentSnapshot(storeOf(res))).version,
@@ -237,7 +273,7 @@ app.post('/api/speech', async (req, res, next) => {
   }
 })
 
-app.get('/api/expectations', async (_req, res, next) => {
+glossary.get('/expectations', async (_req, res, next) => {
   try {
     res.json(await storeOf(res).readExpectations())
   } catch (error) {
@@ -252,7 +288,7 @@ app.get('/api/expectations', async (_req, res, next) => {
  * should be killable before it exists, not superseded afterwards. The mechanical findings
  * always come back; the semantic ones need a credential and say so when they are missing.
  */
-app.post('/api/expectations/check', async (req, res, next) => {
+glossary.post('/expectations/check', async (req, res, next) => {
   try {
     const body = req.body as Partial<RaiseExpectationRequest>
     if (typeof body?.expect !== 'string' || body.expect.trim() === '') {
@@ -293,7 +329,7 @@ app.post('/api/expectations/check', async (req, res, next) => {
  * the UI gates on it, but a caller that has already decided is not made to pay for a model
  * round trip, and a check that could not run must not become a write that cannot happen.
  */
-app.post('/api/expectations', async (req, res, next) => {
+glossary.post('/expectations', async (req, res, next) => {
   try {
     const body = req.body as Partial<RaiseExpectationRequest>
     if (body?.kind !== 'functional' && body?.kind !== 'non-functional') {
@@ -325,7 +361,7 @@ app.post('/api/expectations', async (req, res, next) => {
 })
 
 /** Publish a draft expectation. draft → ready, and only then does it count. */
-app.post('/api/expectations/:id/publish', async (req, res, next) => {
+glossary.post('/expectations/:id/publish', async (req, res, next) => {
   try {
     const outcome = await publishExpectation(storeOf(res), req.params.id, expectedRevOf(req.body))
     res.status(outcome.ok ? 200 : (outcome.status ?? 500)).json(outcome)
@@ -342,7 +378,7 @@ app.post('/api/expectations/:id/publish', async (req, res, next) => {
  * a clash that has gone disappears, one that changed says what it clashes with now, and one
  * that survives keeps the expectation out of coverage exactly as before.
  */
-app.post('/api/expectations/:id/recheck', async (req, res, next) => {
+glossary.post('/expectations/:id/recheck', async (req, res, next) => {
   try {
     const [{ terms }] = await Promise.all([storeOf(res).readTerms()])
     const outcome = await recheckExpectation(storeOf(res), req.params.id, async (expectation, others) => {
@@ -365,7 +401,7 @@ app.post('/api/expectations/:id/recheck', async (req, res, next) => {
   }
 })
 
-app.post('/api/expectations/:id/supersede', async (req, res, next) => {
+glossary.post('/expectations/:id/supersede', async (req, res, next) => {
   try {
     const body = req.body as Partial<SupersedeRequest>
     if (typeof body?.note !== 'string' || body.note.trim() === '') {
@@ -391,7 +427,7 @@ app.post('/api/expectations/:id/supersede', async (req, res, next) => {
  * and offers no verdict. Expectations per term measure attention, not correctness, and a
  * percentage would invite reading them as the second thing.
  */
-app.get('/api/coverage', async (req, res, next) => {
+glossary.get('/coverage', async (req, res, next) => {
   try {
     const [{ terms }, { expectations }] = await Promise.all([storeOf(res).readTerms(), storeOf(res).readExpectations()])
     const distance = Number(req.query.distance ?? 2)
@@ -405,7 +441,7 @@ app.get('/api/coverage', async (req, res, next) => {
   }
 })
 
-app.get('/api/questions', async (_req, res, next) => {
+glossary.get('/questions', async (_req, res, next) => {
   try {
     res.json(await storeOf(res).readQuestions())
   } catch (error) {
@@ -413,7 +449,7 @@ app.get('/api/questions', async (_req, res, next) => {
   }
 })
 
-app.post('/api/questions/:id/answer', async (req, res, next) => {
+glossary.post('/questions/:id/answer', async (req, res, next) => {
   try {
     const body = req.body as { chose?: unknown; note?: unknown }
     const chose = body?.chose === null || body?.chose === undefined ? null : body.chose
@@ -432,6 +468,8 @@ app.post('/api/questions/:id/answer', async (req, res, next) => {
     next(error)
   }
 })
+
+app.use('/api/orgs/:org/projects/:projectId', glossary)
 
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error)
