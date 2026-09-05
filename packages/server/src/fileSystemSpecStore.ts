@@ -81,7 +81,14 @@ export class FileSystemSpecStore implements SpecStore {
   private readonly retiredDir: string
   private readonly projectFile: string
 
-  constructor(specsDir: string) {
+  /**
+   * Scoped to one project, symmetric with `SqlSpecStore(db, projectId)`: `root` is the directory
+   * that can hold many projects' glossaries, and this project's lives at `<root>/<projectId>/specs/`.
+   * The project id is the storage root for that project's files — the filesystem analogue of the SQL
+   * `project_id` column. Which project a request is for is resolved above, at the composition root.
+   */
+  constructor(root: string, projectId: string) {
+    const specsDir = path.join(root, projectId, 'specs')
     this.termsDir = path.join(specsDir, 'terms')
     this.changesetsDir = path.join(specsDir, 'changesets')
     this.appliedDir = path.join(this.changesetsDir, 'applied')

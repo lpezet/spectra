@@ -220,7 +220,9 @@ packages/server/src/agent/runner.ts   runs a turn, streams it, blocks on approva
 packages/server/src/agent/tools.ts    domain tools; mcpHttp.ts is the same tools over HTTP
 packages/server/src/specsExport.ts    the snapshot + version (README calls this glossaryExport.ts)
 packages/server/src/commit.ts         the only writer of specs/
-packages/server/src/specStore.ts      the storage seam (FileSystemSpecStore today, SqlSpecStore next)
+packages/server/src/specStore.ts      the storage seam; both backends scope to one project
+packages/server/src/fileSystemSpecStore.ts  FS backend — (root, projectId) → <root>/<project_id>/specs
+packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, projectId), one DB many projects
 packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker

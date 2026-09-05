@@ -7,7 +7,7 @@
  * a bad hand-edit must not take down the server or hand the agents a half-parsed identity. The
  * default is deliberately generic so an unconfigured glossary never borrows another project's name.
  */
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,10 +15,14 @@ import type { Term } from '@spectra/core'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import { buildAgents } from './agent/agents.js'
 
+// The store scopes to <root>/<projectId>/specs; `specs` is that dir, where project.json is written.
+let root: string
 let specs: string
 
 beforeEach(async () => {
-  specs = await mkdtemp(path.join(tmpdir(), 'tb-project-'))
+  root = await mkdtemp(path.join(tmpdir(), 'tb-project-'))
+  specs = path.join(root, 'proj', 'specs')
+  await mkdir(specs, { recursive: true })
 })
 
 describe('FileSystemSpecStore.projectInfo', () => {
@@ -27,12 +31,12 @@ describe('FileSystemSpecStore.projectInfo', () => {
       path.join(specs, 'project.json'),
       JSON.stringify({ name: 'Todo Blueprints', domain: 'a ToDo app' }),
     )
-    const info = await new FileSystemSpecStore(specs).projectInfo()
+    const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
     expect(info).toEqual({ name: 'Todo Blueprints', domain: 'a ToDo app' })
   })
 
   it('falls back to a neutral default when the file is absent', async () => {
-    const info = await new FileSystemSpecStore(specs).projectInfo()
+    const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
     expect(info.name).toBe('Untitled project')
     // The fallback must not smuggle a real project's identity back in.
     expect(info.name).not.toMatch(/todo/i)
@@ -41,14 +45,14 @@ describe('FileSystemSpecStore.projectInfo', () => {
   it('falls back rather than throwing when the file is not valid JSON', async () => {
     await writeFile(path.join(specs, 'project.json'), '{ not json')
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const info = await new FileSystemSpecStore(specs).projectInfo()
+    const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
     expect(info.name).toBe('Untitled project')
   })
 
   it('falls back when the JSON is the wrong shape', async () => {
     await writeFile(path.join(specs, 'project.json'), JSON.stringify({ name: 'X' })) // no domain
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const info = await new FileSystemSpecStore(specs).projectInfo()
+    const info = await new FileSystemSpecStore(root, 'proj').projectInfo()
     expect(info.name).toBe('Untitled project')
   })
 })
@@ -65,7 +69,7 @@ describe('FileSystemSpecStore.commitApplication against an empty store', () => {
       tags: [],
       attributes: [],
     }
-    const store = new FileSystemSpecStore(specs)
+    const store = new FileSystemSpecStore(root, 'proj')
     // The pending changeset writer mkdirs changesets/ — but terms/ still does not exist.
     await store.addChangeset({ id: 'cs-first', summary: 'add Widget', ops: [], tests: [] })
     const result = await store.commitApplication({
