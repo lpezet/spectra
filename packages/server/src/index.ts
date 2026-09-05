@@ -6,7 +6,7 @@ import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { buildAgents } from './agent/agents.js'
-import { TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
+import { DATA_DIR, TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@spectra/core'
@@ -15,20 +15,16 @@ import { checkExpectation } from './expectationCheck.js'
 import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR } from './config.js'
-import path from 'node:path'
-import { FileSystemSpecStore } from './fileSystemSpecStore.js'
+import { buildSpecStore, resolveStoreChoice } from './storeFactory.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)
 
 // The composition root: one store, constructed here and threaded into everything that reads or
-// writes the glossary. A hosted deployment resolves this per tenant instead — same seam.
-//
-// SPECS_DIR is `<root>/<projectId>/specs`, so split it into the (root, projectId) the store now
-// takes — scoping by project the same way SqlSpecStore(db, projectId) does. Hosted, the projectId
-// comes from the request/auth rather than a configured path; the store's shape is already ready.
-const projectDir = path.dirname(SPECS_DIR)
-const store = new FileSystemSpecStore(path.dirname(projectDir), path.basename(projectDir))
+// writes the glossary. The backend (filesystem or SQL) is chosen from config in storeFactory.ts;
+// the rest of the server sees only the SpecStore interface. A hosted deployment resolves the store
+// per tenant instead — same seam.
+const store = buildSpecStore(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
 const transcripts = new TranscriptStore()
 
 // The project's identity is glossary content, read from the store once at startup and threaded
