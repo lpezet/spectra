@@ -5,10 +5,11 @@ import type { ChangesetFeed, ExpectationFeed, Glossary, QuestionFeed } from './a
 import {
   answerQuestion,
   applyChangeset,
+  configureProject,
   fetchChangesets,
+  fetchContext,
   fetchExpectations,
   fetchGlossary,
-  fetchProject,
   fetchQuestions,
   markImplemented,
   raiseExpectation,
@@ -66,16 +67,19 @@ export function App() {
     setExpectationFeed(nextExpectations)
   }, [])
 
+  // Bootstrap: learn which org/project this UI is for (un-prefixed /api/context), point the API at
+  // it, and only then load the glossary — every glossary call lives under that project's prefix, so
+  // configuring first is what makes them resolve. The context also carries the identity for the
+  // title, so there is no separate fetch for it.
   useEffect(() => {
-    load().catch((cause: Error) => setError(cause.message))
+    fetchContext()
+      .then((context) => {
+        configureProject(context.org, context.projectId)
+        setProject(context.project)
+        return load()
+      })
+      .catch((cause: Error) => setError(cause.message))
   }, [load])
-
-  // The project title is identity, not glossary data — fetched once, not on every reload.
-  useEffect(() => {
-    fetchProject()
-      .then(setProject)
-      .catch(() => setProject(null))
-  }, [])
 
   const terms = glossary?.terms ?? EMPTY_TERMS
   const changesets = feed?.changesets ?? EMPTY_CHANGESETS
