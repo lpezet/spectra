@@ -7,5 +7,5 @@ export function createAuthorizer(context: AuthorizerContext): Authorizer {
     orgs: () => [`from-plugin:${context.org}`],
     can: () => true,
   }
-  return { authenticate: () => principal }
+  return { authenticate: async () => principal }
 }

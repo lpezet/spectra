@@ -94,8 +94,15 @@ app.use(express.json())
 // per glossary route, in the router below. Runs after the /anthropic proxy, which terminates its
 // own requests and needs no principal.
 app.use((req, res, next) => {
-  res.locals.principal = authorizer.authenticate(req)
-  next()
+  // Express does not await middleware, so resolve the principal ourselves and forward any auth
+  // failure into the error chain rather than leaving a floating rejection.
+  authorizer
+    .authenticate(req)
+    .then((principal) => {
+      res.locals.principal = principal
+      next()
+    })
+    .catch(next)
 })
 
 // The bootstrap the browser reads first, before it knows which org/project it is looking at. It is

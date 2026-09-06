@@ -32,9 +32,17 @@ export interface Principal {
   can(org: string, projectId: string): boolean
 }
 
-/** Resolves the {@link Principal} for a request from whatever the deployment authenticates with. */
+/**
+ * Resolves the {@link Principal} for a request from whatever the deployment authenticates with.
+ *
+ * `authenticate` is async: the local case answers immediately, but a real deployment validates a
+ * token, cookie, or API key — I/O that cannot be synchronous — and does it here, once per request,
+ * front-loading everything the principal will need. That is why the {@link Principal} accessors
+ * (`orgs`, `can`) stay synchronous: they read data this call already resolved, so nothing downstream
+ * has to await a permission check.
+ */
 export interface Authorizer {
-  authenticate(req: Request): Principal
+  authenticate(req: Request): Promise<Principal>
 }
 
 /**
@@ -54,7 +62,7 @@ export class LocalAuthorizer implements Authorizer {
     }
   }
 
-  authenticate(): Principal {
+  async authenticate(): Promise<Principal> {
     return this.principal
   }
 }
