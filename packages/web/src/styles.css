@@ -454,6 +454,35 @@ button {
   margin: 0;
 }
 
+.project-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.project-switcher select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+  max-width: 200px;
+}
+
+.project-switcher select:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  /* one option is not a choice: show where you are without inviting a pick */
+  appearance: none;
+  padding-left: 2px;
+}
+
+.project-switcher .switcher-sep {
+  color: var(--muted);
+}
+
 .muted {
   color: var(--muted);
 }

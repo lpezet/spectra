@@ -25,6 +25,27 @@ export function fetchContext(): Promise<Context> {
   return get<Context>('/api/context')
 }
 
+export interface Org {
+  id: string
+  name: string
+}
+
+export interface ProjectSummary {
+  id: string
+  name: string
+  domain: string
+}
+
+/** The orgs this caller may pick from — the org selector's source. Un-prefixed, like the context. */
+export function fetchOrgs(): Promise<{ orgs: Org[] }> {
+  return get<{ orgs: Org[] }>('/api/orgs')
+}
+
+/** The projects in an org this caller may open — the project selector's source. */
+export function fetchProjects(org: string): Promise<{ projects: ProjectSummary[] }> {
+  return get<{ projects: ProjectSummary[] }>(`/api/orgs/${encodeURIComponent(org)}/projects`)
+}
+
 export interface Glossary {
   terms: Term[]
   problems: SourceProblem[]

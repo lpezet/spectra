@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Changeset, Expectation, HighlightKind, ProjectInfo, SourceProblem, Term, TermType } from '@spectra/core'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@spectra/core'
-import type { ChangesetFeed, ExpectationFeed, Glossary, QuestionFeed } from './api.js'
+import type { ChangesetFeed, ExpectationFeed, Glossary, Org, ProjectSummary, QuestionFeed } from './api.js'
 import {
   answerQuestion,
   applyChangeset,
@@ -10,6 +10,8 @@ import {
   fetchContext,
   fetchExpectations,
   fetchGlossary,
+  fetchOrgs,
+  fetchProjects,
   fetchQuestions,
   markImplemented,
   raiseExpectation,
@@ -25,6 +27,7 @@ import { ChatPanel } from './components/ChatPanel.js'
 import { CoveragePanel } from './components/CoveragePanel.js'
 import { QuestionPanel } from './components/QuestionPanel.js'
 import type { SupersedeDraft } from './components/TermDetail.js'
+import { ProjectSwitcher } from './components/ProjectSwitcher.js'
 import { SearchBar, filterTerms } from './components/SearchBar.js'
 import { TermDetail } from './components/TermDetail.js'
 import { TermList } from './components/TermList.js'
@@ -35,8 +38,41 @@ const EMPTY_TERMS: Term[] = []
 const EMPTY_CHANGESETS: Changeset[] = []
 const EMPTY_EXPECTATIONS: Expectation[] = []
 
+const LAST_ORG = 'spectra.org'
+const LAST_PROJECT = 'spectra.projectId'
+
+// localStorage remembers the last-picked org/project so a reload returns you where you were.
+// Wrapped because it throws in a private window or with site data blocked — a convenience, never
+// load-bearing (the server's /api/context default covers a first visit or a cleared store).
+const recall = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+const remember = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // no-op: remembering the selection is a nicety, not a requirement
+  }
+}
+
+/** First preference that actually exists in `available`, else the first available, else null. */
+const pick = (available: string[], ...preferences: Array<string | null | undefined>): string | null => {
+  for (const preference of preferences) {
+    if (preference && available.includes(preference)) return preference
+  }
+  return available[0] ?? null
+}
+
 export function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null)
+  const [orgs, setOrgs] = useState<Org[]>([])
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [org, setOrg] = useState<string | null>(null)
+  const [projectId, setProjectId] = useState<string | null>(null)
   const [glossary, setGlossary] = useState<Glossary | null>(null)
   const [feed, setFeed] = useState<ChangesetFeed | null>(null)
   const [questionFeed, setQuestionFeed] = useState<QuestionFeed | null>(null)
@@ -67,19 +103,46 @@ export function App() {
     setExpectationFeed(nextExpectations)
   }, [])
 
-  // Bootstrap: learn which org/project this UI is for (un-prefixed /api/context), point the API at
-  // it, and only then load the glossary — every glossary call lives under that project's prefix, so
-  // configuring first is what makes them resolve. The context also carries the identity for the
-  // title, so there is no separate fetch for it.
+  // Point the API at a project, remember the choice, show its identity, and load its glossary. Every
+  // glossary call lives under the project's prefix, so configuring first is what makes them resolve.
+  const openProject = useCallback(
+    async (nextOrg: string, nextProjectId: string, inOrg: ProjectSummary[]) => {
+      configureProject(nextOrg, nextProjectId)
+      setOrg(nextOrg)
+      setProjectId(nextProjectId)
+      remember(LAST_ORG, nextOrg)
+      remember(LAST_PROJECT, nextProjectId)
+      const info = inOrg.find((entry) => entry.id === nextProjectId)
+      if (info) setProject({ name: info.name, domain: info.domain })
+      await load()
+    },
+    [load],
+  )
+
+  // Switch org: fetch its projects, then open the remembered one (or the first). Its projects become
+  // the project selector's options.
+  const openOrg = useCallback(
+    async (nextOrg: string, preferProjectId?: string) => {
+      const { projects: inOrg } = await fetchProjects(nextOrg)
+      setProjects(inOrg)
+      const chosen = pick(inOrg.map((entry) => entry.id), preferProjectId, recall(LAST_PROJECT))
+      if (chosen) await openProject(nextOrg, chosen, inOrg)
+    },
+    [openProject],
+  )
+
+  // Bootstrap: the orgs to pick from and the server's default scope (un-prefixed, before any project
+  // is configured). Open the remembered org (or the default, or the only one), which opens a project
+  // and loads. A single org/project just auto-selects — the picker never makes you choose the only one.
   useEffect(() => {
-    fetchContext()
-      .then((context) => {
-        configureProject(context.org, context.projectId)
-        setProject(context.project)
-        return load()
+    Promise.all([fetchOrgs(), fetchContext()])
+      .then(async ([{ orgs: available }, context]) => {
+        setOrgs(available)
+        const chosenOrg = pick(available.map((entry) => entry.id), recall(LAST_ORG), context.org)
+        if (chosenOrg) await openOrg(chosenOrg, recall(LAST_PROJECT) ?? context.projectId)
       })
       .catch((cause: Error) => setError(cause.message))
-  }, [load])
+  }, [openOrg])
 
   const terms = glossary?.terms ?? EMPTY_TERMS
   const changesets = feed?.changesets ?? EMPTY_CHANGESETS
@@ -320,6 +383,16 @@ export function App() {
       <div className="app-main">
       <header className="app-header">
         <h1>{project?.name ?? 'Spectra'}</h1>
+        <ProjectSwitcher
+          orgs={orgs}
+          projects={projects}
+          org={org}
+          projectId={projectId}
+          onOrg={(next) => void openOrg(next).catch((cause: Error) => setError(cause.message))}
+          onProject={(next) =>
+            org && void openProject(org, next, projects).catch((cause: Error) => setError(cause.message))
+          }
+        />
         <span className="muted">spec glossary</span>
         <HighlightLegend />
         {!chatOpen && (

@@ -1,0 +1,12 @@
+{
+  "name": "Ingredient",
+  "type": "entity",
+  "spec": "A single item a Recipe calls for, as a quantity of a food. The quantity scales when the Recipe it belongs to is scaled.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "food", "valueType": "string" },
+    { "name": "quantity", "valueType": "number" },
+    { "name": "unit", "valueType": "string", "optional": true }
+  ]
+}

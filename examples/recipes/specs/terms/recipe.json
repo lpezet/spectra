@@ -1,0 +1,13 @@
+{
+  "name": "Recipe",
+  "type": "entity",
+  "spec": "A set of instructions for preparing a dish, with a list of ingredients and the yield it makes. A Recipe can be scaled to a different yield, which scales its ingredient quantities.",
+  "parent": null,
+  "tags": [],
+  "attributes": [
+    { "name": "title", "valueType": "string" },
+    { "name": "servings", "valueType": "number" },
+    { "name": "ingredients", "valueType": "ref:Ingredient[]" },
+    { "name": "steps", "valueType": "string[]" }
+  ]
+}
