@@ -8,12 +8,16 @@ import { describe, expect, it } from 'vitest'
 import { LocalAuthorizer } from './auth.js'
 
 describe('LocalAuthorizer', () => {
-  const authorizer = new LocalAuthorizer()
+  const authorizer = new LocalAuthorizer('local')
 
   it('stamps a bare human, with no account', () => {
     const principal = authorizer.authenticate()
     expect(principal.author).toEqual({ kind: 'human' })
     expect(principal.author.user).toBeUndefined()
+  })
+
+  it('offers the one configured org', () => {
+    expect(authorizer.authenticate().orgs()).toEqual(['local'])
   })
 
   it('allows every org and project', () => {

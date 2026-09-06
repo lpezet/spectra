@@ -21,10 +21,12 @@
 import type { Request } from 'express'
 import type { Author } from '@spectra/core'
 
-/** A resolved caller: the identity to stamp, and what it is allowed to reach. */
+/** A resolved caller: the identity to stamp, what it may reach, and what it may pick from. */
 export interface Principal {
   /** The author stamped on writes this principal makes. Server-decided, never from the body. */
   readonly author: Author
+  /** The orgs this principal may see — what the org picker offers. Local: the one configured org. */
+  orgs(): string[]
   /** Whether this principal may act on a given org + project. Allow-all locally. */
   can(org: string, projectId: string): boolean
 }
@@ -40,12 +42,18 @@ export interface Authorizer {
  * else to be, and no project on this box they are not allowed to open.
  */
 export class LocalAuthorizer implements Authorizer {
-  private static readonly principal: Principal = {
-    author: { kind: 'human' },
-    can: () => true,
+  private readonly principal: Principal
+
+  /** `org` is the single org this install serves — the only one the picker will offer. */
+  constructor(org: string) {
+    this.principal = {
+      author: { kind: 'human' },
+      orgs: () => [org],
+      can: () => true,
+    }
   }
 
   authenticate(): Principal {
-    return LocalAuthorizer.principal
+    return this.principal
   }
 }

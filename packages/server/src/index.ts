@@ -19,7 +19,7 @@ import { resolveStoreChoice } from './storeFactory.js'
 import { StoreProvider } from './storeProvider.js'
 import { LocalAuthorizer } from './auth.js'
 import type { Authorizer, Principal } from './auth.js'
-import { projectScope } from './projectScope.js'
+import { isSafeSegment, projectScope } from './projectScope.js'
 import type { SpecStore } from './specStore.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
@@ -59,7 +59,7 @@ const runner = new AgentRunner(provider, agentProvider, transcripts)
 // same reason an agent's identity comes from its route. The authorizer resolves a principal per
 // request; locally that is allow-all and stamps a bare human, exactly what this used to hardcode.
 // A hosted deployment swaps the implementation without the routes changing.
-const authorizer: Authorizer = new LocalAuthorizer()
+const authorizer: Authorizer = new LocalAuthorizer(ORG)
 
 /** The principal the auth middleware resolved for this request. */
 const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
@@ -94,6 +94,34 @@ app.use((req, res, next) => {
 // project. Returns the one configured scope and its identity (saving a round trip for the title).
 app.get('/api/context', (_req, res) => {
   res.json({ org: ORG, projectId: provider.defaultProjectId, project })
+})
+
+// The org picker's source: the orgs this caller may see. Auth's call, so it comes from the
+// principal — locally the one configured org, later the orgs an account belongs to.
+app.get('/api/orgs', (_req, res) => {
+  res.json({ orgs: principalOf(res).orgs().map((id) => ({ id, name: id })) })
+})
+
+// The project picker's source: every project this deployment holds in the org, filtered to the ones
+// the caller may open. Un-prefixed (no :projectId) — this is how you *choose* the project, the same
+// role as /api/context. The glossary mount needs a :projectId segment, so it never shadows this.
+app.get('/api/orgs/:org/projects', async (req, res, next) => {
+  try {
+    const { org } = req.params
+    if (!isSafeSegment(org)) {
+      res.status(400).json({ error: 'Invalid org id.' })
+      return
+    }
+    const principal = principalOf(res)
+    if (!principal.orgs().includes(org)) {
+      res.status(403).json({ error: `Not authorized for org "${org}".` })
+      return
+    }
+    const projects = (await provider.listProjects()).filter((p) => principal.can(org, p.id))
+    res.json({ projects })
+  } catch (error) {
+    next(error)
+  }
 })
 
 // The one gate every project surface shares: validate the ids, authorize, resolve the store onto

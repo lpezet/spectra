@@ -20,13 +20,34 @@
  */
 import { buildSpecStore } from './storeFactory.js'
 import type { StoreChoice } from './storeFactory.js'
+import { listFsProjects } from './fileSystemSpecStore.js'
+import { SqlSpecStore } from './sqlSpecStore.js'
 import type { SpecStore } from './specStore.js'
+
+/** A project the deployment holds — enough for a picker to list and choose one. */
+export interface ProjectSummary {
+  id: string
+  name: string
+  domain: string
+}
 
 export class StoreProvider {
   private readonly cache = new Map<string, SpecStore>()
 
   /** `template` fixes the backend and its location; its `projectId` is the default project. */
   constructor(private readonly template: StoreChoice) {}
+
+  /**
+   * Every project this deployment holds — the cross-project read behind the project picker. Delegates
+   * to the backend that knows how to enumerate: the SQL `projects` table, or the project dirs under
+   * the filesystem root. The store instances this hands out are bound to one project each and cannot
+   * answer this, which is why it lives on the provider (the one thing that spans projects).
+   */
+  async listProjects(): Promise<ProjectSummary[]> {
+    return this.template.backend === 'sql'
+      ? SqlSpecStore.listProjects(this.template.dbPath)
+      : listFsProjects(this.template.specsRoot)
+  }
 
   /** The store for a project — built once, then reused for the life of the process. */
   storeFor(projectId: string): SpecStore {

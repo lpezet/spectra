@@ -128,6 +128,25 @@ export class SqlSpecStore implements SpecStore {
       .run(projectId, FALLBACK_PROJECT_INFO.name, FALLBACK_PROJECT_INFO.domain)
   }
 
+  /**
+   * Every project in the database — the cross-project read the per-instance store cannot do, since
+   * it is bound to one project. A deployment-level query (the picker asks it), so it is static: opens
+   * its own connection, ensures the schema (an untouched db has no `projects` table yet), lists.
+   */
+  static listProjects(file: string): Array<{ id: string; name: string; domain: string }> {
+    const db = new DatabaseSync(file)
+    try {
+      db.exec(SCHEMA)
+      return db.prepare('SELECT id, name, domain FROM projects ORDER BY id').all() as Array<{
+        id: string
+        name: string
+        domain: string
+      }>
+    } finally {
+      db.close()
+    }
+  }
+
   close(): void {
     this.db.close()
   }
