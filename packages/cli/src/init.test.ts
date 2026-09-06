@@ -30,6 +30,15 @@ describe('planInit', () => {
     expect(plan.overridePath).toBe('/home/u/.config/spectra/projects/myrepo-abc123/compose.yaml')
   })
 
+  it('plans the data dir so it is created (user-owned) before docker makes it root at up', () => {
+    const plan = planInit(base)
+    // The override mounts this into /stack/data; if it does not exist, docker creates it root-owned
+    // and the non-root spec container cannot open its transcripts DB.
+    expect(plan.dirs).toContain('/home/u/.local/share/spectra/projects/myrepo-abc123/data')
+    const yaml = fileAt(plan, 'compose.yaml')!.content
+    expect(yaml).toContain(`${plan.dirs[0]}:/stack/data`)
+  })
+
   it('seeds identity into the glossary project.json and the link', () => {
     const plan = planInit(base)
     expect(JSON.parse(fileAt(plan, 'specs/project.json')!.content)).toEqual({

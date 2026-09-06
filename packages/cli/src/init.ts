@@ -49,6 +49,13 @@ export interface PlannedFile {
 export interface InitPlan {
   id: string
   files: PlannedFile[]
+  /**
+   * Directories that must exist but hold no init-written file — the data dir. If we leave it to
+   * `spectra up`, docker auto-creates the bind-mount source as root, and the spec container (which
+   * runs as the non-root `node` user) then cannot open its transcripts DB there. Creating it here
+   * makes it the user's, and writable.
+   */
+  dirs: string[]
   /** The server-owned glossary directory (SPECS_DIR maps here inside the spec container). */
   glossaryDir: string
   /** The compose override path the CLI layers over default.yaml. */
@@ -132,11 +139,16 @@ export function planInit(input: InitInput): InitPlan {
     },
   ]
 
-  return { id: input.id, files, glossaryDir, overridePath, coderMount }
+  // The data dir holds no init-written file, so it must be created explicitly — otherwise docker
+  // makes it root-owned at `up` time and the non-root spec container cannot write its transcripts DB.
+  return { id: input.id, files, dirs: [dataDir], glossaryDir, overridePath, coderMount }
 }
 
 /** Write a plan to disk, creating parent directories. Pure planning stays in planInit. */
 export function applyInitPlan(plan: InitPlan): void {
+  for (const dir of plan.dirs) {
+    mkdirSync(dir, { recursive: true })
+  }
   for (const file of plan.files) {
     mkdirSync(path.dirname(file.path), { recursive: true })
     writeFileSync(file.path, file.content)
