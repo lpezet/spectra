@@ -223,7 +223,9 @@ packages/server/src/commit.ts         the only writer of specs/
 packages/server/src/specStore.ts      the storage seam; both backends scope to one project
 packages/server/src/fileSystemSpecStore.ts  FS backend — (root, projectId) → <root>/<project_id>/specs
 packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, projectId), one DB many projects
-packages/server/src/storeFactory.ts   picks the backend from config (SPEC_STORE=fs|sql) at the root
+packages/server/src/storeFactory.ts   builds a built-in store (fs|sql) from a StoreChoice
+packages/server/src/backend.ts        the storage plugin boundary: SPEC_STORE=fs|sql, or a module
+                                      specifier the server imports (SpecStoreBackend) — bring-your-own store
 packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
