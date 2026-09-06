@@ -4,9 +4,11 @@
  * right homes (repo link, server-side glossary, config override), the glossary is NOT in the repo,
  * and @coder's mount follows --dir.
  */
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { type InitInput, parseInitArgs, planInit } from './init.js'
+import { type InitInput, credentialFilePath, ensureCredentialFile, parseInitArgs, planInit } from './init.js'
 
 const base: InitInput = {
   repoDir: '/home/u/myrepo',
@@ -90,5 +92,31 @@ describe('parseInitArgs', () => {
     expect(parseInitArgs(['--help'])).toEqual({ kind: 'help' })
     expect(parseInitArgs(['--name'])).toMatchObject({ kind: 'error' })
     expect(parseInitArgs(['--wat', 'x'])).toMatchObject({ kind: 'error' })
+  })
+})
+
+describe('credential file', () => {
+  it('lives at <configHome>/spectra/spectra.env — one shared file, not per-project', () => {
+    expect(credentialFilePath('/home/u/.config')).toBe('/home/u/.config/spectra/spectra.env')
+  })
+
+  it('scaffolds it 0600 with both credential vars commented, and never overwrites', () => {
+    const configHome = mkdtempSync(path.join(os.tmpdir(), 'spectra-cred-'))
+
+    const wrote = ensureCredentialFile(configHome)
+    expect(wrote).toBe(credentialFilePath(configHome))
+    const body = readFileSync(wrote!, 'utf8')
+    // Both slots present but commented (a fresh file sets no token), and the prefix rule stated.
+    expect(body).toContain('# CLAUDE_CODE_OAUTH_TOKEN=')
+    expect(body).toContain('# ANTHROPIC_API_KEY=')
+    expect(body).toMatch(/sk-ant-oat/)
+    expect(body).toMatch(/sk-ant-api/)
+    // 0600 — it will hold a secret.
+    expect(statSync(wrote!).mode & 0o777).toBe(0o600)
+
+    // A real token must survive a second init.
+    writeFileSync(wrote!, 'ANTHROPIC_API_KEY=sk-ant-api-real\n')
+    expect(ensureCredentialFile(configHome)).toBeNull()
+    expect(readFileSync(wrote!, 'utf8')).toBe('ANTHROPIC_API_KEY=sk-ant-api-real\n')
   })
 })

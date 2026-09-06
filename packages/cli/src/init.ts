@@ -22,7 +22,7 @@
  * planInit is pure — it takes every path as input and returns the files to write — so it is tested
  * without touching the filesystem. applyInitPlan is the thin part that actually writes.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 export interface InitInput {
@@ -65,6 +65,45 @@ export interface InitPlan {
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
+
+/**
+ * The one shared credential file, `<configHome>/spectra/spectra.env`. Shared across projects, not
+ * per-project — one place a consumer drops their token — and handed to compose with `--env-file`
+ * (cli.ts) so the stack's `${ANTHROPIC_API_KEY}` etc. resolve without any shell export. Path only,
+ * so it is pure and the same helper serves both `init` (scaffold) and the run path (find it).
+ */
+export function credentialFilePath(configHome: string): string {
+  return path.join(configHome, 'spectra', 'spectra.env')
+}
+
+const CREDENTIAL_SCAFFOLD = `# Spectra credential — handed to the stack on \`spectra up\` (docker compose --env-file).
+# Set ONE of these. They are NOT interchangeable: the server checks the prefix on boot, and the
+# wrong slot loads fine then fails every call with "Invalid API key".
+#
+#   Claude subscription token — from \`claude setup-token\` (starts sk-ant-oat…):
+# CLAUDE_CODE_OAUTH_TOKEN=
+#
+#   Console API key — from console.anthropic.com (starts sk-ant-api…):
+# ANTHROPIC_API_KEY=
+#
+# Optional — text-to-speech (ElevenLabs); the browser reads replies aloud when this is set:
+# ELEVENLABS_API_KEY=
+`
+
+/**
+ * Create the shared credential file if it does not exist, so `spectra init` leaves an obvious place
+ * for the token. Never overwrites — a second `init` must not clobber a real credential. Written
+ * 0600 (it holds a secret; chmod after write because the file mode is subject to umask). Returns the
+ * path when it wrote one, null when it was already there.
+ */
+export function ensureCredentialFile(configHome: string): string | null {
+  const file = credentialFilePath(configHome)
+  if (existsSync(file)) return null
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, CREDENTIAL_SCAFFOLD, { mode: 0o600 })
+  chmodSync(file, 0o600)
+  return file
+}
 
 /** Build the compose override YAML — small and fixed, so it is templated rather than serialized. */
 function overrideYaml(input: {
