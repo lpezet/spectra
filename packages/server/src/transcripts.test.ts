@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { TranscriptStore } from './transcripts.js'
+import { SqliteTranscriptStore } from './transcripts.js'
 
 const NOW = '2026-08-05T10:00:00.000Z'
+const PROJECT = 'todo'
 
 function store() {
-  const db = new TranscriptStore(':memory:')
-  db.createSession('s1', 'Where should I start?', NOW)
+  const db = new SqliteTranscriptStore(':memory:')
+  db.createSession('s1', PROJECT, 'Where should I start?', NOW)
   return db
 }
 
@@ -21,7 +22,7 @@ describe('TranscriptStore', () => {
 
   it('keeps sessions apart', () => {
     const db = store()
-    db.createSession('s2', 'Other', NOW)
+    db.createSession('s2', PROJECT, 'Other', NOW)
     db.append('s1', { author: 'human', kind: 'user', text: 'one' }, NOW)
     db.append('s2', { author: 'human', kind: 'user', text: 'two' }, NOW)
 
@@ -57,7 +58,7 @@ describe('TranscriptStore', () => {
 
   it('searches message text across sessions and ignores tool noise', () => {
     const db = store()
-    db.createSession('s2', 'Other', NOW)
+    db.createSession('s2', PROJECT, 'Other', NOW)
     db.append('s1', { author: 'spec', kind: 'assistant', text: 'RecurringTask reopens at its next occurrence' }, NOW)
     db.append('s2', { author: 'human', kind: 'user', text: 'why does deleteProject block?' }, NOW)
     db.append('s2', { author: 'spec', kind: 'tool_call', text: 'readGlossary RecurringTask' }, NOW)
@@ -86,10 +87,10 @@ describe('TranscriptStore', () => {
 
   it('prunes stale sessions and reports how many went', () => {
     const db = store()
-    db.createSession('s2', 'Recent', '2026-08-05T12:00:00.000Z')
+    db.createSession('s2', PROJECT, 'Recent', '2026-08-05T12:00:00.000Z')
 
     expect(db.pruneBefore('2026-08-05T11:00:00.000Z')).toBe(1)
-    expect(db.listSessions().map((session) => session.id)).toEqual(['s2'])
+    expect(db.listSessions(PROJECT).map((session) => session.id)).toEqual(['s2'])
   })
 
   it('records who produced each event', () => {
@@ -102,9 +103,18 @@ describe('TranscriptStore', () => {
 
   it('bumps updatedAt on append, so recency ordering reflects activity', () => {
     const db = store()
-    db.createSession('s2', 'Newer', '2026-08-05T11:00:00.000Z')
+    db.createSession('s2', PROJECT, 'Newer', '2026-08-05T11:00:00.000Z')
     db.append('s1', { author: 'human', kind: 'user', text: 'still going' }, '2026-08-05T12:00:00.000Z')
 
-    expect(db.listSessions().map((session) => session.id)).toEqual(['s1', 's2'])
+    expect(db.listSessions(PROJECT).map((session) => session.id)).toEqual(['s1', 's2'])
+  })
+
+  it('lists sessions per project — one DB, isolated by projectId', () => {
+    const db = store()
+    db.createSession('s2', 'other-project', 'Elsewhere', NOW)
+
+    expect(db.listSessions(PROJECT).map((session) => session.id)).toEqual(['s1'])
+    expect(db.listSessions('other-project').map((session) => session.id)).toEqual(['s2'])
+    expect(db.getSession('s2')?.projectId).toBe('other-project')
   })
 })

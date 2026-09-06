@@ -3,7 +3,11 @@
  * only kicks the agent off and returns. Everything that comes back — including the echo of
  * what you just sent — arrives over SSE, so one code path renders a live turn and a
  * reload of an old conversation.
+ *
+ * Every endpoint is project-scoped — a conversation is about one project's glossary — so URLs go
+ * through apiPath, the shared project prefix the glossary calls use (configured at startup).
  */
+import { apiPath } from './apiBase.js'
 
 export type ChatEventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error' | 'approval'
 
@@ -36,15 +40,15 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchChatStatus(): Promise<{ configured: boolean }> {
-  return json('/api/chat/status')
+  return json(apiPath('/chat/status'))
 }
 
 export function listSessions(): Promise<{ sessions: ChatSession[] }> {
-  return json('/api/chat/sessions')
+  return json(apiPath('/chat/sessions'))
 }
 
 export function createSession(): Promise<{ session: ChatSession }> {
-  return json('/api/chat/sessions', {
+  return json(apiPath('/chat/sessions'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
@@ -52,7 +56,7 @@ export function createSession(): Promise<{ session: ChatSession }> {
 }
 
 export function deleteSession(id: string): Promise<{ ok: boolean }> {
-  return json(`/api/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}`), { method: 'DELETE' })
 }
 
 export interface Agent {
@@ -62,7 +66,7 @@ export interface Agent {
 }
 
 export function listAgents(): Promise<{ agents: Agent[] }> {
-  return json('/api/chat/agents')
+  return json(apiPath('/chat/agents'))
 }
 
 export function sendMessage(
@@ -70,7 +74,7 @@ export function sendMessage(
   text: string,
   to: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
-  return json(`/api/chat/sessions/${encodeURIComponent(id)}/messages`, {
+  return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/messages`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, to }),
@@ -85,7 +89,7 @@ export function sendMessage(
  * server restart correctly reports it back off rather than the UI insisting it is still on.
  */
 export function fetchSessionState(id: string): Promise<{ running: boolean; unattended: boolean }> {
-  return json(`/api/chat/sessions/${encodeURIComponent(id)}/events?after=${Number.MAX_SAFE_INTEGER}`)
+  return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/events?after=${Number.MAX_SAFE_INTEGER}`))
 }
 
 /**
@@ -99,7 +103,7 @@ export function setUnattended(
   sessionId: string,
   enabled: boolean,
 ): Promise<{ ok: boolean; error?: string; unattended: boolean }> {
-  return json(`/api/chat/sessions/${encodeURIComponent(sessionId)}/unattended`, {
+  return json(apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/unattended`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
@@ -114,7 +118,7 @@ export function decideApproval(
   note?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   return json(
-    `/api/chat/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`,
+    apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,7 +147,7 @@ export function streamSession(id: string, after: number, handlers: StreamHandler
 
   const open = () => {
     if (closed) return
-    source = new EventSource(`/api/chat/sessions/${encodeURIComponent(id)}/stream?after=${cursor}`)
+    source = new EventSource(apiPath(`/chat/sessions/${encodeURIComponent(id)}/stream?after=${cursor}`))
 
     source.addEventListener('append', (message) => {
       const event = JSON.parse((message as MessageEvent<string>).data) as ChatEvent

@@ -58,6 +58,8 @@ export interface TranscriptEvent {
 
 export interface Session {
   id: string
+  /** The project this conversation belongs to. Sessions are listed and reached per project. */
+  projectId: string
   title: string
   createdAt: string
   updatedAt: string
@@ -75,6 +77,7 @@ export interface NewEvent {
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
   id        TEXT PRIMARY KEY,
+  projectId TEXT NOT NULL DEFAULT '',
   title     TEXT NOT NULL,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
@@ -96,7 +99,32 @@ CREATE INDEX IF NOT EXISTS events_by_session ON events (sessionId, id);
 CREATE INDEX IF NOT EXISTS events_by_tool_call ON events (toolCallId);
 `
 
-export class TranscriptStore {
+/**
+ * The storage seam for transcripts — one interface, so the node:sqlite backend below can be swapped
+ * for D1 when the server is hosted, the same way {@link SpecStore} has two backends. Unlike SpecStore
+ * (one instance bound to one project), this stays a single instance keyed by `projectId` per call:
+ * it is held by the long-lived, singleton runner, and sessions carry globally-unique ids, so only the
+ * operations that *scope* — creating and listing sessions — need the project; the rest resolve a
+ * session by its id.
+ */
+export interface TranscriptStore {
+  createSession(id: string, projectId: string, title: string, now: string): Session
+  renameSession(id: string, title: string, now: string): void
+  getSession(id: string): Session | null
+  listSessions(projectId: string, limit?: number): Session[]
+  append(sessionId: string, event: NewEvent, now: string): number
+  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): void
+  readApproval(approvalId: string): TranscriptEvent | null
+  settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): void
+  readToolCall(toolCallId: string): TranscriptEvent | null
+  read(sessionId: string, afterId?: number): TranscriptEvent[]
+  search(query: string, limit?: number): Array<TranscriptEvent & { title: string }>
+  deleteSession(id: string): void
+  pruneBefore(before: string): number
+  close(): void
+}
+
+export class SqliteTranscriptStore implements TranscriptStore {
   private readonly db: DatabaseSync
 
   constructor(file: string = TRANSCRIPTS_DB) {
@@ -115,18 +143,27 @@ export class TranscriptStore {
    * only the human and one agent were talking.
    */
   private migrate(): void {
-    const columns = this.db.prepare('PRAGMA table_info(events)').all() as unknown as Array<{ name: string }>
-    if (columns.some((column) => column.name === 'author')) return
+    const eventColumns = this.db.prepare('PRAGMA table_info(events)').all() as unknown as Array<{ name: string }>
+    if (!eventColumns.some((column) => column.name === 'author')) {
+      this.db.exec("ALTER TABLE events ADD COLUMN author TEXT NOT NULL DEFAULT 'spec'")
+      this.db.exec("UPDATE events SET author = 'human' WHERE kind = 'user'")
+    }
 
-    this.db.exec("ALTER TABLE events ADD COLUMN author TEXT NOT NULL DEFAULT 'spec'")
-    this.db.exec("UPDATE events SET author = 'human' WHERE kind = 'user'")
+    // `projectId` arrived with per-project sessions. Existing rows cannot be back-filled — the
+    // project they belonged to is config we do not have here — so they default to '' and fall
+    // outside every real project's listing. That only hides old scratch conversations, never a
+    // decision (those live in specs/), which is the whole reason this database is disposable.
+    const sessionColumns = this.db.prepare('PRAGMA table_info(sessions)').all() as unknown as Array<{ name: string }>
+    if (!sessionColumns.some((column) => column.name === 'projectId')) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN projectId TEXT NOT NULL DEFAULT ''")
+    }
   }
 
-  createSession(id: string, title: string, now: string): Session {
+  createSession(id: string, projectId: string, title: string, now: string): Session {
     this.db
-      .prepare('INSERT INTO sessions (id, title, createdAt, updatedAt) VALUES (?, ?, ?, ?)')
-      .run(id, title, now, now)
-    return { id, title, createdAt: now, updatedAt: now }
+      .prepare('INSERT INTO sessions (id, projectId, title, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
+      .run(id, projectId, title, now, now)
+    return { id, projectId, title, createdAt: now, updatedAt: now }
   }
 
   renameSession(id: string, title: string, now: string): void {
@@ -138,10 +175,10 @@ export class TranscriptStore {
     return row ? (row as unknown as Session) : null
   }
 
-  listSessions(limit = 50): Session[] {
+  listSessions(projectId: string, limit = 50): Session[] {
     return this.db
-      .prepare('SELECT * FROM sessions ORDER BY updatedAt DESC LIMIT ?')
-      .all(limit) as unknown as Session[]
+      .prepare('SELECT * FROM sessions WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?')
+      .all(projectId, limit) as unknown as Session[]
   }
 
   /** Appends one event and returns its id — which doubles as the replay cursor. */
