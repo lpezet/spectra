@@ -14,9 +14,10 @@ import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptStore } from '../transcripts.js'
-import type { SpecStore } from '../specStore.js'
+import type { StoreProvider } from '../storeProvider.js'
+import type { AgentProvider } from './agentProvider.js'
 import { CODER_URL, probeSandbox } from '../sandbox.js'
-import type { AgentDefinition, AgentName } from './agents.js'
+import type { AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
 
 /** How long a pending approval waits before giving up, so a run cannot hang forever. */
@@ -62,10 +63,11 @@ export class AgentRunner {
   private readonly unattended = new Set<string>()
 
   constructor(
-    private readonly store: SpecStore,
+    /** Resolves the store for a project; a turn uses the store for its session's project. */
+    private readonly provider: StoreProvider,
+    /** Resolves that project's agents — the system prompt named for the glossary it works on. */
+    private readonly agentProvider: AgentProvider,
     private readonly transcripts: TranscriptStore,
-    /** Built once in the composition root from the project's identity, then threaded in here. */
-    private readonly agents: Record<AgentName, AgentDefinition>,
   ) {}
 
   /**
@@ -160,12 +162,21 @@ export class AgentRunner {
   }
 
   private async run(sessionId: string, prompt: string, to: AgentName): Promise<void> {
-    const agent = this.agents[to]
+    // A turn acts on its session's project: the store it writes to and the agents whose prompt
+    // names the glossary both come from that projectId, not a process-wide default. The session
+    // carries it (slice 5); the route validated it exists before this launched.
+    const session = this.transcripts.getSession(sessionId)
+    if (!session) {
+      this.record(sessionId, { author: to, kind: 'error', text: `Conversation ${sessionId} is gone.` })
+      return
+    }
+    const store = this.provider.storeFor(session.projectId)
+    const agent = (await this.agentProvider.agentsFor(session.projectId))[to]
     const server = createSdkMcpServer({
       name: 'blueprints',
       version: '1.0.0',
       // The agent's own identity, stamped on anything it writes — `to` is 'spec' or 'coder'.
-      tools: toolsFor(this.store, this.transcripts, { kind: to }, agent.domainTools),
+      tools: toolsFor(store, this.transcripts, { kind: to }, agent.domainTools),
     })
 
     const key = `${sessionId}:${to}`
