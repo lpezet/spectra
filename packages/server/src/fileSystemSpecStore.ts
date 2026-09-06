@@ -12,7 +12,7 @@
  * `applied/` or `rejected/`; live expectations sit in `expectations/` and move to `retired/`.
  * The interface names those as transitions; here they are `rename`-shaped moves.
  */
-import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   parseChangeset,
@@ -621,4 +621,33 @@ export class FileSystemSpecStore implements SpecStore {
     await this.writeJson(path.join(this.expectationsDir, entry.file), { ...expectation, rev: cas.next })
     return { ok: true, rev: cas.next, at: entry.file }
   }
+}
+
+/**
+ * Every project under a root — the cross-project read a single store (bound to one project) cannot
+ * do. A project is a subdirectory that holds a `specs/` dir (`<root>/<projectId>/specs`), the layout
+ * {@link FileSystemSpecStore} lays down; its identity is read through a store so parsing (and the
+ * neutral fallback for a missing project.json) stays identical to a normal read. A missing root is
+ * just an empty deployment, not an error.
+ */
+export async function listFsProjects(root: string): Promise<Array<{ id: string; name: string; domain: string }>> {
+  let entries: string[]
+  try {
+    entries = await readdir(root)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+
+  const projects: Array<{ id: string; name: string; domain: string }> = []
+  for (const id of entries.sort()) {
+    try {
+      if (!(await stat(path.join(root, id, 'specs'))).isDirectory()) continue
+    } catch {
+      continue // not a project dir (no specs/), or unreadable — skip it
+    }
+    const info = await new FileSystemSpecStore(root, id).projectInfo()
+    projects.push({ id, ...info })
+  }
+  return projects
 }
