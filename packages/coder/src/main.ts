@@ -1,21 +1,29 @@
 /**
- * The sandboxed half of @coder.
+ * An out-of-process agent runtime.
  *
- * Runs the agent loop next to the code it edits, inside a container that can write only
- * `/work/app`. The spec tool talks to it over HTTP and keeps the transcript — this service
- * holds no history of its own on purpose: the record belongs with the specs, and a box you
- * can delete and rebuild should not be where anything is kept.
+ * Runs one agent's loop as a standalone HTTP service the Server relays turns to. It is written
+ * once and serves *either* agent — `AGENT` selects which (`coder` by default; `spec` for the
+ * spec runtime). It holds its own identity nowhere: it fetches its profile (prompt, builtins,
+ * tools) from the Server's `/mcp/<agent>/profile` per run, so who it is comes from the one
+ * definition in the Server, not a copy in here. `@coder` runs next to the code it edits inside a
+ * container that can write only its `APP_DIR`; `@spec` has no filesystem tools at all and just
+ * needs a cwd to exist. Either way this holds no transcript — the record belongs with the specs,
+ * and a box you can delete and rebuild should not be where anything is kept.
  *
- * Approvals work exactly as before. `canUseTool` blocks the run, the pending request goes
- * out on the stream, and the decision comes back in on `/approvals/:id`.
+ * Approvals: `canUseTool` blocks the run, the pending request goes out on the stream, and the
+ * decision comes back in on `/approvals/:id`. (@spec has no approvable tools, so this is inert
+ * for it.)
  */
 import express from 'express'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 
+// Which agent this runtime is. `coder` by default (back-compat); `spec` for the spec runtime.
+// It only picks which profile to fetch and which name to log — the behavior is the profile's.
+const AGENT = process.env.AGENT ?? 'coder'
 const PORT = Number(process.env.PORT ?? 5177)
 // The project @coder implements into — its cwd and only writable mount. Configurable so the
 // container can be pointed at whatever project it serves; `spectra init` mounts the repo here.
@@ -45,7 +53,7 @@ const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
 // the example project is the dev default.
 const ORG = process.env.ORG ?? 'local'
 const PROJECT_ID = process.env.PROJECT_ID ?? 'todo'
-const MCP_URL = `${SPEC_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/coder`
+const MCP_URL = `${SPEC_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
 
 /**
  * Who this agent is — fetched, not stored.
@@ -286,7 +294,7 @@ app.post('/sessions/:id/turn', (req, res) => {
     return
   }
   if (active.has(sessionId)) {
-    res.status(409).json({ ok: false, error: '@coder is still working on the previous message.' })
+    res.status(409).json({ ok: false, error: `@${AGENT} is still working on the previous message.` })
     return
   }
 
@@ -338,8 +346,13 @@ app.get('/sessions/:id/stream', (req, res) => {
   })
 })
 
+// The agent SDK spawns the `claude` binary with cwd = APP_DIR; Node refuses to spawn into a
+// missing directory. @coder's is a mount that exists; @spec's is unused (no filesystem tools) and
+// may not exist, so ensure it either way — the same reason the in-process path mkdirs it.
+mkdirSync(APP_DIR, { recursive: true })
+
 app.listen(PORT, () => {
-  console.log(`[coder] app: ${APP_DIR}`)
-  console.log(`[coder] glossary: ${MCP_URL} (tools, not a mount)`)
-  console.log(`[coder] listening on http://0.0.0.0:${PORT}`)
+  console.log(`[${AGENT}] cwd: ${APP_DIR}`)
+  console.log(`[${AGENT}] glossary: ${MCP_URL} (tools, not a mount)`)
+  console.log(`[${AGENT}] listening on http://0.0.0.0:${PORT}`)
 })
