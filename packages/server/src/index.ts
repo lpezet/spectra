@@ -8,7 +8,7 @@ import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { AgentProvider } from './agent/agentProvider.js'
 import { buildAgents } from './agent/agents.js'
-import { DATA_DIR, TRANSCRIPTS_DB, SqliteTranscriptStore } from './transcripts.js'
+import { DATA_DIR, TRANSCRIPTS_DB, resolveTranscriptStore } from './transcripts.js'
 import { CODER_URL, SPEC_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@spectra/core'
@@ -18,8 +18,8 @@ import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.j
 import { SPECS_DIR } from './config.js'
 import { resolveBackend } from './backend.js'
 import type { SpecStoreBackend } from './backend.js'
-import { LocalAuthorizer } from './auth.js'
-import type { Authorizer, Principal } from './auth.js'
+import { resolveAuthorizer } from './auth.js'
+import type { Principal } from './auth.js'
 import { isSafeSegment, projectScope } from './projectScope.js'
 import type { SpecStore } from './specStore.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
@@ -31,7 +31,7 @@ const PORT = Number(process.env.PORT ?? 5174)
 // by resolveBackend). Which project a request is for is resolved per request; the backend turns that
 // projectId into the store for it. The rest of the server sees only the SpecStoreBackend interface.
 const provider: SpecStoreBackend = await resolveBackend(process.env, SPECS_DIR, DATA_DIR)
-const transcripts = new SqliteTranscriptStore()
+const transcripts = await resolveTranscriptStore(process.env, DATA_DIR)
 
 // The org this deployment serves. A grouping/auth label, not a storage key — projectId is globally
 // unique, so the org never reaches the store. Local default is "local"; a hosted deployment sets it.
@@ -68,7 +68,7 @@ const runner = new AgentRunner(provider, agentProvider, transcripts)
 // same reason an agent's identity comes from its route. The authorizer resolves a principal per
 // request; locally that is allow-all and stamps a bare human, exactly what this used to hardcode.
 // A hosted deployment swaps the implementation without the routes changing.
-const authorizer: Authorizer = new LocalAuthorizer(ORG)
+const authorizer = await resolveAuthorizer(process.env, ORG)
 
 /** The principal the auth middleware resolved for this request. */
 const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
