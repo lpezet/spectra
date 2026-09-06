@@ -4,7 +4,7 @@
  * loads a real one, so the test proves the plugin path end to end (import → factory → context).
  */
 import type { BackendContext, SpecStoreBackend } from './backend.js'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 export function createSpecStoreBackend(context: BackendContext): SpecStoreBackend {
   return {

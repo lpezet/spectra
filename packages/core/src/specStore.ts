@@ -1,6 +1,12 @@
 /**
  * The storage seam for the glossary (GH #3).
  *
+ * It lives in `@spectra/core`, the pure package, on purpose: this interface is the stable public
+ * boundary an out-of-repo store implements, and an implementor should depend on it without pulling
+ * in a server's Express/agent machinery. It references only domain types (from `./types.js` and
+ * `./schema.js`), so it belongs with them. The built-in filesystem and SQL backends live in
+ * `@spectra/server`; a hosted/networked backend is just another implementation of this contract.
+ *
  * Why this exists: specs are a shared human artifact, not a byproduct of the code. To make
  * them centrally visible to a team (and later multi-tenant/hosted), the content of `specs/`
  * has to be able to live somewhere other than the local filesystem. This interface is the
@@ -39,7 +45,7 @@ import type {
   Question,
   SourceProblem,
   Term,
-} from '@spectra/core'
+} from './types.js'
 
 // ── Partitioned read shapes (relocated here from store.ts — this interface is their home) ──
 

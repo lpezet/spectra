@@ -9,7 +9,7 @@
  */
 import type { Answer, Author, Changeset } from '@spectra/core'
 import { slug } from './files.js'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 export type AnswerOutcome =
   | { ok: false; status: 404; error: string }

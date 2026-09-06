@@ -21,7 +21,7 @@ import type { SpecStoreBackend } from './backend.js'
 import { resolveAuthorizer } from './auth.js'
 import type { Principal } from './auth.js'
 import { isSafeSegment, projectScope } from './projectScope.js'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
 const PORT = Number(process.env.PORT ?? 5174)

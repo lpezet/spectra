@@ -30,7 +30,7 @@ import type { AgentName } from './agents.js'
 import type { AgentProvider } from './agentProvider.js'
 import { toolsFor } from './tools.js'
 import type { TranscriptStore } from '../transcripts.js'
-import type { SpecStore } from '../specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 /** The name the tools appear under, and so the `mcp__blueprints__` prefix on the far side. */
 const SERVER_NAME = 'blueprints'

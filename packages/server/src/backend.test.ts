@@ -10,7 +10,7 @@ import { resolveBackend } from './backend.js'
 const SPECS = '/data/acme/specs' // <root>/<projectId>/specs -> projectId "acme"
 const DATA = '/data/.dev/data'
 const fixture = new URL('./backend.fixture.ts', import.meta.url).href
-const typesOnly = new URL('./specStore.js', import.meta.url).href // a real module with no factory
+const noFactory = new URL('./sqlSpecStore.js', import.meta.url).href // a real module with no factory export
 
 describe('resolveBackend — built-ins', () => {
   it('defaults to the filesystem provider, with the configured default project', async () => {
@@ -49,6 +49,6 @@ describe('resolveBackend — plugin module', () => {
   })
 
   it('fails clearly when the module exports no factory', async () => {
-    await expect(resolveBackend({ SPEC_STORE: typesOnly }, SPECS, DATA)).rejects.toThrow(/must export createSpecStoreBackend/)
+    await expect(resolveBackend({ SPEC_STORE: noFactory }, SPECS, DATA)).rejects.toThrow(/must export createSpecStoreBackend/)
   })
 })

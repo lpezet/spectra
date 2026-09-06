@@ -224,7 +224,8 @@ packages/server/src/agent/runner.ts   runs a turn, streams it, blocks on approva
 packages/server/src/agent/tools.ts    domain tools; mcpHttp.ts is the same tools over HTTP
 packages/server/src/specsExport.ts    the snapshot + version (README calls this glossaryExport.ts)
 packages/server/src/commit.ts         the only writer of specs/
-packages/server/src/specStore.ts      the storage seam; both backends scope to one project
+packages/core/src/specStore.ts        the storage seam (interface) — the stable public boundary a
+                                      backend implements; lives in core so implementors need no server deps
 packages/server/src/fileSystemSpecStore.ts  FS backend — (root, projectId) → <root>/<project_id>/specs
 packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, projectId), one DB many projects
 packages/server/src/storeFactory.ts   builds a built-in store (fs|sql) from a StoreChoice

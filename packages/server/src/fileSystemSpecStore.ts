@@ -42,7 +42,7 @@ import type {
   QuestionFeed,
   SpecStore,
   StoredAt,
-} from './specStore.js'
+} from '@spectra/core'
 
 /**
  * What `projectInfo()` returns when `specs/project.json` is absent or will not parse. Neutral on

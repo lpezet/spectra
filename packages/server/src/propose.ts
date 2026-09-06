@@ -8,7 +8,7 @@
  */
 import { parseChangeset } from '@spectra/core'
 import type { Author, Changeset, Op } from '@spectra/core'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 export interface ProposeRequest {
   summary: string

@@ -7,7 +7,7 @@
  */
 import { parseQuestion } from '@spectra/core'
 import type { Author, Proposal, Question, QuestionOption, RecordStatus } from '@spectra/core'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 export interface RaiseRequest {
   asks: string

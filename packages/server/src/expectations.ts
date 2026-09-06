@@ -20,7 +20,7 @@
  */
 import { parseExpectation } from '@spectra/core'
 import type { Author, Clash, Expectation, ExpectationKind, RecordStatus } from '@spectra/core'
-import type { MutationResult, SpecStore } from './specStore.js'
+import type { MutationResult, SpecStore } from '@spectra/core'
 
 export interface RaiseExpectationRequest {
   kind: ExpectationKind
