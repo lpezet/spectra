@@ -120,10 +120,10 @@ function overrideYaml(input: {
 # relative to this file, not the repo.
 name: spectra-${input.id}
 services:
-  spec:
+  server:
     volumes:
       # Under a <id>/ dir so the server derives projectId "${input.id}" (<root>/<projectId>/specs) —
-      # the same id the coder carries in its MCP URL and the UI shows.
+      # the same id the agent runtimes carry in their MCP URL and the UI shows.
       - "${input.glossaryDir}:/stack/${input.id}/specs"
       - "${input.dataDir}:/stack/data"
     environment:
@@ -134,8 +134,14 @@ services:
       # The code @coder implements into. It never sees the glossary — that arrives as tool calls.
       - "${input.coderMount}:/work/project"
     environment:
-      # The project this container is bound to — carried in its per-project MCP URL so the profile
+      # The project this runtime is bound to — carried in its per-project MCP URL so the profile
       # and tool calls act on this project's glossary (/mcp/orgs/local/projects/${input.id}/coder).
+      - ORG=local
+      - PROJECT_ID=${input.id}
+  spec:
+    environment:
+      # Same for the @spec runtime — it fetches this project's @spec profile and tools. No mount:
+      # @spec has no filesystem tools; the glossary reaches it over MCP like it does @coder.
       - ORG=local
       - PROJECT_ID=${input.id}
 `

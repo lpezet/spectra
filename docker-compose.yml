@@ -29,11 +29,11 @@ services:
   # ---------------------------------------------------------------------------------------
   # The spec tool: the glossary, the transcripts, the credential, and the only egress.
   # ---------------------------------------------------------------------------------------
-  spec:
+  server:
     build:
       context: .
       dockerfile: Dockerfile.spec
-    container_name: tb-spec
+    container_name: tb-server
 
     volumes:
       # Source, not baked, so `tsx watch` reloads on save and the dev loop survives
@@ -90,6 +90,8 @@ services:
       # Reachable only from inside the sandbox network — which is the point. Express probes
       # it at /api/sandbox so "is the box up?" is a question with an answer.
       - CODER_URL=http://coder:5177
+      # @spec is relayed the same way, to its own runtime — the `spec` service below.
+      - SPEC_URL=http://spec:5177
 
     restart: unless-stopped
 
@@ -135,7 +137,7 @@ services:
       - NODE_ENV=production
       # Where the glossary comes from now. Reachable only across the internal network, and
       # the endpoint decides which tools @coder gets rather than this container asking.
-      - SPEC_URL=http://spec:5174
+      - SERVER_URL=http://server:5174
       # The project this container is bound to — carried in the MCP URL so the profile and
       # tool calls hit /mcp/orgs/local/projects/todo/coder, matching the spec's `todo` project.
       - ORG=local
@@ -143,7 +145,7 @@ services:
       # The model API, reached through express because there is no other way out. The SDK
       # honours this — measured, not assumed: pointed at a local server, its first outbound
       # call landed there.
-      - ANTHROPIC_BASE_URL=http://spec:5174/anthropic
+      - ANTHROPIC_BASE_URL=http://server:5174/anthropic
       # A placeholder, and deliberately not a secret. The SDK refuses to start without a
       # credential in the environment; express drops whatever arrives and substitutes the
       # real one. So this container cannot read the token it spends, and a compromised one
@@ -163,7 +165,37 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------------------
-  # The web UI: static build behind nginx, proxying /api to spec.
+  # The runtime for @spec. Same image as @coder (the generic agent runtime, Dockerfile.coder) —
+  # AGENT=spec is the only difference. It has no filesystem tools and no mount: it reaches the
+  # glossary through the server over MCP, exactly like @coder. On the sandbox network; the server
+  # relays @spec turns to it (SPEC_URL above), and it reaches the server as SERVER_URL.
+  # ---------------------------------------------------------------------------------------
+  spec:
+    build:
+      context: .
+      dockerfile: Dockerfile.coder
+    container_name: tb-spec
+    networks:
+      - sandbox
+    environment:
+      - NODE_ENV=production
+      - AGENT=spec
+      - SERVER_URL=http://server:5174
+      - PROJECT_ID=todo
+      - ORG=local
+      # Same proxied model calls as @coder — it holds a placeholder, the server injects the key.
+      - ANTHROPIC_BASE_URL=http://server:5174/anthropic
+      - ANTHROPIC_API_KEY=proxied-by-the-spec-tool
+    mem_limit: 2g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------------------
+  # The web UI: static build behind nginx, proxying /api to the server.
   # ---------------------------------------------------------------------------------------
   web:
     build:
@@ -178,12 +210,12 @@ services:
     # start`) names it explicitly, which starts it and its depends_on regardless of profile.
     profiles: ['web']
 
-    # nginx reaches spec by name here, so web sits on the egress network where spec also is.
-    # It never joins the sandbox network — the browser talks to spec, never to @coder.
+    # nginx reaches the server by name here, so web sits on the egress network where it also is.
+    # It never joins the sandbox network — the browser talks to the server, never to @coder/@spec.
     networks:
       - egress
     depends_on:
-      - spec
+      - server
 
     # Same 5173 the UI has always been on, now served by nginx instead of Vite.
     ports:

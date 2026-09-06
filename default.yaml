@@ -22,9 +22,9 @@ x-git-context: &git-context
   context: "https://github.com/lpezet/spectra.git#${SPECTRA_REF:-main}"
 
 services:
-  # The spec tool: glossary, transcripts, the credential, and the only egress. See
-  # docker-compose.yml for the full reasoning behind the two-network shape.
-  spec:
+  # The coordinator: glossary API, transcripts, the credential, the model/MCP surface, and the only
+  # egress. See docker-compose.yml for the full reasoning behind the two-network shape.
+  server:
     build:
       <<: *git-context
       dockerfile: Dockerfile.spec
@@ -44,6 +44,7 @@ services:
       - ELEVENLABS_CODER_VOICE_ID=${ELEVENLABS_CODER_VOICE_ID:-}
       - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-}
       - CODER_URL=http://coder:5177
+      - SPEC_URL=http://spec:5177
       # SPECS_DIR and DATA_DIR — and the mounts that back them — come from the project override.
     restart: unless-stopped
 
@@ -56,8 +57,8 @@ services:
       - sandbox
     environment:
       - NODE_ENV=production
-      - SPEC_URL=http://spec:5174
-      - ANTHROPIC_BASE_URL=http://spec:5174/anthropic
+      - SERVER_URL=http://server:5174
+      - ANTHROPIC_BASE_URL=http://server:5174/anthropic
       - ANTHROPIC_API_KEY=proxied-by-the-spec-tool
     mem_limit: 2g
     pids_limit: 512
@@ -66,10 +67,31 @@ services:
     cap_drop:
       - ALL
     restart: unless-stopped
-    # The consumer-project mount (the code @coder edits) comes from the project override — this
-    # is blocker E: which directory, kept clear of the glossary.
+    # The consumer-project mount (the code @coder edits) and ORG/PROJECT_ID come from the override.
 
-  # The web UI: static build behind nginx, proxying /api to spec. Profiled, like in dev.
+  # The runtime for @spec: same image as @coder (AGENT=spec), no mount — glossary over MCP.
+  spec:
+    build:
+      <<: *git-context
+      dockerfile: Dockerfile.coder
+    networks:
+      - sandbox
+    environment:
+      - NODE_ENV=production
+      - AGENT=spec
+      - SERVER_URL=http://server:5174
+      - ANTHROPIC_BASE_URL=http://server:5174/anthropic
+      - ANTHROPIC_API_KEY=proxied-by-the-spec-tool
+    mem_limit: 2g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    # ORG/PROJECT_ID come from the override.
+
+  # The web UI: static build behind nginx, proxying /api to the server. Profiled, like in dev.
   web:
     build:
       <<: *git-context
@@ -79,7 +101,7 @@ services:
     networks:
       - egress
     depends_on:
-      - spec
+      - server
     ports:
       - '127.0.0.1:5173:80'
     restart: unless-stopped
