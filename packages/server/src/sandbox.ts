@@ -13,53 +13,43 @@
  */
 const PROBE_TIMEOUT_MS = 3_000
 
-/** Unset when express is running on the host, where there is no sandbox to reach. */
+/**
+ * Where each agent's runtime lives, when it runs out-of-process. Unset means "run in-process":
+ * express runs that agent itself. @coder has always had CODER_URL; @spec now has the symmetric
+ * SPEC_URL, so it too can be pulled out into its own runtime (the runner relays to whichever is set).
+ */
 export const CODER_URL = process.env.CODER_URL?.trim() || null
+export const SPEC_URL = process.env.SPEC_URL?.trim() || null
 
-export interface SandboxStatus {
-  /** False when CODER_URL is unset — @coder runs in-process, unsandboxed. */
-  configured: boolean
-  url: string | null
+export interface Reachability {
   reachable: boolean
   /** Whatever /health returned, verbatim, when we got one. */
   health: unknown
   error: string | null
 }
 
+/** Ping a runtime's /health — the shared check behind both probeSandbox and the runner's relay. */
+export async function probe(url: string): Promise<Reachability> {
+  try {
+    const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    if (!response.ok) return { reachable: false, health: null, error: `answered ${response.status}` }
+    return { reachable: true, health: await response.json(), error: null }
+  } catch (cause) {
+    // Down, still booting, or not on this network. All three look the same from here and all three
+    // mean the same thing to the caller, so do not pretend to tell them apart.
+    return { reachable: false, health: null, error: (cause as Error).message }
+  }
+}
+
+export interface SandboxStatus extends Reachability {
+  /** False when CODER_URL is unset — @coder runs in-process, unsandboxed. */
+  configured: boolean
+  url: string | null
+}
+
 export async function probeSandbox(): Promise<SandboxStatus> {
   if (!CODER_URL) {
     return { configured: false, url: null, reachable: false, health: null, error: null }
   }
-
-  try {
-    const response = await fetch(`${CODER_URL}/health`, {
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    })
-    if (!response.ok) {
-      return {
-        configured: true,
-        url: CODER_URL,
-        reachable: false,
-        health: null,
-        error: `The sandbox answered ${response.status}.`,
-      }
-    }
-    return {
-      configured: true,
-      url: CODER_URL,
-      reachable: true,
-      health: await response.json(),
-      error: null,
-    }
-  } catch (cause) {
-    // Down, still booting, or not on this network. All three look the same from here and
-    // all three mean the same thing to the caller, so do not pretend to tell them apart.
-    return {
-      configured: true,
-      url: CODER_URL,
-      reachable: false,
-      health: null,
-      error: (cause as Error).message,
-    }
-  }
+  return { configured: true, url: CODER_URL, ...(await probe(CODER_URL)) }
 }

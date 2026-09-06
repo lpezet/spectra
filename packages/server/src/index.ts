@@ -9,7 +9,7 @@ import { AgentRunner } from './agent/runner.js'
 import { AgentProvider } from './agent/agentProvider.js'
 import { buildAgents } from './agent/agents.js'
 import { DATA_DIR, TRANSCRIPTS_DB, SqliteTranscriptStore } from './transcripts.js'
-import { CODER_URL, probeSandbox } from './sandbox.js'
+import { CODER_URL, SPEC_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@spectra/core'
 import { checkExpectation } from './expectationCheck.js'
@@ -521,8 +521,13 @@ app.listen(PORT, () => {
   )
   console.log(
     CODER_URL
-      ? `[server] sandbox: ${CODER_URL} — GET /api/sandbox for whether it is actually up`
-      : `[server] sandbox: none (CODER_URL unset) — @coder runs in-process in ${agents.coder.cwd}`,
+      ? `[server] @coder: relayed to ${CODER_URL} — GET /api/sandbox for whether it is actually up`
+      : `[server] @coder: in-process (CODER_URL unset) in ${agents.coder.cwd}`,
+  )
+  console.log(
+    SPEC_URL
+      ? `[server] @spec: relayed to ${SPEC_URL}`
+      : '[server] @spec: in-process (SPEC_URL unset)',
   )
   console.log(`[server] listening on http://localhost:${PORT}`)
 })
