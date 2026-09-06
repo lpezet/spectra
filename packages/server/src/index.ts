@@ -5,6 +5,7 @@ import { applyChangeset, markImplemented, rejectChangeset } from './commit.js'
 import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
+import { AgentProvider } from './agent/agentProvider.js'
 import { buildAgents } from './agent/agents.js'
 import { DATA_DIR, TRANSCRIPTS_DB, SqliteTranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
@@ -41,12 +42,17 @@ const ORG = process.env.ORG ?? 'local'
 // place that builds stores even while these consumers are not yet per-request.
 const bootStore = provider.storeFor(provider.defaultProjectId)
 
-// The project's identity is glossary content, read from the store once at startup and threaded
-// into the agents (whose shared prompt names it) and the /api/project endpoint (the UI title).
-// A change to specs/project.json takes effect on restart — it is config, not live glossary data.
+// The project's identity is glossary content, read once at startup. The boot agents are still used
+// for the two surfaces that are not yet per-project: the chat /agents labels (project-independent)
+// and the MCP profile/tools the sandbox fetches (its projectId arrives with the coder path, slice 6).
+// The /api/context bootstrap serves this same identity for the default project.
 const project = await bootStore.projectInfo()
 const agents = buildAgents(project)
-const runner = new AgentRunner(bootStore, transcripts, agents)
+
+// A turn resolves its session's project (slice 5) and runs against that project's store and agents,
+// built per project and cached. So the runner takes the resolvers, not a single boot-time pair.
+const agentProvider = new AgentProvider(provider)
+const runner = new AgentRunner(provider, agentProvider, transcripts)
 
 // Who a request is, and what it may touch, is the server's call — never the request body, the
 // same reason an agent's identity comes from its route. The authorizer resolves a principal per
