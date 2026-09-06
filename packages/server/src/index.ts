@@ -16,8 +16,8 @@ import { checkExpectation } from './expectationCheck.js'
 import { publishExpectation, raiseExpectation, recheckExpectation, supersedeExpectation } from './expectations.js'
 import type { RaiseExpectationRequest, SupersedeRequest } from './expectations.js'
 import { SPECS_DIR } from './config.js'
-import { resolveStoreChoice } from './storeFactory.js'
-import { StoreProvider } from './storeProvider.js'
+import { resolveBackend } from './backend.js'
+import type { SpecStoreBackend } from './backend.js'
 import { LocalAuthorizer } from './auth.js'
 import type { Authorizer, Principal } from './auth.js'
 import { isSafeSegment, projectScope } from './projectScope.js'
@@ -26,11 +26,11 @@ import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from 
 
 const PORT = Number(process.env.PORT ?? 5174)
 
-// The composition root. The backend (filesystem or SQL) is fixed for the deployment; which project
-// a request is for is resolved per request. The provider turns a projectId into the store for it,
-// building each once and reusing it (storeProvider.ts). A hosted deployment resolves the projectId
-// from auth/URL; today there is one configured project and the resolver below always yields it.
-const provider = new StoreProvider(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
+// The composition root. The storage backend is fixed for the deployment — the built-in filesystem or
+// SQLite (SPEC_STORE=fs|sql), or a module the server does not ship (any other SPEC_STORE value, loaded
+// by resolveBackend). Which project a request is for is resolved per request; the backend turns that
+// projectId into the store for it. The rest of the server sees only the SpecStoreBackend interface.
+const provider: SpecStoreBackend = await resolveBackend(process.env, SPECS_DIR, DATA_DIR)
 const transcripts = new SqliteTranscriptStore()
 
 // The org this deployment serves. A grouping/auth label, not a storage key — projectId is globally

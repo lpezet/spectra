@@ -14,12 +14,12 @@
  */
 import { buildAgents } from './agents.js'
 import type { AgentDefinition, AgentName } from './agents.js'
-import type { StoreProvider } from '../storeProvider.js'
+import type { SpecStoreBackend } from '../backend.js'
 
 export class AgentProvider {
   private readonly cache = new Map<string, Record<AgentName, AgentDefinition>>()
 
-  constructor(private readonly provider: StoreProvider) {}
+  constructor(private readonly provider: SpecStoreBackend) {}
 
   /** The agents for a project — prompt named for it, built once from its identity, then reused. */
   async agentsFor(projectId: string): Promise<Record<AgentName, AgentDefinition>> {

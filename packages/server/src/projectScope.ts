@@ -9,7 +9,7 @@
  * site guard both the UI's writes and the agent's tool calls.
  */
 import type { RequestHandler } from 'express'
-import type { StoreProvider } from './storeProvider.js'
+import type { SpecStoreBackend } from './backend.js'
 import type { Principal } from './auth.js'
 
 const SEGMENT = /^[A-Za-z0-9._-]+$/
@@ -19,7 +19,7 @@ export const isSafeSegment = (value: string): boolean =>
   SEGMENT.test(value) && value !== '.' && value !== '..'
 
 /** Middleware for a mount under `/…/orgs/:org/projects/:projectId`: validate, authorize, resolve. */
-export function projectScope(provider: StoreProvider): RequestHandler {
+export function projectScope(provider: SpecStoreBackend): RequestHandler {
   return (req, res, next) => {
     const { org, projectId } = req.params as { org?: string; projectId?: string }
     if (!org || !projectId || !isSafeSegment(org) || !isSafeSegment(projectId)) {
