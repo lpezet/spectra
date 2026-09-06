@@ -290,6 +290,13 @@ Distribution (like SAL: build in CI, download prebuilt in the installer):
   prefers the installed `default.yaml`. It never clones or builds; `SPECTRA_ASSETS=<dir>` installs
   from local prebuilt assets instead of downloading (the test path).
 
+The **consumer's credential** goes in `~/.config/spectra/spectra.env` (one shared file, not per-project;
+`spectra init` scaffolds it 0600 with the two credential lines commented and never overwrites it). The
+CLI hands it to compose with `--env-file` when it exists, so the compose files' `${ANTHROPIC_API_KEY}` /
+`${CLAUDE_CODE_OAUTH_TOKEN}` resolve without a shell export (a real export still overrides it). The
+credential reaches only the `spec` container, never an image. This is the *consumer* path — a contributor
+running `npm run dev` uses the repo-root `.env` (`packages/server/src/env.ts`) instead; do not conflate them.
+
 Run in dev without installing via `npm run spectra -w @spectra/cli -- up`. `npm run
 test:install:docker` builds the assets once (a builder stage, as CI does) then installs and
 exercises the prebuilt bin. The download path itself needs a published release (push a `v*` tag).

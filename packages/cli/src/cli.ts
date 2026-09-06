@@ -13,7 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { composeArgv, composeBuildArgv, composeStackArgv, parseArgs, USAGE } from './commands.js'
 import { discover, resolveComposeFiles } from './discovery.js'
-import { INIT_USAGE, applyInitPlan, parseInitArgs, planInit } from './init.js'
+import { INIT_USAGE, applyInitPlan, credentialFilePath, ensureCredentialFile, parseInitArgs, planInit } from './init.js'
 
 /** Repo-root path resolved relative to this package (packages/cli/src -> repo root). */
 function repoFile(name: string): string {
@@ -95,10 +95,14 @@ function runInit(argv: string[]): number {
   }
 
   applyInitPlan(plan)
+  // The shared credential file, scaffolded once so there is an obvious place for the token. It is
+  // never per-project and never overwritten, so a second init leaves an existing credential alone.
+  const scaffolded = ensureCredentialFile(configHome())
   console.log(`Initialized Spectra project ${plan.id}.`)
   console.log(`  link:     ${linkPath}`)
   console.log(`  glossary: ${plan.glossaryDir}`)
   console.log(`  coder:    ${plan.coderMount}`)
+  console.log(`  credential: ${credentialFilePath(configHome())}${scaffolded ? ' (add your Anthropic token here)' : ''}`)
   console.log('\nStart it from this repo with:  spectra up')
   return 0
 }
@@ -123,12 +127,16 @@ async function main(): Promise<number> {
     case 'stack':
     case 'build': {
       const composeFiles = composeFilesFor(parsed.composeFiles)
+      // Hand compose the shared credential file when it exists, so ${ANTHROPIC_API_KEY} etc. resolve
+      // without a shell export. Only when present — `--env-file` at a missing path makes compose error.
+      const credential = credentialFilePath(configHome())
+      const envFile = existsSync(credential) ? credential : undefined
       const args =
         parsed.kind === 'run'
-          ? composeArgv(parsed.component, parsed.verb, composeFiles)
+          ? composeArgv(parsed.component, parsed.verb, composeFiles, envFile)
           : parsed.kind === 'stack'
-            ? composeStackArgv(parsed.action, composeFiles)
-            : composeBuildArgv(parsed.component, composeFiles)
+            ? composeStackArgv(parsed.action, composeFiles, envFile)
+            : composeBuildArgv(parsed.component, composeFiles, envFile)
       if (parsed.dryRun) {
         console.log(['docker', 'compose', ...args].join(' '))
         return 0

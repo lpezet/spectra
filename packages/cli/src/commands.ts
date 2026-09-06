@@ -45,11 +45,22 @@ function fileFlags(composeFiles: string[]): string[] {
 }
 
 /**
+ * The docker compose top-level flags every command shares, before the subcommand: the credential
+ * env-file (when the CLI found one) and the compose-file selectors. `--env-file` points compose at
+ * the shared `spectra.env` so `${ANTHROPIC_API_KEY}` etc. in the compose files resolve without the
+ * user exporting anything — a real shell export still overrides it (compose prefers the environment).
+ * Passed in rather than read here so this stays pure: cli.ts decides whether the file exists.
+ */
+function topLevelFlags(composeFiles: string[], envFile?: string): string[] {
+  return [...(envFile ? ['--env-file', envFile] : []), ...fileFlags(composeFiles)]
+}
+
+/**
  * The `docker compose` argv for one component+verb — everything after `docker compose`, including
  * the `-f` selectors so the command does not depend on the current directory. `-f` and `--profile`
  * are top-level flags and precede the subcommand.
  */
-export function composeArgv(component: Component, verb: Verb, composeFiles: string[]): string[] {
+export function composeArgv(component: Component, verb: Verb, composeFiles: string[], envFile?: string): string[] {
   const service = SERVICE[component]
   const subcommand: Record<Verb, string[]> = {
     up: ['up', '-d', service],
@@ -60,14 +71,14 @@ export function composeArgv(component: Component, verb: Verb, composeFiles: stri
     status: ['ps', service],
     logs: ['logs', '-f', service],
   }
-  return [...fileFlags(composeFiles), ...profileFor(component), ...subcommand[verb]]
+  return [...topLevelFlags(composeFiles, envFile), ...profileFor(component), ...subcommand[verb]]
 }
 
 /** Whole-stack up/down. `up` enables the web profile so the full stack really is up. */
-export function composeStackArgv(action: 'up' | 'down', composeFiles: string[]): string[] {
-  if (action === 'up') return [...fileFlags(composeFiles), ...PROFILE_ARGS, 'up', '-d']
+export function composeStackArgv(action: 'up' | 'down', composeFiles: string[], envFile?: string): string[] {
+  if (action === 'up') return [...topLevelFlags(composeFiles, envFile), ...PROFILE_ARGS, 'up', '-d']
   // `down` removes every container in the project regardless of profile, so it needs none.
-  return [...fileFlags(composeFiles), 'down']
+  return [...topLevelFlags(composeFiles, envFile), 'down']
 }
 
 /**
@@ -75,9 +86,9 @@ export function composeStackArgv(action: 'up' | 'down', composeFiles: string[]):
  * from the pinned git context; with no component it builds everything (web profile enabled), with
  * one just that service. `up` builds a missing image anyway; this is for pre-building or rebuilding.
  */
-export function composeBuildArgv(component: Component | undefined, composeFiles: string[]): string[] {
-  if (component === undefined) return [...fileFlags(composeFiles), ...PROFILE_ARGS, 'build']
-  return [...fileFlags(composeFiles), ...profileFor(component), 'build', SERVICE[component]]
+export function composeBuildArgv(component: Component | undefined, composeFiles: string[], envFile?: string): string[] {
+  if (component === undefined) return [...topLevelFlags(composeFiles, envFile), ...PROFILE_ARGS, 'build']
+  return [...topLevelFlags(composeFiles, envFile), ...profileFor(component), 'build', SERVICE[component]]
 }
 
 export type Parsed =

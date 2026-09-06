@@ -131,3 +131,25 @@ describe('parseArgs', () => {
     expect(parseArgs(['server', 'up', '--compose-file'])).toMatchObject({ kind: 'error' })
   })
 })
+
+describe('--env-file (the shared credential file)', () => {
+  const ENV = '/cfg/spectra/spectra.env'
+
+  it('prepends --env-file before the compose files when one is passed', () => {
+    expect(composeArgv('server', 'up', [BASE], ENV)).toEqual([
+      '--env-file', ENV, '-f', BASE, 'up', '-d', 'spec',
+    ])
+    expect(composeStackArgv('up', [BASE, OVERRIDE], ENV)).toEqual([
+      '--env-file', ENV, '-f', BASE, '-f', OVERRIDE, '--profile', 'web', 'up', '-d',
+    ])
+    expect(composeBuildArgv(undefined, [BASE], ENV)).toEqual([
+      '--env-file', ENV, '-f', BASE, '--profile', 'web', 'build',
+    ])
+  })
+
+  it('omits --env-file when there is no credential file', () => {
+    expect(composeArgv('server', 'up', [BASE])).not.toContain('--env-file')
+    expect(composeStackArgv('down', [BASE])).not.toContain('--env-file')
+    expect(composeBuildArgv('coder', [BASE])).not.toContain('--env-file')
+  })
+})
