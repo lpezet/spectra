@@ -46,12 +46,15 @@ describe('planInit', () => {
     expect(planInit({ ...base, coderDir: 'services/api' }).coderMount).toBe('/home/u/myrepo/services/api')
   })
 
-  it('templates the override with the project name, mounts, and SPECS_DIR', () => {
+  it('templates the override with the project name, mounts, SPECS_DIR, and the coder project', () => {
     const yaml = fileAt(planInit(base), 'compose.yaml')!.content
     expect(yaml).toContain('name: spectra-myrepo-abc123')
-    expect(yaml).toContain(`${path.join('/home/u/.local/share/spectra/projects/myrepo-abc123/specs')}:/stack/specs`)
+    // Mounted and named under the project id so the server derives projectId `myrepo-abc123`.
+    expect(yaml).toContain(`${path.join('/home/u/.local/share/spectra/projects/myrepo-abc123/specs')}:/stack/myrepo-abc123/specs`)
     expect(yaml).toContain('/home/u/myrepo:/work/project')
-    expect(yaml).toContain('SPECS_DIR=/stack/specs')
+    expect(yaml).toContain('SPECS_DIR=/stack/myrepo-abc123/specs')
+    // The coder carries the same id, so its per-project MCP URL matches the spec's project.
+    expect(yaml).toContain('PROJECT_ID=myrepo-abc123')
   })
 })
 

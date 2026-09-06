@@ -47,8 +47,10 @@ services:
       # Read-write, unlike coder's: express owns every write to the glossary. That is the
       # rule the whole tool rests on, and here it is a mount flag rather than a convention.
       # The engine ships empty, so there is nothing to point at by default — the example
-      # glossary is mounted in explicitly and named by SPECS_DIR below.
-      - ./examples/todo/specs:/stack/specs
+      # glossary is mounted in explicitly and named by SPECS_DIR below. Mounted under a
+      # `todo/` project dir so the server derives projectId `todo` (`<root>/<projectId>/specs`),
+      # which is what the coder carries in its MCP URL and the UI shows.
+      - ./examples/todo/specs:/stack/todo/specs
       # Runtime data (transcripts, export ledger). Its default is now the XDG data home, so
       # like SPECS_DIR it is named explicitly below to match this mount.
       - ./data:/stack/data
@@ -68,7 +70,8 @@ services:
       - PORT=5174
       # The engine's default SPECS_DIR is an empty scratch dir (it ships with no glossary),
       # so the glossary this container operates on is named here, matching the mount above.
-      - SPECS_DIR=/stack/specs
+      # `<root>/todo/specs` → the server's project is `todo`.
+      - SPECS_DIR=/stack/todo/specs
       # DATA_DIR defaults to the XDG data home; named here to match the ./data mount.
       - DATA_DIR=/stack/data
       # Passed through, never baked: an image containing a token is a token you cannot
@@ -133,6 +136,10 @@ services:
       # Where the glossary comes from now. Reachable only across the internal network, and
       # the endpoint decides which tools @coder gets rather than this container asking.
       - SPEC_URL=http://spec:5174
+      # The project this container is bound to — carried in the MCP URL so the profile and
+      # tool calls hit /mcp/orgs/local/projects/todo/coder, matching the spec's `todo` project.
+      - ORG=local
+      - PROJECT_ID=todo
       # The model API, reached through express because there is no other way out. The SDK
       # honours this — measured, not assumed: pointed at a local server, its first outbound
       # call landed there.
@@ -194,8 +201,9 @@ networks:
 
 # VERIFIED, with `internal: true` exactly as it stands above: @coder runs a full turn with
 # no route out. The model call goes through express's /anthropic proxy, the glossary comes
-# from express's /mcp/coder endpoint, the container holds a placeholder instead of a
-# credential, an Edit raised an approval card and a decline left the file byte-identical.
+# from express's per-project MCP endpoint (/mcp/orgs/<org>/projects/<id>/coder), the container
+# holds a placeholder instead of a credential, an Edit raised an approval card and a decline
+# left the file byte-identical.
 #
 # One thing the testing corrected, worth knowing before trusting the card: for Bash the SDK
 # classifies the command and lets ones it judges read-only through without asking. `pwd &&

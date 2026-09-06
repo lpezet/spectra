@@ -19,6 +19,7 @@ import { resolveStoreChoice } from './storeFactory.js'
 import { StoreProvider } from './storeProvider.js'
 import { LocalAuthorizer } from './auth.js'
 import type { Authorizer, Principal } from './auth.js'
+import { projectScope } from './projectScope.js'
 import type { SpecStore } from './specStore.js'
 import { defaultVoiceIds, listVoices, speechKey, speechModel, synthesize } from './speech.js'
 
@@ -63,16 +64,8 @@ const authorizer: Authorizer = new LocalAuthorizer()
 /** The principal the auth middleware resolved for this request. */
 const principalOf = (res: express.Response): Principal => res.locals.principal as Principal
 
-/** The glossary store for this request's project, resolved in the glossary router's middleware. */
+/** The glossary store for this request's project, resolved by the projectScope middleware. */
 const storeOf = (res: express.Response): SpecStore => res.locals.store as SpecStore
-
-/**
- * org and projectId arrive as URL segments, so a request could put anything there — and projectId
- * reaches the filesystem backend as a path component (`<root>/<projectId>/specs`). Restrict both to
- * a safe charset and forbid the two path-relative names, so a crafted id can never escape the root.
- */
-const SEGMENT = /^[A-Za-z0-9._-]+$/
-const isSafeSegment = (value: string): boolean => SEGMENT.test(value) && value !== '.' && value !== '..'
 
 /** The revision the client last read, if it sent one — the opt-in for optimistic concurrency. */
 const expectedRevOf = (body: unknown): number | undefined => {
@@ -103,30 +96,20 @@ app.get('/api/context', (_req, res) => {
   res.json({ org: ORG, projectId: provider.defaultProjectId, project })
 })
 
-// Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
-// over the internal docker network by an agent in another container. Still on the boot store —
-// per-project resolution for the coder path is a later slice.
-app.use('/mcp', mcpRoutes(bootStore, transcripts, agents))
+// The one gate every project surface shares: validate the ids, authorize, resolve the store onto
+// res.locals. Both the glossary routes and the MCP surface mount behind it.
+const scope = projectScope(provider)
+
+// The sandbox's surface, deliberately outside /api — reached over the internal docker network by an
+// agent in another container. Now under the same project prefix as everything else: the @coder
+// container is bound to one project and carries it in the URL, so its profile fetch and tool calls
+// act on that project's glossary. mergeParams so mcpRoutes sees the params (it reads res.locals).
+app.use('/mcp/orgs/:org/projects/:projectId', scope, mcpRoutes(agentProvider, transcripts))
 
 // Everything about one project lives under /api/orgs/<org>/projects/<projectId>. mergeParams so the
-// handlers below see :org and :projectId from the mount path. This is where "which project" becomes
-// a per-request fact: the middleware validates the ids, asks the principal whether it may act on
-// them (allow-all locally), and resolves the store for the project the rest of the routes then use.
+// handlers below see :org and :projectId from the mount path; `scope` (mounted with it) resolves the
+// project and store before any of them run.
 const glossary = express.Router({ mergeParams: true })
-glossary.use((req, res, next) => {
-  const { org, projectId } = req.params as { org: string; projectId: string }
-  if (!isSafeSegment(org) || !isSafeSegment(projectId)) {
-    res.status(400).json({ error: 'Invalid org or project id.' })
-    return
-  }
-  if (!principalOf(res).can(org, projectId)) {
-    res.status(403).json({ error: `Not authorized for project "${projectId}".` })
-    return
-  }
-  res.locals.projectId = projectId
-  res.locals.store = provider.storeFor(projectId)
-  next()
-})
 
 // Chat lives under the project prefix too: a conversation is about one project's glossary. Its
 // handlers read res.locals.projectId (set above) to create and list sessions per project. The
@@ -481,7 +464,7 @@ glossary.post('/questions/:id/answer', async (req, res, next) => {
   }
 })
 
-app.use('/api/orgs/:org/projects/:projectId', glossary)
+app.use('/api/orgs/:org/projects/:projectId', scope, glossary)
 
 app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(error)

@@ -76,15 +76,22 @@ name: spectra-${input.id}
 services:
   spec:
     volumes:
-      - "${input.glossaryDir}:/stack/specs"
+      # Under a <id>/ dir so the server derives projectId "${input.id}" (<root>/<projectId>/specs) —
+      # the same id the coder carries in its MCP URL and the UI shows.
+      - "${input.glossaryDir}:/stack/${input.id}/specs"
       - "${input.dataDir}:/stack/data"
     environment:
-      - SPECS_DIR=/stack/specs
+      - SPECS_DIR=/stack/${input.id}/specs
       - DATA_DIR=/stack/data
   coder:
     volumes:
       # The code @coder implements into. It never sees the glossary — that arrives as tool calls.
       - "${input.coderMount}:/work/project"
+    environment:
+      # The project this container is bound to — carried in its per-project MCP URL so the profile
+      # and tool calls act on this project's glossary (/mcp/orgs/local/projects/${input.id}/coder).
+      - ORG=local
+      - PROJECT_ID=${input.id}
 `
 }
 
