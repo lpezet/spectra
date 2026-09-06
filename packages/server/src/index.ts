@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs'
 import express from 'express'
 import { anthropicProxy } from './anthropicProxy.js'
 import { answerQuestion } from './answer.js'
@@ -49,6 +50,14 @@ const bootStore = provider.storeFor(provider.defaultProjectId)
 // The /api/context bootstrap serves this same identity for the default project.
 const project = await bootStore.projectInfo()
 const agents = buildAgents(project)
+
+// The in-process @coder (no sandbox) spawns the Claude Code binary with its cwd set to the consumer
+// project it implements into. Node refuses to spawn into a directory that does not exist and fails
+// with an ENOENT the SDK reports as a misleading "binary failed to launch" libc error — so ensure
+// it exists, the same empty placeholder `docker compose up` already creates for the sandboxed path.
+// Only when we will actually run in-process: a configured sandbox (CODER_URL) mounts its own
+// /work/project and this local dir is never used.
+if (!CODER_URL) mkdirSync(agents.coder.cwd, { recursive: true })
 
 // A turn resolves its session's project (slice 5) and runs against that project's store and agents,
 // built per project and cached. So the runner takes the resolvers, not a single boot-time pair.
@@ -513,7 +522,7 @@ app.listen(PORT, () => {
   console.log(
     CODER_URL
       ? `[server] sandbox: ${CODER_URL} — GET /api/sandbox for whether it is actually up`
-      : '[server] sandbox: none (CODER_URL unset) — @coder runs in-process, unsandboxed',
+      : `[server] sandbox: none (CODER_URL unset) — @coder runs in-process in ${agents.coder.cwd}`,
   )
   console.log(`[server] listening on http://localhost:${PORT}`)
 })
