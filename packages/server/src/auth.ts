@@ -20,6 +20,7 @@
  */
 import type { Request } from 'express'
 import type { Author } from '@spectra/core'
+import { loadPlugin } from './plugin.js'
 
 /** A resolved caller: the identity to stamp, what it may reach, and what it may pick from. */
 export interface Principal {
@@ -56,4 +57,30 @@ export class LocalAuthorizer implements Authorizer {
   authenticate(): Principal {
     return this.principal
   }
+}
+
+/** What a plugin authorizer is handed to configure itself (it reads its settings from `env`). */
+export interface AuthorizerContext {
+  env: Record<string, string | undefined>
+  /** The configured org, for an implementation that wants to default to it. */
+  org: string
+}
+
+/** A value satisfies the authorizer shape — the validation `loadPlugin` runs on a plugin. */
+export function isAuthorizer(value: unknown): value is Authorizer {
+  return !!value && typeof (value as Partial<Authorizer>).authenticate === 'function'
+}
+
+/**
+ * Resolve the authorizer from configuration — the same plugin boundary as storage and transcripts.
+ * `AUTHORIZER` is `local` by default ({@link LocalAuthorizer}, allow-all for a single-machine install);
+ * any other value is a module specifier imported and asked for an authorizer via `createAuthorizer`
+ * (or its default export). A hosted deployment loads an OAuth/SSO/SAML/API-key implementation here.
+ */
+export async function resolveAuthorizer(env: Record<string, string | undefined>, org: string): Promise<Authorizer> {
+  const spec = env.AUTHORIZER
+  if (spec === undefined || spec === 'local') {
+    return new LocalAuthorizer(org)
+  }
+  return loadPlugin(spec, 'createAuthorizer', { env, org } satisfies AuthorizerContext, 'AUTHORIZER', isAuthorizer)
 }

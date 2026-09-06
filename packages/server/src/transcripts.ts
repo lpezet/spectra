@@ -19,6 +19,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { loadPlugin } from './plugin.js'
 
 /**
  * Runtime data — the transcripts DB and the export ledger — does not belong in the source
@@ -295,4 +296,40 @@ export class SqliteTranscriptStore implements TranscriptStore {
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`)
+}
+
+/** What a plugin transcript store is handed to configure itself (it reads its settings from `env`). */
+export interface TranscriptStoreContext {
+  env: Record<string, string | undefined>
+  /** The XDG data dir, for a store that wants a file beside the built-in's. */
+  dataDir: string
+}
+
+/** A value satisfies the transcript-store shape — the validation `loadPlugin` runs on a plugin. */
+export function isTranscriptStore(value: unknown): value is TranscriptStore {
+  const store = value as Partial<TranscriptStore> | null
+  return (
+    !!store &&
+    typeof store.createSession === 'function' &&
+    typeof store.listSessions === 'function' &&
+    typeof store.append === 'function' &&
+    typeof store.read === 'function'
+  )
+}
+
+/**
+ * Resolve the transcript store from configuration — the same plugin boundary as the spec backend
+ * (a networked/D1 store for a hosted deploy is a module the server does not ship). `TRANSCRIPT_STORE`
+ * is `sqlite` by default (the node:sqlite store); any other value is a module specifier imported and
+ * asked for a store via `createTranscriptStore` (or its default export).
+ */
+export async function resolveTranscriptStore(
+  env: Record<string, string | undefined>,
+  dataDir: string,
+): Promise<TranscriptStore> {
+  const spec = env.TRANSCRIPT_STORE
+  if (spec === undefined || spec === 'sqlite') {
+    return new SqliteTranscriptStore()
+  }
+  return loadPlugin(spec, 'createTranscriptStore', { env, dataDir } satisfies TranscriptStoreContext, 'TRANSCRIPT_STORE', isTranscriptStore)
 }

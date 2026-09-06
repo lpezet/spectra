@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SqliteTranscriptStore } from './transcripts.js'
+import { SqliteTranscriptStore, resolveTranscriptStore } from './transcripts.js'
 
 const NOW = '2026-08-05T10:00:00.000Z'
 const PROJECT = 'todo'
@@ -116,5 +116,21 @@ describe('TranscriptStore', () => {
     expect(db.listSessions(PROJECT).map((session) => session.id)).toEqual(['s1'])
     expect(db.listSessions('other-project').map((session) => session.id)).toEqual(['s2'])
     expect(db.getSession('s2')?.projectId).toBe('other-project')
+  })
+})
+
+describe('resolveTranscriptStore', () => {
+  const fixture = new URL('./transcript.fixture.ts', import.meta.url).href
+
+  it('loads a plugin module and hands it the context', async () => {
+    const store = await resolveTranscriptStore({ TRANSCRIPT_STORE: fixture }, '/data/dir')
+    expect(store).not.toBeInstanceOf(SqliteTranscriptStore)
+    expect(store.listSessions('p')[0]!.id).toBe('from-plugin:/data/dir')
+  })
+
+  it('fails clearly when the module cannot be imported', async () => {
+    await expect(resolveTranscriptStore({ TRANSCRIPT_STORE: '/no/such/store.js' }, '/tmp')).rejects.toThrow(
+      /could not be imported/,
+    )
   })
 })

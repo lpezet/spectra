@@ -17,6 +17,7 @@ import { resolveStoreChoice } from './storeFactory.js'
 import { StoreProvider } from './storeProvider.js'
 import type { ProjectSummary } from './storeProvider.js'
 import type { SpecStore } from './specStore.js'
+import { loadPlugin } from './plugin.js'
 
 export interface SpecStoreBackend {
   /** The store for one project. Called per request; a backend caches connections as it sees fit. */
@@ -44,20 +45,15 @@ function isBuiltin(spec: string | undefined): boolean {
   return spec === undefined || spec === 'fs' || spec === 'sql'
 }
 
-/** Everything a backend must expose is present — a clearer failure than a later `undefined is not a function`. */
-function assertBackend(value: unknown, spec: string): asserts value is SpecStoreBackend {
+/** A value satisfies the backend shape — the validation `loadPlugin` runs on a plugin's result. */
+export function isSpecStoreBackend(value: unknown): value is SpecStoreBackend {
   const backend = value as Partial<SpecStoreBackend> | null
-  if (
-    !backend ||
-    typeof backend.storeFor !== 'function' ||
-    typeof backend.listProjects !== 'function' ||
-    typeof backend.defaultProjectId !== 'string'
-  ) {
-    throw new Error(
-      `SPEC_STORE module "${spec}" returned something that is not a SpecStoreBackend ` +
-        '(needs storeFor(projectId), listProjects(), and a defaultProjectId string).',
-    )
-  }
+  return (
+    !!backend &&
+    typeof backend.storeFor === 'function' &&
+    typeof backend.listProjects === 'function' &&
+    typeof backend.defaultProjectId === 'string'
+  )
 }
 
 /**
@@ -81,17 +77,5 @@ export async function resolveBackend(
     defaultProjectId: env.PROJECT_ID ?? path.basename(path.dirname(specsDir)),
     dataDir,
   }
-  let module: Record<string, unknown>
-  try {
-    module = (await import(spec!)) as Record<string, unknown>
-  } catch (cause) {
-    throw new Error(`SPEC_STORE="${spec}" could not be imported as a backend module: ${(cause as Error).message}`)
-  }
-  const factory = (module.createSpecStoreBackend ?? module.default) as SpecStoreBackendFactory | undefined
-  if (typeof factory !== 'function') {
-    throw new Error(`SPEC_STORE module "${spec}" must export createSpecStoreBackend (or a default factory function).`)
-  }
-  const backend = await factory(context)
-  assertBackend(backend, spec!)
-  return backend
+  return loadPlugin(spec!, 'createSpecStoreBackend', context, 'SPEC_STORE', isSpecStoreBackend)
 }
