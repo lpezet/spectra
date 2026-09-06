@@ -46,13 +46,13 @@ export function chatRoutes(
     })
   })
 
-  router.get('/sessions', (_req, res) => {
-    res.json({ sessions: transcripts.listSessions(projectOf(res)) })
+  router.get('/sessions', async (_req, res) => {
+    res.json({ sessions: await transcripts.listSessions(projectOf(res)) })
   })
 
-  router.post('/sessions', (req, res) => {
+  router.post('/sessions', async (req, res) => {
     const title = typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New conversation'
-    const session = transcripts.createSession(runner.newSessionId(), projectOf(res), title, new Date().toISOString())
+    const session = await transcripts.createSession(runner.newSessionId(), projectOf(res), title, new Date().toISOString())
     res.status(201).json({ session })
   })
 
@@ -71,17 +71,17 @@ export function chatRoutes(
     })
   })
 
-  router.delete('/sessions/:id', (req, res) => {
-    if (!owned(res, transcripts.getSession(req.params.id))) {
+  router.delete('/sessions/:id', async (req, res) => {
+    if (!owned(res, await transcripts.getSession(req.params.id))) {
       res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
       return
     }
-    transcripts.deleteSession(req.params.id)
+    await transcripts.deleteSession(req.params.id)
     res.json({ ok: true })
   })
 
-  router.get('/sessions/:id/events', (req, res) => {
-    const session = transcripts.getSession(req.params.id)
+  router.get('/sessions/:id/events', async (req, res) => {
+    const session = await transcripts.getSession(req.params.id)
     if (!owned(res, session)) {
       res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
       return
@@ -90,7 +90,7 @@ export function chatRoutes(
     const after = Number(req.query.after ?? 0)
     res.json({
       session,
-      events: transcripts.read(req.params.id, Number.isFinite(after) ? after : 0),
+      events: await transcripts.read(req.params.id, Number.isFinite(after) ? after : 0),
       running: runner.isRunning(req.params.id),
       // In memory on the server, so the browser has to be told rather than remembering —
       // and a restart correctly shows it back off.
@@ -98,8 +98,8 @@ export function chatRoutes(
     })
   })
 
-  router.post('/sessions/:id/messages', (req, res) => {
-    const session = transcripts.getSession(req.params.id)
+  router.post('/sessions/:id/messages', async (req, res) => {
+    const session = await transcripts.getSession(req.params.id)
     if (!owned(res, session)) {
       res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
       return
@@ -113,7 +113,7 @@ export function chatRoutes(
 
     // First real message names the conversation, so the session list is readable.
     if (session.title === 'New conversation') {
-      transcripts.renameSession(session.id, text.slice(0, 72), new Date().toISOString())
+      await transcripts.renameSession(session.id, text.slice(0, 72), new Date().toISOString())
     }
 
     // Null addressee is a message to the channel that nobody acts on — recorded, not run.
@@ -123,7 +123,7 @@ export function chatRoutes(
       return
     }
 
-    const outcome = runner.send(session.id, text, requested as AgentName | null)
+    const outcome = await runner.send(session.id, text, requested as AgentName | null)
     res.status(outcome.ok ? 202 : 409).json(outcome)
   })
 
@@ -145,9 +145,9 @@ export function chatRoutes(
     res.json({ ok: true })
   })
 
-  router.get('/sessions/:id/stream', (req, res) => {
+  router.get('/sessions/:id/stream', async (req, res) => {
     const sessionId = req.params.id
-    if (!owned(res, transcripts.getSession(sessionId))) {
+    if (!owned(res, await transcripts.getSession(sessionId))) {
       res.status(404).json({ error: `No conversation with id "${sessionId}".` })
       return
     }
@@ -167,37 +167,51 @@ export function chatRoutes(
     const requested = Number(req.query.after ?? 0)
     let cursor = Number.isFinite(requested) ? requested : 0
 
-    const flush = () => {
-      const pending = transcripts.read(sessionId, cursor)
+    // Transcript reads are async now, so the lookups an emitter event triggers can overlap — and
+    // they all advance the shared `cursor`, so overlap would double-send or reorder rows. A
+    // one-at-a-time queue serializes every read-and-send in emit order, restoring the ordering the
+    // synchronous version got for free.
+    let queue: Promise<void> = Promise.resolve()
+    const serialize = (task: () => Promise<void>): void => {
+      queue = queue.then(task).catch((cause) => console.error('[chat] stream task failed', cause))
+    }
+
+    const flush = async () => {
+      const pending = await transcripts.read(sessionId, cursor)
       for (const event of pending) {
         cursor = Math.max(cursor, event.id)
         send('append', event)
       }
     }
 
-    flush()
-    send('ready', { cursor, running: runner.isRunning(sessionId) })
-
     const emitter = runner.events(sessionId)
     const onEvent = (event: { kind: string; text?: string; toolCallId?: string; approvalId?: string }) => {
-      if (event.kind === 'delta') {
-        send('delta', { text: event.text ?? '' })
-      } else if (event.kind === 'append') {
-        flush()
-      } else if (event.kind === 'approval' && event.approvalId) {
-        // A settled approval mutates a row the cursor has already passed.
-        const settled = transcripts.readApproval(event.approvalId)
-        if (settled) send('update', settled)
-      } else if (event.kind === 'update' && event.toolCallId) {
-        // Settling mutates a row the cursor has already passed, so fetch it by id and
-        // re-send it rather than expecting the cursor read to surface it again.
-        const settled = transcripts.readToolCall(event.toolCallId)
-        if (settled) send('update', settled)
-      } else if (event.kind === 'done') {
-        send('done', { cursor })
-      }
+      serialize(async () => {
+        if (event.kind === 'delta') {
+          send('delta', { text: event.text ?? '' })
+        } else if (event.kind === 'append') {
+          await flush()
+        } else if (event.kind === 'approval' && event.approvalId) {
+          // A settled approval mutates a row the cursor has already passed.
+          const settled = await transcripts.readApproval(event.approvalId)
+          if (settled) send('update', settled)
+        } else if (event.kind === 'update' && event.toolCallId) {
+          // Settling mutates a row the cursor has already passed, so fetch it by id and
+          // re-send it rather than expecting the cursor read to surface it again.
+          const settled = await transcripts.readToolCall(event.toolCallId)
+          if (settled) send('update', settled)
+        } else if (event.kind === 'done') {
+          send('done', { cursor })
+        }
+      })
     }
+    // Attach before the initial replay so a row appended during that first async read still gets its
+    // nudge — it queues behind the replay as an 'append' rather than being lost in the gap.
     emitter.on('event', onEvent)
+    serialize(async () => {
+      await flush()
+      send('ready', { cursor, running: runner.isRunning(sessionId) })
+    })
 
     // Proxies drop idle connections; a comment line keeps it warm without reaching the client.
     const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 15_000)

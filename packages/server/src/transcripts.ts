@@ -102,26 +102,32 @@ CREATE INDEX IF NOT EXISTS events_by_tool_call ON events (toolCallId);
 
 /**
  * The storage seam for transcripts — one interface, so the node:sqlite backend below can be swapped
- * for D1 when the server is hosted, the same way {@link SpecStore} has two backends. Unlike SpecStore
- * (one instance bound to one project), this stays a single instance keyed by `projectId` per call:
- * it is held by the long-lived, singleton runner, and sessions carry globally-unique ids, so only the
- * operations that *scope* — creating and listing sessions — need the project; the rest resolve a
- * session by its id.
+ * for a networked store when the server is hosted, the same way {@link SpecStore} has two backends.
+ * Unlike SpecStore (one instance bound to one project), this stays a single instance keyed by
+ * `projectId` per call: it is held by the long-lived, singleton runner, and sessions carry
+ * globally-unique ids, so only the operations that *scope* — creating and listing sessions — need
+ * the project; the rest resolve a session by its id.
+ *
+ * Every read and write is async. The node:sqlite backend is synchronous underneath and resolves
+ * immediately, but the interface awaits because a networked backend — a store that talks to a
+ * database over the wire, the kind a multi-instance deploy needs — cannot answer synchronously, and
+ * the interface, not one backend, is the boundary out-of-repo implementations depend on. `close` is
+ * the one exception: tearing down a connection has nothing to await for a networked store.
  */
 export interface TranscriptStore {
-  createSession(id: string, projectId: string, title: string, now: string): Session
-  renameSession(id: string, title: string, now: string): void
-  getSession(id: string): Session | null
-  listSessions(projectId: string, limit?: number): Session[]
-  append(sessionId: string, event: NewEvent, now: string): number
-  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): void
-  readApproval(approvalId: string): TranscriptEvent | null
-  settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): void
-  readToolCall(toolCallId: string): TranscriptEvent | null
-  read(sessionId: string, afterId?: number): TranscriptEvent[]
-  search(query: string, limit?: number): Array<TranscriptEvent & { title: string }>
-  deleteSession(id: string): void
-  pruneBefore(before: string): number
+  createSession(id: string, projectId: string, title: string, now: string): Promise<Session>
+  renameSession(id: string, title: string, now: string): Promise<void>
+  getSession(id: string): Promise<Session | null>
+  listSessions(projectId: string, limit?: number): Promise<Session[]>
+  append(sessionId: string, event: NewEvent, now: string): Promise<number>
+  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): Promise<void>
+  readApproval(approvalId: string): Promise<TranscriptEvent | null>
+  settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): Promise<void>
+  readToolCall(toolCallId: string): Promise<TranscriptEvent | null>
+  read(sessionId: string, afterId?: number): Promise<TranscriptEvent[]>
+  search(query: string, limit?: number): Promise<Array<TranscriptEvent & { title: string }>>
+  deleteSession(id: string): Promise<void>
+  pruneBefore(before: string): Promise<number>
   close(): void
 }
 
@@ -160,30 +166,30 @@ export class SqliteTranscriptStore implements TranscriptStore {
     }
   }
 
-  createSession(id: string, projectId: string, title: string, now: string): Session {
+  async createSession(id: string, projectId: string, title: string, now: string): Promise<Session> {
     this.db
       .prepare('INSERT INTO sessions (id, projectId, title, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
       .run(id, projectId, title, now, now)
     return { id, projectId, title, createdAt: now, updatedAt: now }
   }
 
-  renameSession(id: string, title: string, now: string): void {
+  async renameSession(id: string, title: string, now: string): Promise<void> {
     this.db.prepare('UPDATE sessions SET title = ?, updatedAt = ? WHERE id = ?').run(title, now, id)
   }
 
-  getSession(id: string): Session | null {
+  async getSession(id: string): Promise<Session | null> {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id)
     return row ? (row as unknown as Session) : null
   }
 
-  listSessions(projectId: string, limit = 50): Session[] {
+  async listSessions(projectId: string, limit = 50): Promise<Session[]> {
     return this.db
       .prepare('SELECT * FROM sessions WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?')
       .all(projectId, limit) as unknown as Session[]
   }
 
   /** Appends one event and returns its id — which doubles as the replay cursor. */
-  append(sessionId: string, event: NewEvent, now: string): number {
+  async append(sessionId: string, event: NewEvent, now: string): Promise<number> {
     const result = this.db
       .prepare(
         `INSERT INTO events (sessionId, author, kind, text, payload, toolCallId, status, createdAt)
@@ -208,7 +214,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
    * Resolves an `approval` row. `status` says it is settled; the payload says how, because
    * a denial is a completed approval, not a failed one.
    */
-  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): void {
+  async settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): Promise<void> {
     this.db
       .prepare(
         `UPDATE events SET status = 'completed', payload = json_patch(COALESCE(payload, '{}'), ?)
@@ -217,7 +223,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
       .run(JSON.stringify({ decision, note }), approvalId)
   }
 
-  readApproval(approvalId: string): TranscriptEvent | null {
+  async readApproval(approvalId: string): Promise<TranscriptEvent | null> {
     const row = this.db
       .prepare("SELECT * FROM events WHERE toolCallId = ? AND kind = 'approval'")
       .get(approvalId) as unknown as (Omit<TranscriptEvent, 'payload'> & { payload: string | null }) | undefined
@@ -227,7 +233,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
   }
 
   /** Closes out a `tool_call` row once the handler returns — or throws. */
-  settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): void {
+  async settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): Promise<void> {
     this.db
       .prepare(
         `UPDATE events SET status = ?, payload = json_patch(COALESCE(payload, '{}'), ?)
@@ -241,7 +247,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
    * already passed, so a live stream needs to fetch it directly rather than waiting for
    * it to come round again.
    */
-  readToolCall(toolCallId: string): TranscriptEvent | null {
+  async readToolCall(toolCallId: string): Promise<TranscriptEvent | null> {
     const row = this.db
       .prepare("SELECT * FROM events WHERE toolCallId = ? AND kind = 'tool_call'")
       .get(toolCallId) as unknown as (Omit<TranscriptEvent, 'payload'> & { payload: string | null }) | undefined
@@ -251,7 +257,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
   }
 
   /** Everything after `afterId`, in order. `afterId` of 0 replays the whole session. */
-  read(sessionId: string, afterId = 0): TranscriptEvent[] {
+  async read(sessionId: string, afterId = 0): Promise<TranscriptEvent[]> {
     const rows = this.db
       .prepare('SELECT * FROM events WHERE sessionId = ? AND id > ? ORDER BY id')
       .all(sessionId, afterId) as unknown as Array<Omit<TranscriptEvent, 'payload'> & { payload: string | null }>
@@ -264,7 +270,7 @@ export class SqliteTranscriptStore implements TranscriptStore {
    * `searchTranscripts` tool — "what did we say about RecurringTask" is a question the
    * agent should be able to answer without the human digging.
    */
-  search(query: string, limit = 20): Array<TranscriptEvent & { title: string }> {
+  async search(query: string, limit = 20): Promise<Array<TranscriptEvent & { title: string }>> {
     const rows = this.db
       .prepare(
         `SELECT events.*, sessions.title FROM events
@@ -279,12 +285,12 @@ export class SqliteTranscriptStore implements TranscriptStore {
     return rows.map((row) => ({ ...row, payload: row.payload === null ? null : JSON.parse(row.payload) }))
   }
 
-  deleteSession(id: string): void {
+  async deleteSession(id: string): Promise<void> {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
   }
 
   /** Maintenance: drop sessions untouched since `before` (ISO timestamp). */
-  pruneBefore(before: string): number {
+  async pruneBefore(before: string): Promise<number> {
     const result = this.db.prepare('DELETE FROM sessions WHERE updatedAt < ?').run(before)
     return Number(result.changes)
   }

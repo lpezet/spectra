@@ -112,18 +112,18 @@ export class AgentRunner {
     return emitter
   }
 
-  private record(sessionId: string, event: Parameters<TranscriptStore['append']>[1]): number {
-    const id = this.transcripts.append(sessionId, event, new Date().toISOString())
+  private async record(sessionId: string, event: Parameters<TranscriptStore['append']>[1]): Promise<number> {
+    const id = await this.transcripts.append(sessionId, event, new Date().toISOString())
     this.events(sessionId).emit('event', { kind: 'append', id } satisfies RunnerEvent)
     return id
   }
 
   /**
-   * Records the human turn, then launches the agent. Returns once the run has started —
-   * output arrives over the session's event stream.
+   * Records the human turn, then launches the agent. Resolves once the run has started —
+   * output arrives over the session's event stream, not by awaiting this.
    */
-  send(sessionId: string, prompt: string, to: AgentName | null): { ok: boolean; error?: string } {
-    this.record(sessionId, { author: 'human', kind: 'user', text: prompt })
+  async send(sessionId: string, prompt: string, to: AgentName | null): Promise<{ ok: boolean; error?: string }> {
+    await this.record(sessionId, { author: 'human', kind: 'user', text: prompt })
 
     // Unaddressed messages go to nobody, as in any channel. Two agents racing to answer
     // is worse than a message that visibly waits for you to say who it is for.
@@ -136,12 +136,12 @@ export class AgentRunner {
 
     const misconfigured = AgentRunner.misconfiguration
     if (misconfigured) {
-      this.record(sessionId, { author: to, kind: 'error', text: misconfigured })
+      await this.record(sessionId, { author: to, kind: 'error', text: misconfigured })
       return { ok: true }
     }
 
     if (!AgentRunner.configured) {
-      this.record(sessionId, {
+      await this.record(sessionId, {
         author: to,
         kind: 'error',
         text: 'No credential is set, so the agent cannot run. Put a console API key in ANTHROPIC_API_KEY, or a `claude setup-token` token in CLAUDE_CODE_OAUTH_TOKEN, then restart the server.',
@@ -172,9 +172,9 @@ export class AgentRunner {
     // A turn acts on its session's project: the store it writes to and the agents whose prompt
     // names the glossary both come from that projectId, not a process-wide default. The session
     // carries it (slice 5); the route validated it exists before this launched.
-    const session = this.transcripts.getSession(sessionId)
+    const session = await this.transcripts.getSession(sessionId)
     if (!session) {
-      this.record(sessionId, { author: to, kind: 'error', text: `Conversation ${sessionId} is gone.` })
+      await this.record(sessionId, { author: to, kind: 'error', text: `Conversation ${sessionId} is gone.` })
       return
     }
     const store = this.provider.storeFor(session.projectId)
@@ -235,11 +235,11 @@ export class AgentRunner {
         if (message.type === 'assistant') {
           for (const block of message.message.content) {
             if (block.type === 'text' && block.text.trim()) {
-              this.record(sessionId, { author: to, kind: 'assistant', text: block.text })
+              await this.record(sessionId, { author: to, kind: 'assistant', text: block.text })
             }
             if (block.type === 'tool_use') {
               openCalls.set(block.id, block.name)
-              this.record(sessionId, {
+              await this.record(sessionId, {
                 author: to,
                 kind: 'tool_call',
                 text: shortName(block.name),
@@ -260,7 +260,7 @@ export class AgentRunner {
               if (typeof block === 'object' && block && 'type' in block && block.type === 'tool_result') {
                 const result = block as { tool_use_id: string; content?: unknown; is_error?: boolean }
                 if (!openCalls.has(result.tool_use_id)) continue
-                this.transcripts.settleToolCall(
+                await this.transcripts.settleToolCall(
                   result.tool_use_id,
                   result.is_error ? 'failed' : 'completed',
                   result.content ?? null,
@@ -279,7 +279,7 @@ export class AgentRunner {
         if (message.type === 'result') {
           if (message.session_id) this.sdkSessions.set(key, message.session_id)
           if (message.subtype !== 'success') {
-            this.record(sessionId, {
+            await this.record(sessionId, {
               author: to,
               kind: 'error',
               text: `The run ended early (${message.subtype}).`,
@@ -288,12 +288,12 @@ export class AgentRunner {
         }
       }
     } catch (cause) {
-      this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
+      await this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
     } finally {
       // Anything still open died with the run. Leaving it marked `started` is the honest
       // record — a later resume can see the call may or may not have taken effect.
       for (const [callId] of openCalls) {
-        this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
+        await this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
       }
     }
   }
@@ -316,7 +316,7 @@ export class AgentRunner {
 
     const reach = await probe(url)
     if (!reach.reachable) {
-      this.record(sessionId, {
+      await this.record(sessionId, {
         author: to,
         kind: 'error',
         text: `@${to}'s runtime at ${url} is not reachable${reach.error ? ` (${reach.error})` : ''}. Nothing ran — start it, or unset its URL to run in-process. There is deliberately no silent fallback.`,
@@ -355,11 +355,11 @@ export class AgentRunner {
             text: String(event.text ?? ''),
           } satisfies RunnerEvent)
         } else if (event.kind === 'assistant') {
-          this.record(sessionId, { author: to, kind: 'assistant', text: String(event.text ?? '') })
+          await this.record(sessionId, { author: to, kind: 'assistant', text: String(event.text ?? '') })
         } else if (event.kind === 'tool_call') {
           const id = String(event.id)
           openCalls.add(id)
-          this.record(sessionId, {
+          await this.record(sessionId, {
             author: to,
             kind: 'tool_call',
             text: shortName(String(event.tool)),
@@ -370,14 +370,14 @@ export class AgentRunner {
         } else if (event.kind === 'tool_result') {
           const id = String(event.id)
           if (!openCalls.delete(id)) continue
-          this.transcripts.settleToolCall(id, event.isError ? 'failed' : 'completed', event.content ?? null)
+          await this.transcripts.settleToolCall(id, event.isError ? 'failed' : 'completed', event.content ?? null)
           this.events(sessionId).emit('event', { kind: 'update', toolCallId: id } satisfies RunnerEvent)
         } else if (event.kind === 'approval') {
           const approvalId = String(event.approvalId)
           // Recorded here, decided here, delivered back over HTTP by `decide` — to this runtime's
           // url, so a decision always returns to the runtime that is actually blocked on it.
           this.remoteApprovals.set(approvalId, { sessionId, url })
-          this.record(sessionId, {
+          await this.record(sessionId, {
             author: to,
             kind: 'approval',
             text: String(event.tool),
@@ -390,7 +390,7 @@ export class AgentRunner {
           // is not the same as not saying: the transcript still shows every write and every
           // command, so an unattended run is reviewable after the fact rather than invisible.
           const approvalId = String(event.approvalId)
-          this.record(sessionId, {
+          await this.record(sessionId, {
             author: to,
             kind: 'approval',
             text: String(event.tool),
@@ -398,25 +398,25 @@ export class AgentRunner {
             toolCallId: approvalId,
             status: 'started',
           })
-          this.transcripts.settleApproval(approvalId, 'allow', 'unattended')
+          await this.transcripts.settleApproval(approvalId, 'allow', 'unattended')
           this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
         } else if (event.kind === 'approval_expired') {
           const approvalId = String(event.approvalId)
           this.remoteApprovals.delete(approvalId)
-          this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
+          await this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
           this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
         } else if (event.kind === 'error') {
-          this.record(sessionId, { author: to, kind: 'error', text: String(event.text ?? '') })
+          await this.record(sessionId, { author: to, kind: 'error', text: String(event.text ?? '') })
         }
       }
     } catch (cause) {
-      this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
+      await this.record(sessionId, { author: to, kind: 'error', text: (cause as Error).message })
     } finally {
       controller.abort()
       // Same honesty as the in-process path: a call still open died with the run, and may
       // or may not have taken effect on the far side.
       for (const callId of openCalls) {
-        this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
+        await this.transcripts.settleToolCall(callId, 'failed', { error: 'the run ended before this returned' })
       }
     }
   }
@@ -474,8 +474,8 @@ export class AgentRunner {
     if (pending) {
       clearTimeout(pending.timer)
       this.awaiting.delete(approvalId)
-      this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
-      this.events(this.sessionOf(approvalId)).emit('event', {
+      await this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
+      this.events(await this.sessionOf(approvalId)).emit('event', {
         kind: 'approval',
         approvalId,
       } satisfies RunnerEvent)
@@ -499,13 +499,13 @@ export class AgentRunner {
     if (!response?.ok) return false
 
     this.remoteApprovals.delete(approvalId)
-    this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
+    await this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
     this.events(remote.sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
     return true
   }
 
-  private sessionOf(approvalId: string): string {
-    return this.transcripts.readApproval(approvalId)?.sessionId ?? ''
+  private async sessionOf(approvalId: string): Promise<string> {
+    return (await this.transcripts.readApproval(approvalId))?.sessionId ?? ''
   }
 
   /**
@@ -521,7 +521,7 @@ export class AgentRunner {
       | { behavior: 'deny'; message: string }
     > => {
       const approvalId = randomUUID()
-      this.record(sessionId, {
+      await this.record(sessionId, {
         author: to,
         kind: 'approval',
         text: toolName,
@@ -533,7 +533,10 @@ export class AgentRunner {
       const decision = await new Promise<{ allow: boolean; note: string | null }>((resolve) => {
         const timer = setTimeout(() => {
           this.awaiting.delete(approvalId)
-          this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
+          // Fire-and-forget: the deny is recorded for the transcript, but the run is unblocked by
+          // `resolve` regardless of when the write lands. A failed settle is a lost annotation, not
+          // a hung run.
+          void this.transcripts.settleApproval(approvalId, 'deny', 'no answer')
           resolve({ allow: false, note: 'no answer' })
         }, APPROVAL_TIMEOUT_MS)
 

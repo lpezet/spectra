@@ -255,7 +255,7 @@ export function blueprintTools(store: SpecStore, transcripts: TranscriptStore, a
       limit: z.number().int().min(1).max(50).optional(),
     },
     async (args) => {
-      const hits = transcripts.search(args.query, args.limit ?? 20)
+      const hits = await transcripts.search(args.query, args.limit ?? 20)
       return say(
         hits.map((hit) => ({
           session: hit.title,

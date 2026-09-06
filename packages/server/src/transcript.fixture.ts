@@ -2,12 +2,12 @@
 import type { TranscriptStore, TranscriptStoreContext } from './transcripts.js'
 
 export function createTranscriptStore(context: TranscriptStoreContext): TranscriptStore {
-  const noop = () => undefined
+  const noop = async () => undefined
   // Echoes the context's dataDir through a session id, so the test can prove it was loaded + handed one.
   return {
     createSession: noop,
-    listSessions: () => [{ id: `from-plugin:${context.dataDir}`, projectId: 'p', title: '', createdAt: '', updatedAt: '' }],
-    append: () => 0,
-    read: () => [],
+    listSessions: async () => [{ id: `from-plugin:${context.dataDir}`, projectId: 'p', title: '', createdAt: '', updatedAt: '' }],
+    append: async () => 0,
+    read: async () => [],
   } as unknown as TranscriptStore
 }
