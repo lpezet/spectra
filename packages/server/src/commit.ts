@@ -6,7 +6,7 @@
  */
 import { applyOps } from '@spectra/core'
 import type { Diagnostic } from '@spectra/core'
-import type { SpecStore } from './specStore.js'
+import type { SpecStore } from '@spectra/core'
 
 // termFileName used to live here; kept re-exported from its new home so importers are unmoved.
 export { termFileName } from './serialize.js'

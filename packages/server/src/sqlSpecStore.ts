@@ -52,7 +52,7 @@ import type {
   QuestionFeed,
   SpecStore,
   StoredAt,
-} from './specStore.js'
+} from '@spectra/core'
 
 /** Same neutral default as the FS impl — an unconfigured glossary must not borrow another's name. */
 const FALLBACK_PROJECT_INFO: ProjectInfo = {

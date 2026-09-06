@@ -24,7 +24,7 @@ import { raiseQuestion } from '../raise.js'
 import { raiseExpectation } from '../expectations.js'
 import type { RaiseRequest } from '../raise.js'
 import type { ProposeRequest } from '../propose.js'
-import type { SpecStore } from '../specStore.js'
+import type { SpecStore } from '@spectra/core'
 import type { TranscriptStore } from '../transcripts.js'
 
 /**
