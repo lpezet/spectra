@@ -18,12 +18,12 @@ const BASE = '/repo/docker-compose.yml'
 const OVERRIDE = '/cfg/project.yml'
 
 describe('composeArgv (per component)', () => {
-  it('maps server -> the spec service, with up/down/restart/status/logs', () => {
-    expect(composeArgv('server', 'up', [BASE])).toEqual(['-f', BASE, 'up', '-d', 'spec'])
-    expect(composeArgv('server', 'down', [BASE])).toEqual(['-f', BASE, 'rm', '-sf', 'spec'])
-    expect(composeArgv('server', 'restart', [BASE])).toEqual(['-f', BASE, 'restart', 'spec'])
-    expect(composeArgv('server', 'status', [BASE])).toEqual(['-f', BASE, 'ps', 'spec'])
-    expect(composeArgv('server', 'logs', [BASE])).toEqual(['-f', BASE, 'logs', '-f', 'spec'])
+  it('maps server -> the server service, with up/down/restart/status/logs', () => {
+    expect(composeArgv('server', 'up', [BASE])).toEqual(['-f', BASE, 'up', '-d', 'server'])
+    expect(composeArgv('server', 'down', [BASE])).toEqual(['-f', BASE, 'rm', '-sf', 'server'])
+    expect(composeArgv('server', 'restart', [BASE])).toEqual(['-f', BASE, 'restart', 'server'])
+    expect(composeArgv('server', 'status', [BASE])).toEqual(['-f', BASE, 'ps', 'server'])
+    expect(composeArgv('server', 'logs', [BASE])).toEqual(['-f', BASE, 'logs', '-f', 'server'])
   })
 
   it('carries --profile web for the profiled web service', () => {
@@ -37,7 +37,7 @@ describe('composeArgv (per component)', () => {
 
   it('layers multiple compose files in order (base then override)', () => {
     expect(composeArgv('server', 'up', [BASE, OVERRIDE])).toEqual([
-      '-f', BASE, '-f', OVERRIDE, 'up', '-d', 'spec',
+      '-f', BASE, '-f', OVERRIDE, 'up', '-d', 'server',
     ])
   })
 
@@ -70,8 +70,8 @@ describe('composeBuildArgv', () => {
   it('builds everything (web profile enabled) when no component is named', () => {
     expect(composeBuildArgv(undefined, [BASE])).toEqual(['-f', BASE, '--profile', 'web', 'build'])
   })
-  it('builds a single service, translating server -> spec', () => {
-    expect(composeBuildArgv('server', [BASE])).toEqual(['-f', BASE, 'build', 'spec'])
+  it('builds a single service (server -> the server service)', () => {
+    expect(composeBuildArgv('server', [BASE])).toEqual(['-f', BASE, 'build', 'server'])
   })
   it('carries the web profile when building web', () => {
     expect(composeBuildArgv('web', [BASE])).toEqual(['-f', BASE, '--profile', 'web', 'build', 'web'])
@@ -137,7 +137,7 @@ describe('--env-file (the shared credential file)', () => {
 
   it('prepends --env-file before the compose files when one is passed', () => {
     expect(composeArgv('server', 'up', [BASE], ENV)).toEqual([
-      '--env-file', ENV, '-f', BASE, 'up', '-d', 'spec',
+      '--env-file', ENV, '-f', BASE, 'up', '-d', 'server',
     ])
     expect(composeStackArgv('up', [BASE, OVERRIDE], ENV)).toEqual([
       '--env-file', ENV, '-f', BASE, '-f', OVERRIDE, '--profile', 'web', 'up', '-d',

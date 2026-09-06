@@ -16,18 +16,19 @@
  * here only to pre-build or rebuild on demand.
  */
 
-export const COMPONENTS = ['server', 'coder', 'web'] as const
+export const COMPONENTS = ['server', 'coder', 'web', 'spec'] as const
 export type Component = (typeof COMPONENTS)[number]
 
 export const VERBS = ['up', 'down', 'restart', 'status', 'logs'] as const
 export type Verb = (typeof VERBS)[number]
 
 /**
- * The friendly component name the CLI presents, mapped to the compose service it drives.
- * `server` is the `spec` service: the name predates the product rename and lives on in the
- * compose file, so the CLI translates rather than making a user learn the old one.
+ * The friendly component name the CLI presents, mapped to the compose service it drives. Names now
+ * match one-to-one: `server` is the coordinator, `coder` and `spec` are the two agent runtimes,
+ * `web` is the UI. (`server` used to map to a `spec` service — a leftover from before the product
+ * rename; that service is now `server` and the old `spec` name belongs to the @spec runtime.)
  */
-const SERVICE: Record<Component, string> = { server: 'spec', coder: 'coder', web: 'web' }
+const SERVICE: Record<Component, string> = { server: 'server', coder: 'coder', web: 'web', spec: 'spec' }
 
 /**
  * `web` is the one service behind a compose profile (so a plain `docker compose up` leaves it
@@ -173,9 +174,10 @@ Usage:
   spectra up | down | build [component] [options]
 
 Components:
-  server    the spec tool API + agents   (compose service: spec)
-  coder     the sandboxed @coder         (compose service: coder)
-  web       the web UI                   (compose service: web)
+  server    the coordinator: API + glossary   (compose service: server)
+  spec      the @spec agent runtime           (compose service: spec)
+  coder     the sandboxed @coder runtime       (compose service: coder)
+  web       the web UI                         (compose service: web)
 
 Verbs (per component):
   up        bring the piece up      (docker compose up -d)

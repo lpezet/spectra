@@ -27,7 +27,7 @@ const AGENT = process.env.AGENT ?? 'coder'
 const PORT = Number(process.env.PORT ?? 5177)
 // The project @coder implements into — its cwd and only writable mount. Configurable so the
 // container can be pointed at whatever project it serves; `spectra init` mounts the repo here.
-// The glossary is NOT under this path — it arrives as tool calls (see SPEC_URL below).
+// The glossary is NOT under this path — it arrives as tool calls (see SERVER_URL below).
 const APP_DIR = process.env.APP_DIR ?? '/work/project'
 const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
 
@@ -43,9 +43,14 @@ const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
  *
  * Over a tool call they are two capabilities, granted individually, executed by the process
  * that owns `specs/` and can refuse. Which tools those are is decided there, not here: this
- * service asks for the `coder` endpoint and gets whatever agents.ts says `@coder` may have.
+ * runtime asks for its agent's endpoint and gets whatever agents.ts says that agent may have.
+ *
+ * `SERVER_URL` points at the Server (the coordinator). `SPEC_URL` is the old name for it and is
+ * still read as a fallback, so a compose file from before the spec→server rename keeps working.
+ * (Not to be confused with the Server's own `SPEC_URL`, which points the other way — at *this*
+ * runtime — when @spec is relayed.)
  */
-const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
+const SERVER_URL = process.env.SERVER_URL ?? process.env.SPEC_URL ?? 'http://server:5174'
 // This container is bound to one project — the repo it implements into — so it carries that
 // project in the URL it reaches the glossary through. The server's MCP surface is per project
 // (/mcp/orgs/<org>/projects/<id>/coder), so its profile fetch and every tool call act on the
@@ -53,7 +58,7 @@ const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
 // the example project is the dev default.
 const ORG = process.env.ORG ?? 'local'
 const PROJECT_ID = process.env.PROJECT_ID ?? 'todo'
-const MCP_URL = `${SPEC_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
+const MCP_URL = `${SERVER_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
 
 /**
  * Who this agent is — fetched, not stored.

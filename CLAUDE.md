@@ -140,10 +140,14 @@ Expose versions both sides can compare, not a `stale: true` the server computed.
 
 ## Sandbox
 
-`docker-compose.yml` puts `spec` on two networks and `coder` on one `internal: true` network
-with no route out. The project at `/work/project` is `coder`'s only mount. The container reaches
-the model through express's `/anthropic` proxy and the glossary through `/mcp/coder`, and holds
-the literal string `proxied-by-the-spec-tool` instead of a credential.
+`docker-compose.yml` puts `server` on two networks and the agent runtimes (`coder`, `spec`) on one
+`internal: true` network with no route out. The project at `/work/project` is `coder`'s only mount
+(`spec` has none). Each runtime reaches the model through express's `/anthropic` proxy and the
+glossary through `/mcp/<agent>`, holding the literal string `proxied-by-the-spec-tool` instead of a
+credential, and reaches the server as `SERVER_URL`. (The compose service was renamed `spec`→`server`
+so the `spec` name is free for the @spec runtime; the runner relays each agent to its URL —
+`CODER_URL`/`SPEC_URL` on the server — or runs it in-process when unset. `AGENT` selects which agent a
+runtime is; the image is shared, `Dockerfile.coder`.)
 
 - The `/anthropic` proxy is mounted **before `express.json()`** in `packages/server/src/index.ts`, and
   that ordering is load-bearing — a JSON parser upstream would consume the body stream.
@@ -257,9 +261,10 @@ files in structural sync; they differ only in build context and in that the proj
 the override.
 
 `packages/cli` (`@spectra/cli`) wraps this compose. Two shapes: per-component
-`spectra <server|coder|web> up|down|restart|status|logs`, and whole-stack `spectra up|down|build [component]`.
-Each maps to the matching `docker compose` call — `server` → the `spec` service, and anything
-touching `web` carries `--profile web`. Verbs are up/down (not start/stop) to match compose; per-component
+`spectra <server|spec|coder|web> up|down|restart|status|logs`, and whole-stack `spectra up|down|build [component]`.
+Each maps to the matching `docker compose` call — component names now match services one-to-one
+(`server` the coordinator, `spec`/`coder` the agent runtimes, `web` the UI), and anything touching
+`web` carries `--profile web`. Verbs are up/down (not start/stop) to match compose; per-component
 `down` is `rm -sf <svc>` (that one service), whole-stack `down` is the project teardown. There is no
 `install`: `up` builds a missing image on its own, and `build` is only for pre-build/rebuild.
 `--compose-file` repeats to layer a base and an override (`-f default.yaml -f <project>.yaml`) — the
