@@ -22,10 +22,12 @@
  * anyway, so a session would buy nothing and would need cleaning up after a container that
  * went away without saying goodbye.
  */
+import type { Response } from 'express'
 import { Router } from 'express'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import type { AgentDefinition, AgentName } from './agents.js'
+import type { AgentName } from './agents.js'
+import type { AgentProvider } from './agentProvider.js'
 import { toolsFor } from './tools.js'
 import type { TranscriptStore } from '../transcripts.js'
 import type { SpecStore } from '../specStore.js'
@@ -33,27 +35,29 @@ import type { SpecStore } from '../specStore.js'
 /** The name the tools appear under, and so the `mcp__blueprints__` prefix on the far side. */
 const SERVER_NAME = 'blueprints'
 
-export function mcpRoutes(
-  store: SpecStore,
-  transcripts: TranscriptStore,
-  agents: Record<AgentName, AgentDefinition>,
-): Router {
+export function mcpRoutes(agentProvider: AgentProvider, transcripts: TranscriptStore): Router {
+  // The store and project come from res.locals, set by the projectScope middleware this router is
+  // mounted behind (/mcp/orgs/:org/projects/:projectId). The agents are that project's — its prompt
+  // names its glossary — so the sandbox reaching this surface acts on the project it is bound to,
+  // never a process-wide default. mergeParams is not needed: everything comes through res.locals.
   const router = Router()
+  const storeOf = (res: Response): SpecStore => res.locals.store as SpecStore
+  const agentsOf = (res: Response) => agentProvider.agentsFor(res.locals.projectId as string)
 
   /**
    * Says what an agent would get without opening a session. Useful from the host, where
    * the sandbox itself is unreachable, to answer "which tools does @coder actually have?"
    * from the server that decides it rather than from the config that requests them.
    */
-  router.get('/:agent/tools', (req, res) => {
-    const agent = agents[req.params.agent as AgentName]
+  router.get('/:agent/tools', async (req, res) => {
+    const agent = (await agentsOf(res))[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return
     }
     res.json({
       agent: agent.name,
-      tools: toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools).map((entry) => ({
+      tools: toolsFor(storeOf(res), transcripts, { kind: agent.name }, agent.domainTools).map((entry) => ({
         name: entry.name,
         description: entry.description,
       })),
@@ -72,8 +76,8 @@ export function mcpRoutes(
    * exist on this side. They match nothing in the container, which is harmless — the mount
    * they guarded is gone, and the shell entries are the ones that still do work.
    */
-  router.get('/:agent/profile', (req, res) => {
-    const agent = agents[req.params.agent as AgentName]
+  router.get('/:agent/profile', async (req, res) => {
+    const agent = (await agentsOf(res))[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return
@@ -84,12 +88,12 @@ export function mcpRoutes(
       builtins: agent.builtins,
       autoApprove: agent.autoApprove,
       disallowedTools: agent.disallowedTools ?? [],
-      tools: toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools).map((entry) => entry.name),
+      tools: toolsFor(storeOf(res), transcripts, { kind: agent.name }, agent.domainTools).map((entry) => entry.name),
     })
   })
 
   router.post('/:agent', async (req, res) => {
-    const agent = agents[req.params.agent as AgentName]
+    const agent = (await agentsOf(res))[req.params.agent as AgentName]
     if (!agent) {
       res.status(404).json({ error: `No agent called "${req.params.agent}".` })
       return
@@ -112,7 +116,7 @@ export function mcpRoutes(
       handler: (args: Record<string, unknown>) => unknown,
     ) => void
 
-    for (const entry of toolsFor(store, transcripts, { kind: agent.name }, agent.domainTools)) {
+    for (const entry of toolsFor(storeOf(res), transcripts, { kind: agent.name }, agent.domainTools)) {
       register(
         entry.name,
         { description: entry.description, inputSchema: entry.inputSchema },

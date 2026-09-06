@@ -38,7 +38,14 @@ const APPROVAL_TIMEOUT_MS = 15 * 60 * 1000
  * service asks for the `coder` endpoint and gets whatever agents.ts says `@coder` may have.
  */
 const SPEC_URL = process.env.SPEC_URL ?? 'http://spec:5174'
-const MCP_URL = `${SPEC_URL}/mcp/coder`
+// This container is bound to one project — the repo it implements into — so it carries that
+// project in the URL it reaches the glossary through. The server's MCP surface is per project
+// (/mcp/orgs/<org>/projects/<id>/coder), so its profile fetch and every tool call act on the
+// project this container is for, never a server-wide default. Set by compose / `spectra init`;
+// the example project is the dev default.
+const ORG = process.env.ORG ?? 'local'
+const PROJECT_ID = process.env.PROJECT_ID ?? 'todo'
+const MCP_URL = `${SPEC_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/coder`
 
 /**
  * Who this agent is — fetched, not stored.
