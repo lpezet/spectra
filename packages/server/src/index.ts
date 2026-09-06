@@ -6,7 +6,7 @@ import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
 import { buildAgents } from './agent/agents.js'
-import { DATA_DIR, TRANSCRIPTS_DB, TranscriptStore } from './transcripts.js'
+import { DATA_DIR, TRANSCRIPTS_DB, SqliteTranscriptStore } from './transcripts.js'
 import { CODER_URL, probeSandbox } from './sandbox.js'
 import { currentSnapshot, deployedVersion, lastExport } from './specsExport.js'
 import { computeCoverage } from '@spectra/core'
@@ -28,7 +28,7 @@ const PORT = Number(process.env.PORT ?? 5174)
 // building each once and reusing it (storeProvider.ts). A hosted deployment resolves the projectId
 // from auth/URL; today there is one configured project and the resolver below always yields it.
 const provider = new StoreProvider(resolveStoreChoice(process.env, SPECS_DIR, DATA_DIR))
-const transcripts = new TranscriptStore()
+const transcripts = new SqliteTranscriptStore()
 
 // The org this deployment serves. A grouping/auth label, not a storage key — projectId is globally
 // unique, so the org never reaches the store. Local default is "local"; a hosted deployment sets it.
@@ -97,7 +97,6 @@ app.get('/api/context', (_req, res) => {
   res.json({ org: ORG, projectId: provider.defaultProjectId, project })
 })
 
-app.use('/api/chat', chatRoutes(transcripts, runner, agents))
 // Deliberately outside /api: this is not the UI's surface, it is the sandbox's. Reached
 // over the internal docker network by an agent in another container. Still on the boot store —
 // per-project resolution for the coder path is a later slice.
@@ -118,9 +117,16 @@ glossary.use((req, res, next) => {
     res.status(403).json({ error: `Not authorized for project "${projectId}".` })
     return
   }
+  res.locals.projectId = projectId
   res.locals.store = provider.storeFor(projectId)
   next()
 })
+
+// Chat lives under the project prefix too: a conversation is about one project's glossary. Its
+// handlers read res.locals.projectId (set above) to create and list sessions per project. The
+// runner and its transcripts are still one process-wide pair — sessions carry their projectId as
+// a column; per-turn store/agents by that projectId is the next slice.
+glossary.use('/chat', chatRoutes(transcripts, runner, agents))
 
 // The project's identity, for the UI title — the request's project, read live from its store.
 glossary.get('/project', async (_req, res, next) => {

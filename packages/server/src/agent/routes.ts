@@ -11,7 +11,7 @@ import express from 'express'
 import { AGENT_NAMES } from './agents.js'
 import type { AgentDefinition, AgentName } from './agents.js'
 import { AgentRunner } from './runner.js'
-import type { TranscriptStore } from '../transcripts.js'
+import type { Session, TranscriptStore } from '../transcripts.js'
 
 export function chatRoutes(
   transcripts: TranscriptStore,
@@ -19,6 +19,14 @@ export function chatRoutes(
   agents: Record<AgentName, AgentDefinition>,
 ): express.Router {
   const router = express.Router()
+
+  // The project comes from the mount below the glossary prefix, set on res.locals by its middleware.
+  const projectOf = (res: express.Response): string => res.locals.projectId as string
+
+  // A session reached under a different project's prefix is treated as absent: isolation enforced at
+  // the edge, so a session id learned from one project cannot be read or mutated through another.
+  const owned = (res: express.Response, session: Session | null): session is Session =>
+    session !== null && session.projectId === projectOf(res)
 
   router.get('/agents', (_req, res) => {
     res.json({
@@ -39,12 +47,12 @@ export function chatRoutes(
   })
 
   router.get('/sessions', (_req, res) => {
-    res.json({ sessions: transcripts.listSessions() })
+    res.json({ sessions: transcripts.listSessions(projectOf(res)) })
   })
 
   router.post('/sessions', (req, res) => {
     const title = typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New conversation'
-    const session = transcripts.createSession(runner.newSessionId(), title, new Date().toISOString())
+    const session = transcripts.createSession(runner.newSessionId(), projectOf(res), title, new Date().toISOString())
     res.status(201).json({ session })
   })
 
@@ -64,13 +72,17 @@ export function chatRoutes(
   })
 
   router.delete('/sessions/:id', (req, res) => {
+    if (!owned(res, transcripts.getSession(req.params.id))) {
+      res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
+      return
+    }
     transcripts.deleteSession(req.params.id)
     res.json({ ok: true })
   })
 
   router.get('/sessions/:id/events', (req, res) => {
     const session = transcripts.getSession(req.params.id)
-    if (!session) {
+    if (!owned(res, session)) {
       res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
       return
     }
@@ -88,7 +100,7 @@ export function chatRoutes(
 
   router.post('/sessions/:id/messages', (req, res) => {
     const session = transcripts.getSession(req.params.id)
-    if (!session) {
+    if (!owned(res, session)) {
       res.status(404).json({ error: `No conversation with id "${req.params.id}".` })
       return
     }
@@ -135,7 +147,7 @@ export function chatRoutes(
 
   router.get('/sessions/:id/stream', (req, res) => {
     const sessionId = req.params.id
-    if (!transcripts.getSession(sessionId)) {
+    if (!owned(res, transcripts.getSession(sessionId))) {
       res.status(404).json({ error: `No conversation with id "${sessionId}".` })
       return
     }

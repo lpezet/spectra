@@ -9,14 +9,10 @@ import type {
   Term,
 } from '@spectra/core'
 
-/**
- * Every project-scoped call goes under /api/orgs/<org>/projects/<projectId>. The browser does not
- * know those ids until it asks — {@link fetchContext} is the un-prefixed bootstrap that tells it —
- * so the base starts unset and {@link configureProject} fills it in before the first glossary fetch.
- * A call made before configuration would hit a bare, unmounted path and 404, which is the intended
- * loud failure rather than a silent wrong-project read.
- */
-let apiBase = '/api/orgs/local/projects/unconfigured'
+// The project prefix lives in apiBase; re-exported so callers still import it from here. fetchContext
+// stays the un-prefixed bootstrap that tells the browser which org/project to configure.
+export { configureProject } from './apiBase.js'
+import { apiPath } from './apiBase.js'
 
 export interface Context {
   org: string
@@ -27,11 +23,6 @@ export interface Context {
 /** Read once at startup, before any glossary call, to learn which org/project this UI is for. */
 export function fetchContext(): Promise<Context> {
   return get<Context>('/api/context')
-}
-
-/** Point every subsequent project-scoped call at this org/project. Call before loading the glossary. */
-export function configureProject(org: string, projectId: string): void {
-  apiBase = `/api/orgs/${encodeURIComponent(org)}/projects/${encodeURIComponent(projectId)}`
 }
 
 export interface Glossary {
@@ -68,19 +59,19 @@ async function get<T>(url: string): Promise<T> {
 }
 
 export function fetchProject(): Promise<ProjectInfo> {
-  return get<ProjectInfo>(`${apiBase}/project`)
+  return get<ProjectInfo>(apiPath(`/project`))
 }
 
 export function fetchGlossary(): Promise<Glossary> {
-  return get<Glossary>(`${apiBase}/terms`)
+  return get<Glossary>(apiPath(`/terms`))
 }
 
 export function fetchChangesets(): Promise<ChangesetFeed> {
-  return get<ChangesetFeed>(`${apiBase}/changesets`)
+  return get<ChangesetFeed>(apiPath(`/changesets`))
 }
 
 export function fetchQuestions(): Promise<QuestionFeed> {
-  return get<QuestionFeed>(`${apiBase}/questions`)
+  return get<QuestionFeed>(apiPath(`/questions`))
 }
 
 /**
@@ -93,7 +84,7 @@ export function fetchQuestions(): Promise<QuestionFeed> {
  * number could only ever describe the world before the change.
  */
 export function fetchExpectations(): Promise<ExpectationFeed> {
-  return get<ExpectationFeed>(`${apiBase}/expectations`)
+  return get<ExpectationFeed>(apiPath(`/expectations`))
 }
 
 export interface CommitOutcome {
@@ -127,7 +118,7 @@ export function applyChangeset(
   opIndices: number[],
   acknowledgeWarnings: boolean,
 ): Promise<CommitOutcome> {
-  return post(`${apiBase}/changesets/${encodeURIComponent(id)}/apply`, {
+  return post(apiPath(`/changesets/${encodeURIComponent(id)}/apply`), {
     opIndices,
     acknowledgeWarnings,
   })
@@ -135,11 +126,11 @@ export function applyChangeset(
 
 /** Records that code has been written for an applied changeset. */
 export function markImplemented(id: string): Promise<CommitOutcome> {
-  return post(`${apiBase}/changesets/${encodeURIComponent(id)}/implemented`, {})
+  return post(apiPath(`/changesets/${encodeURIComponent(id)}/implemented`), {})
 }
 
 export function rejectChangeset(id: string): Promise<CommitOutcome> {
-  return post(`${apiBase}/changesets/${encodeURIComponent(id)}/reject`, {})
+  return post(apiPath(`/changesets/${encodeURIComponent(id)}/reject`), {})
 }
 
 export interface AnswerOutcome extends CommitOutcome {
@@ -150,7 +141,7 @@ export interface AnswerOutcome extends CommitOutcome {
 }
 
 export function answerQuestion(id: string, chose: string | null, note: string): Promise<AnswerOutcome> {
-  return post(`${apiBase}/questions/${encodeURIComponent(id)}/answer`, { chose, note })
+  return post(apiPath(`/questions/${encodeURIComponent(id)}/answer`), { chose, note })
 }
 
 export interface RaiseOutcome {
@@ -186,7 +177,7 @@ export function checkExpectation(
   draft: ExpectationDraft,
   superseding?: string,
 ): Promise<CheckReport> {
-  return post<CheckReport>(`${apiBase}/expectations/check`, {
+  return post<CheckReport>(apiPath(`/expectations/check`), {
     ...draft,
     ...(superseding ? { superseding } : {}),
   })
@@ -204,12 +195,12 @@ export function raiseExpectation(
   draft: ExpectationDraft,
   contested: CheckReport['findings'] = [],
 ): Promise<RaiseOutcome> {
-  return post<RaiseOutcome>(`${apiBase}/expectations`, { ...draft, pass: 'usage', contested })
+  return post<RaiseOutcome>(apiPath(`/expectations`), { ...draft, pass: 'usage', contested })
 }
 
 /** Re-reads a live expectation against the specs as they are now, and rewrites its clashes. */
 export function recheckExpectation(id: string): Promise<RaiseOutcome> {
-  return post<RaiseOutcome>(`${apiBase}/expectations/${encodeURIComponent(id)}/recheck`, {})
+  return post<RaiseOutcome>(apiPath(`/expectations/${encodeURIComponent(id)}/recheck`), {})
 }
 
 export interface SupersedeOutcome {
@@ -229,7 +220,7 @@ export function supersedeExpectation(
   note: string,
   replacement: ExpectationDraft | null,
 ): Promise<SupersedeOutcome> {
-  return post<SupersedeOutcome>(`${apiBase}/expectations/${encodeURIComponent(id)}/supersede`, {
+  return post<SupersedeOutcome>(apiPath(`/expectations/${encodeURIComponent(id)}/supersede`), {
     note,
     ...(replacement ? { replacement } : {}),
   })
