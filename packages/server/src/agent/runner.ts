@@ -16,7 +16,7 @@ import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
 import type { TranscriptStore } from '../transcripts.js'
 import type { SpecStoreBackend } from '../backend.js'
 import type { AgentProvider } from './agentProvider.js'
-import { CODER_URL, probeSandbox } from '../sandbox.js'
+import { CODER_URL, SPEC_URL, probe } from '../sandbox.js'
 import type { AgentName } from './agents.js'
 import { qualified, toolsFor } from './tools.js'
 
@@ -53,7 +53,7 @@ export class AgentRunner {
    * Approvals owned by the sandbox rather than by a promise in this process. The card looks
    * identical from the UI; the difference is where the decision has to be delivered.
    */
-  private readonly remoteApprovals = new Map<string, string>()
+  private readonly remoteApprovals = new Map<string, { sessionId: string; url: string }>()
   /**
    * Sessions where the human has said not to ask, by session id.
    *
@@ -150,15 +150,22 @@ export class AgentRunner {
     }
 
     this.active.add(key)
-    // @coder runs in the sandbox when there is one. @spec never does — it has no filesystem
-    // and no shell, so there is nothing to contain.
-    const start = to === 'coder' && CODER_URL ? this.relay(sessionId, prompt) : this.run(sessionId, prompt, to)
+    // An agent with a configured runtime URL is relayed to it; otherwise it runs in-process. Both
+    // agents work the same way — @coder has always had CODER_URL, @spec now has SPEC_URL — so which
+    // side a turn runs on is a deployment choice, not a property baked into the agent.
+    const url = this.urlFor(to)
+    const start = url ? this.relay(sessionId, prompt, to, url) : this.run(sessionId, prompt, to)
     void start.finally(() => {
       this.active.delete(key)
       this.events(sessionId).emit('event', { kind: 'done' } satisfies RunnerEvent)
     })
 
     return { ok: true }
+  }
+
+  /** The runtime URL for an agent, or null to run it in-process. The one place the mapping lives. */
+  private urlFor(to: AgentName): string | null {
+    return to === 'coder' ? CODER_URL : to === 'spec' ? SPEC_URL : null
   }
 
   private async run(sessionId: string, prompt: string, to: AgentName): Promise<void> {
@@ -292,45 +299,43 @@ export class AgentRunner {
   }
 
   /**
-   * The same turn, run in the sandbox instead of here.
+   * The same turn, run in `to`'s out-of-process runtime instead of here — @coder's sandbox, or
+   * @spec's own runtime once one is configured. The runtime holds no history on purpose, so this
+   * is not a handoff, it is a relay: every event it streams is written to the same transcript rows
+   * the in-process path writes, which is why the UI needs no idea which side ran the turn.
    *
-   * The container holds no history on purpose, so this is not a handoff — it is a relay.
-   * Every event that arrives is written to the same transcript rows the in-process path
-   * writes, which is why the UI needs no idea which side ran the turn.
-   *
-   * There is no fallback. If the sandbox is configured and unreachable, the turn does not
-   * run. Quietly running unsandboxed under a UI that says "sandboxed" would be worse than
-   * both options it sits between: you would think you had a boundary and you would not.
-   * (An *unset* CODER_URL is a different thing — a deliberate choice to run without a
-   * sandbox at all, which `send` routes to `run` and /api/sandbox reports honestly.)
+   * There is no fallback. If a runtime is configured (a URL is set) and unreachable, the turn does
+   * not run. For @coder that is a boundary: quietly running unsandboxed under a UI that says
+   * "sandboxed" would be worse than not running. For @spec it is just honesty — you asked for a
+   * runtime, so a down one is an error, not a silent fall back into this process. An *unset* URL is
+   * the different, deliberate choice to run in-process, which `send` routes to `run`.
    */
-  private async relay(sessionId: string, prompt: string): Promise<void> {
-    const to: AgentName = 'coder'
+  private async relay(sessionId: string, prompt: string, to: AgentName, url: string): Promise<void> {
     const openCalls = new Set<string>()
     const controller = new AbortController()
 
-    const status = await probeSandbox()
-    if (!status.reachable) {
+    const reach = await probe(url)
+    if (!reach.reachable) {
       this.record(sessionId, {
         author: to,
         kind: 'error',
-        text: `The @coder sandbox at ${CODER_URL} is not reachable${status.error ? ` (${status.error})` : ''}. Nothing ran — start it with \`docker compose up -d\`. There is deliberately no fallback: running unsandboxed while the UI says otherwise is worse than not running.`,
+        text: `@${to}'s runtime at ${url} is not reachable${reach.error ? ` (${reach.error})` : ''}. Nothing ran — start it, or unset its URL to run in-process. There is deliberately no silent fallback.`,
       })
       return
     }
 
     try {
-      // Open the stream before sending the turn. The container's emitter does not buffer,
+      // Open the stream before sending the turn. The runtime's emitter does not buffer,
       // so anything it publishes before this listener attaches is simply gone — and the
       // first tool call arrives fast enough for that to be a real race, not a theoretical.
-      const stream = await fetch(`${CODER_URL}/sessions/${sessionId}/stream`, {
+      const stream = await fetch(`${url}/sessions/${sessionId}/stream`, {
         signal: controller.signal,
       })
       if (!stream.ok || !stream.body) {
-        throw new Error(`The sandbox would not open a stream (${stream.status}).`)
+        throw new Error(`The runtime would not open a stream (${stream.status}).`)
       }
 
-      const turn = await fetch(`${CODER_URL}/sessions/${sessionId}/turn`, {
+      const turn = await fetch(`${url}/sessions/${sessionId}/turn`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         // Sent per turn rather than set on the container, so the sandbox never holds its own
@@ -338,7 +343,7 @@ export class AgentRunner {
         body: JSON.stringify({ prompt, unattended: this.unattended.has(sessionId) }),
       })
       if (!turn.ok) {
-        throw new Error(`The sandbox refused the turn (${turn.status}): ${await turn.text()}`)
+        throw new Error(`The runtime refused the turn (${turn.status}): ${await turn.text()}`)
       }
 
       for await (const event of readEvents(stream.body)) {
@@ -369,8 +374,9 @@ export class AgentRunner {
           this.events(sessionId).emit('event', { kind: 'update', toolCallId: id } satisfies RunnerEvent)
         } else if (event.kind === 'approval') {
           const approvalId = String(event.approvalId)
-          // Recorded here, decided here, delivered back over HTTP by `decide`.
-          this.remoteApprovals.set(approvalId, sessionId)
+          // Recorded here, decided here, delivered back over HTTP by `decide` — to this runtime's
+          // url, so a decision always returns to the runtime that is actually blocked on it.
+          this.remoteApprovals.set(approvalId, { sessionId, url })
           this.record(sessionId, {
             author: to,
             kind: 'approval',
@@ -442,11 +448,11 @@ export class AgentRunner {
       }
     }
 
-    const status = await probeSandbox()
-    if (!status.reachable) {
+    const reach = await probe(CODER_URL)
+    if (!reach.reachable) {
       return {
         ok: false,
-        error: `The sandbox is not reachable${status.error ? ` (${status.error})` : ''}, so nothing can run unattended. Start it with \`docker compose up -d\`.`,
+        error: `The sandbox is not reachable${reach.error ? ` (${reach.error})` : ''}, so nothing can run unattended. Start it with \`docker compose up -d\`.`,
       }
     }
 
@@ -477,14 +483,14 @@ export class AgentRunner {
       return true
     }
 
-    // Not ours: a run blocked inside the sandbox, waiting on this decision over HTTP.
-    const sessionId = this.remoteApprovals.get(approvalId)
-    if (sessionId === undefined) return false
+    // Not ours: a run blocked inside a relayed runtime, waiting on this decision over HTTP.
+    const remote = this.remoteApprovals.get(approvalId)
+    if (remote === undefined) return false
 
     // Deliver first, record second. Settling the transcript for a decision that never
     // arrived would leave the row saying "allowed" beside an agent still sitting on the
     // question — the one inconsistency worth ordering the code around.
-    const response = await fetch(`${CODER_URL}/approvals/${approvalId}`, {
+    const response = await fetch(`${remote.url}/approvals/${approvalId}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ decision: allow ? 'allow' : 'deny', note }),
@@ -494,7 +500,7 @@ export class AgentRunner {
 
     this.remoteApprovals.delete(approvalId)
     this.transcripts.settleApproval(approvalId, allow ? 'allow' : 'deny', note)
-    this.events(sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
+    this.events(remote.sessionId).emit('event', { kind: 'approval', approvalId } satisfies RunnerEvent)
     return true
   }
 
