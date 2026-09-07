@@ -1,13 +1,17 @@
 /**
- * Raising a question — the one write an agent is allowed to make against `specs/`.
+ * Raising a question — the one write an agent is allowed to make against the glossary, over the
+ * {@link SpecStore} seam.
  *
- * Safe by construction: a question changes no term and applies no op. It is a request for a
- * decision, and every path out of it (answering, then reviewing the changeset it mints) still
- * runs through the human. That is why this needs no approval prompt while `proposeChangeset` will.
+ * Like {@link proposeChangeset}, it lives in `@spectra/core` because it is pure and both the open
+ * server and an out-of-repo backend must raise a question identically — one operation, one meaning.
+ *
+ * Safe by construction: a question changes no term and applies no op. It is a request for a decision,
+ * and every path out of it (answering, then reviewing the changeset it mints) still runs through the
+ * human. That is why this needs no approval prompt while `proposeChangeset` will.
  */
-import { parseQuestion } from '@spectra/core'
-import type { Author, Proposal, Question, QuestionOption, RecordStatus } from '@spectra/core'
-import type { SpecStore } from '@spectra/core'
+import { parseQuestion } from './schema.js'
+import type { Author, Proposal, Question, QuestionOption, RecordStatus } from './types.js'
+import type { SpecStore } from './specStore.js'
 
 export interface RaiseRequest {
   asks: string
