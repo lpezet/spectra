@@ -46,6 +46,13 @@ export interface Session {
   id: string
   /** The project this conversation belongs to. Sessions are listed and reached per project. */
   projectId: string
+  /**
+   * The user who owns this conversation, or `null` for an unattributed one. Sessions are per-user:
+   * a hosted deployment stamps the authenticated user here and lists each user only their own. On a
+   * single-user install there is no account, so it is `null` and listing is not narrowed — the owner
+   * of the durable record (who edited the glossary) lives on the changeset's `author.user`, not here.
+   */
+  ownerId: string | null
   title: string
   createdAt: string
   updatedAt: string
@@ -61,10 +68,11 @@ export interface NewEvent {
 }
 
 export interface TranscriptStore {
-  createSession(id: string, projectId: string, title: string, now: string): Promise<Session>
+  createSession(id: string, projectId: string, ownerId: string | null, title: string, now: string): Promise<Session>
   renameSession(id: string, title: string, now: string): Promise<void>
   getSession(id: string): Promise<Session | null>
-  listSessions(projectId: string, limit?: number): Promise<Session[]>
+  /** Sessions for a project, newest first. `ownerId` narrows to one user's; omit it for all of them. */
+  listSessions(projectId: string, ownerId?: string, limit?: number): Promise<Session[]>
   append(sessionId: string, event: NewEvent, now: string): Promise<number>
   settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): Promise<void>
   readApproval(approvalId: string): Promise<TranscriptEvent | null>
