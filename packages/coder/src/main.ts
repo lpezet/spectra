@@ -57,7 +57,10 @@ const MCP_URL = `${SERVER_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
 // defaulting.
 const MODE = process.env.MODE ?? 'serve'
 
-const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL })
+// The same device token that authenticates the attach WebSocket also authenticates the runtime's
+// glossary (MCP) calls, so a hosted coordinator resolves the user and stamps the write. Unset in the
+// sandbox, where the Server trusts the network.
+const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL, authToken: process.env.DEVICE_TOKEN })
 
 if (MODE === 'attach') {
   const url = process.env.COORDINATOR_URL
