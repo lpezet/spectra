@@ -43,6 +43,12 @@ export interface EngineOptions {
   appDir: string
   /** The Server's per-project MCP endpoint this runtime's profile fetch and tool calls act on. */
   mcpUrl: string
+  /**
+   * A bearer token sent on the profile fetch and every MCP tool call, when set. In the sandbox the
+   * Server trusts the network and this is unset; a hosted coordinator authenticates each call with it
+   * (the device token) to resolve the user, so a write is attributed to the human who ran the turn.
+   */
+  authToken?: string
   /** How long a pending approval waits before it gives up, so a run cannot hang forever. */
   approvalTimeoutMs?: number
 }
@@ -93,8 +99,11 @@ export function createEngine(opts: EngineOptions): Engine {
     channel(sessionId).emit('event', event)
   }
 
+  /** The auth header sent with the profile fetch and MCP calls, or none when no token is configured. */
+  const authHeaders: Record<string, string> = opts.authToken ? { Authorization: `Bearer ${opts.authToken}` } : {}
+
   async function profile(): Promise<Profile> {
-    const response = await fetch(`${opts.mcpUrl}/profile`, { signal: AbortSignal.timeout(5_000) })
+    const response = await fetch(`${opts.mcpUrl}/profile`, { signal: AbortSignal.timeout(5_000), headers: authHeaders })
     if (!response.ok) throw new Error(`The spec tool answered ${response.status} for the agent profile.`)
     return (await response.json()) as Profile
   }
@@ -169,8 +178,9 @@ export function createEngine(opts: EngineOptions): Engine {
         prompt,
         options: {
           // Over HTTP to the spec tool, not in-process. One definition of these tools exists
-          // and it lives with the files they touch.
-          mcpServers: { blueprints: { type: 'http', url: opts.mcpUrl } },
+          // and it lives with the files they touch. The auth header (when set) rides every tool
+          // call so a hosted coordinator can attribute the write to the user who ran the turn.
+          mcpServers: { blueprints: { type: 'http', url: opts.mcpUrl, ...(opts.authToken ? { headers: authHeaders } : {}) } },
           tools: who.builtins,
           // Reads run freely; anything that changes a file or runs a command is not here,
           // which is what routes it through canUseTool and out to the approval card.
