@@ -19,11 +19,9 @@ import type { Author, Changeset, PendingItem, Question, Term } from '@spectra/co
 import { markImplemented } from '../commit.js'
 import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
-import { proposeChangeset } from '../propose.js'
-import { raiseQuestion } from '../raise.js'
+import { proposeChangeset, raiseQuestion } from '@spectra/core'
 import { raiseExpectation } from '../expectations.js'
-import type { RaiseRequest } from '../raise.js'
-import type { ProposeRequest } from '../propose.js'
+import type { RaiseRequest, ProposeRequest } from '@spectra/core'
 import type { SpecStore } from '@spectra/core'
 import type { TranscriptStore } from '@spectra/core'
 

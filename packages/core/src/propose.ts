@@ -1,14 +1,19 @@
 /**
- * Minting a changeset from the chat.
+ * Minting a changeset — the canonical write, over the {@link SpecStore} seam.
  *
- * Safe for the same reason `raiseQuestion` is: a changeset lands in the pending queue and
- * changes *nothing*. It still has to be reviewed and applied through the same panel, with the
- * same diff preview and conflict detection. "Writes a file" is not "changes the glossary", so
- * this needs no approval prompt of its own — the approval already exists downstream.
+ * It lives in `@spectra/core` for the same reason the seam interfaces do: it is pure (it validates a
+ * request and writes through the store, with no server, filesystem, or SDK dependency), and both the
+ * open server and an out-of-repo backend need to propose *identically*. Keeping it beside the seam is
+ * what makes "propose a changeset" one operation with one meaning, whichever process runs it.
+ *
+ * Safe for the same reason `raiseQuestion` is: a changeset lands in the pending queue and changes
+ * *nothing*. It still has to be reviewed and applied through the same panel, with the same diff
+ * preview and conflict detection. "Writes a file" is not "changes the glossary", so this needs no
+ * approval prompt of its own — the approval already exists downstream.
  */
-import { parseChangeset } from '@spectra/core'
-import type { Author, Changeset, Op } from '@spectra/core'
-import type { SpecStore } from '@spectra/core'
+import { parseChangeset } from './schema.js'
+import type { Author, Changeset, Op } from './types.js'
+import type { SpecStore } from './specStore.js'
 
 export interface ProposeRequest {
   summary: string
