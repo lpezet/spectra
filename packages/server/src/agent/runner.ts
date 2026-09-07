@@ -183,7 +183,9 @@ export class AgentRunner {
       name: 'blueprints',
       version: '1.0.0',
       // The agent's own identity, stamped on anything it writes — `to` is 'spec' or 'coder'.
-      tools: toolsFor(store, this.transcripts, { kind: to }, agent.domainTools),
+      // ToolDef is the SDK's SdkMcpToolDefinition minus the optional `_meta`; the cast bridges the
+      // two structurally identical shapes (the tools carry no _meta).
+      tools: toolsFor(store, this.transcripts, { kind: to }, agent.domainTools) as Parameters<typeof createSdkMcpServer>[0]['tools'],
     })
 
     const key = `${sessionId}:${to}`
