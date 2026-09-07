@@ -1,15 +1,26 @@
 /**
- * Answering a question. Two things happen and both matter: the answer is written back into the
- * question, where it stays as the record of *why* the glossary says what it says, and the
- * chosen option's proposal is minted into the pending changeset queue, where it goes through
- * the same review the human already has.
+ * Answering a question, over the {@link SpecStore} seam.
  *
- * Note what does not happen: nothing is applied. Answering a question decides the intent;
- * applying the changeset it produces is still a separate, deliberate act.
+ * Two things happen and both matter: the answer is written back into the question, where it stays as
+ * the record of *why* the glossary says what it says, and the chosen option's proposal is minted into
+ * the pending changeset queue, where it goes through the same review the human already has. Nothing is
+ * applied — answering decides the intent; applying the changeset it produces is a separate act.
+ *
+ * Pure, so it lives in core beside the seam — every coordinator answers identically.
  */
-import type { Answer, Author, Changeset } from '@spectra/core'
-import { slug } from './files.js'
-import type { SpecStore } from '@spectra/core'
+import type { Answer, Author, Changeset } from './types.js'
+import type { SpecStore } from './specStore.js'
+
+/** A short, filename-safe id fragment from an option label. Inlined so this stays free of I/O deps. */
+function slug(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'option'
+  )
+}
 
 export type AnswerOutcome =
   | { ok: false; status: 404; error: string }

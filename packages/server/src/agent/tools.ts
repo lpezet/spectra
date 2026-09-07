@@ -16,10 +16,10 @@ import { z } from 'zod'
 import { defineTool, pick, pureTools, qualified, say, withVersion } from '@spectra/agent-tools'
 import type { ToolDef } from '@spectra/agent-tools'
 import type { Author, SpecStore, TranscriptStore } from '@spectra/core'
-import { markImplemented } from '../commit.js'
+import { markImplemented } from '@spectra/core'
 import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
-import { raiseExpectation } from '../expectations.js'
+import { raiseExpectation } from '@spectra/core'
 
 export { qualified }
 

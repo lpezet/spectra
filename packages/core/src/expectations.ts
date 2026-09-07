@@ -1,26 +1,19 @@
 /**
- * Writing expectations, governed asymmetrically — and the asymmetry is the design.
+ * Writing expectations, over the {@link SpecStore} seam — governed asymmetrically, and the asymmetry
+ * is the design.
  *
- * **Adding is free.** A new expectation changes no term, applies no op, and cannot alter what
- * the app does. The most it can do is turn a check red, which is the direction that reveals a
- * defect rather than hiding one. That makes it safe by construction in exactly the sense
- * `raiseQuestion` is, and it is what lets an expectation be captured the moment someone notices
- * it while *using* the thing — a moment that does not survive a review queue.
+ * **Adding is free.** A new expectation changes no term and cannot alter what the app does; the most
+ * it can do is turn a check red, which reveals a defect rather than hiding one — safe by construction,
+ * the way `raiseQuestion` is. **Weakening is reviewed.** Superseding replaces a statement someone
+ * relies on — the one move that can turn a red check green without touching code — so it does not
+ * happen in place: the old expectation keeps its id, gains `supersededBy`, and moves to retired.
  *
- * **Weakening is reviewed.** Superseding replaces a statement someone is relying on, and it is
- * the one move that can turn a red check green without touching a line of code. So it does not
- * happen in place: the old expectation keeps its id, gains `supersededBy`, and moves to
- * `retired/`, the same way a changeset moves to `applied/`. Three things follow — a test named
- * `e-014` still resolves, the reason survives, and the dangerous direction leaves an artifact
- * in the history that is already being reviewed.
- *
- * Neither of these is offered to `@coder` as a supersession tool. Raising one is; retiring one
- * is a human act, because "this expectation was wrong" is a product judgement and the agent
- * that would most like to make it is the one whose code just failed it.
+ * Pure (the semantic re-check is *injected*, never called here), so it lives in core beside the seam:
+ * every coordinator raises, publishes, rechecks and supersedes identically.
  */
-import { parseExpectation } from '@spectra/core'
-import type { Author, Clash, Expectation, ExpectationKind, RecordStatus } from '@spectra/core'
-import type { MutationResult, SpecStore } from '@spectra/core'
+import { parseExpectation } from './schema.js'
+import type { Author, Clash, Expectation, ExpectationKind, RecordStatus } from './types.js'
+import type { MutationResult, SpecStore } from './specStore.js'
 
 export interface RaiseExpectationRequest {
   kind: ExpectationKind
@@ -33,11 +26,9 @@ export interface RaiseExpectationRequest {
   /** Draft or published. Absent means `ready` — agents omit it; a human may save a draft. */
   status?: RecordStatus
   /**
-   * What the check found and the author went ahead regardless.
-   *
-   * Carried on the write rather than recomputed here. The check is a separate call — a caller
-   * that already decided should not pay for a second model round trip — and recomputing would
-   * also mean a draft could be accepted against one glossary and stored against another.
+   * What the check found and the author went ahead regardless. Carried on the write rather than
+   * recomputed here — the check is a separate call, and recomputing would let a draft be accepted
+   * against one glossary and stored against another.
    */
   contested?: Clash[]
 }
@@ -47,11 +38,7 @@ export type ExpectationOutcome =
   | { ok: true; id: string; file: string; expectation: Expectation }
 
 /** Maps a store mutation onto an ExpectationOutcome — not-found → 404, a stale rev → 409. */
-function fromMutation(
-  id: string,
-  result: MutationResult,
-  written: Expectation,
-): ExpectationOutcome {
+function fromMutation(id: string, result: MutationResult, written: Expectation): ExpectationOutcome {
   if (result.ok) return { ok: true, id, file: result.at, expectation: { ...written, rev: result.rev } }
   if (result.reason === 'not-found') return { ok: false, error: `No live expectation "${id}".`, status: 404 }
   return {
@@ -97,13 +84,8 @@ export async function raiseExpectation(
 }
 
 /**
- * Publish a draft expectation — draft → ready.
- *
- * A draft counts toward nothing while it is a draft; publishing is the act that puts it into
- * coverage and the versioned contract and shows it to the agents. Rewrites in place (a draft
- * already lives in the same directory as a published one — only its status differs), so it
- * keeps its id and its file. Idempotent: publishing an already-ready expectation just restamps
- * it `ready`.
+ * Publish a draft expectation — draft → ready. A draft counts toward nothing; publishing puts it into
+ * coverage and the versioned contract. Rewrites in place, keeping its id and file. Idempotent.
  */
 export async function publishExpectation(
   store: SpecStore,
@@ -118,17 +100,10 @@ export async function publishExpectation(
 }
 
 /**
- * Re-reads a live expectation against the specs as they are now, and rewrites what it clashes
- * with.
- *
- * `contested` is a snapshot of a disagreement, and the specs move underneath it. When q-009 was
- * answered, unarchiveProject's spec was rewritten and e-011 was left quoting a sentence that no
- * longer exists anywhere — still flagged, still out of coverage, and now for a reason nobody
- * could check. @coder found that and correctly refused to act on it.
- *
- * Rewriting rather than clearing is the point. A clash that is gone should disappear, and one
- * that has merely *changed* should say what it clashes with now. It never retires anything: if
- * the disagreement survives, the expectation stays live and contested and a human decides.
+ * Re-reads a live expectation against the specs as they are now, and rewrites what it clashes with.
+ * The `check` is injected — a coordinator provides how a clash is found (a model pass, or the core
+ * checks only). It never retires anything: if the disagreement survives, the expectation stays live
+ * and contested and a human decides.
  */
 export async function recheckExpectation(
   store: SpecStore,
@@ -160,11 +135,8 @@ export type SupersedeOutcome =
   | { ok: true; retired: string; replacement: Expectation | null }
 
 /**
- * Retire an expectation, optionally replacing it.
- *
- * The replacement is written first and the original moved second. If the process dies between
- * the two, the result is a duplicate-looking pair rather than a gap — an expectation stated
- * twice is noise someone will notice, and one silently missing is the failure that matters.
+ * Retire an expectation, optionally replacing it. The replacement is written first and the original
+ * moved second, so a crash between them leaves a duplicate-looking pair rather than a gap.
  */
 export async function supersedeExpectation(
   store: SpecStore,
@@ -181,11 +153,7 @@ export async function supersedeExpectation(
   if (request.replacement) {
     const raised = await raiseExpectation(
       store,
-      {
-        ...request.replacement,
-        pass: request.replacement.pass ?? 'supersedes',
-        from: id,
-      },
+      { ...request.replacement, pass: request.replacement.pass ?? 'supersedes', from: id },
       author,
     )
     if (!raised.ok) return { ok: false, error: raised.error, status: raised.status ?? 400 }
@@ -198,8 +166,6 @@ export async function supersedeExpectation(
     retiredBecause: request.note,
   }
 
-  // A stale rev leaves the replacement written but the original un-retired — a duplicate-looking
-  // pair, which is exactly the failure the replacement-first order already tolerates over a gap.
   const moved = await store.retireExpectation(id, retired, expectedRev)
   if (!moved.ok) {
     if (moved.reason === 'not-found') return { ok: false, error: `No live expectation "${id}".`, status: 404 }

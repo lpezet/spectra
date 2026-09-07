@@ -4,7 +4,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import type { Author } from '@spectra/core'
-import { publishExpectation, raiseExpectation, supersedeExpectation } from './expectations.js'
+import { publishExpectation, raiseExpectation, supersedeExpectation } from '@spectra/core'
 
 const BY: Author = { kind: 'human' }
 

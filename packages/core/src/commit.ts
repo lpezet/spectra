@@ -1,15 +1,15 @@
 /**
- * Committing a changeset. The engine in @spectra/core decides *what* the glossary should become
- * and this re-validates that server-side against the glossary as it is *now* — the files may
- * have been hand-edited since the client last read them. The persistence — which files change,
- * and the atomic move to `applied/` — belongs to the store.
+ * Committing a changeset — the review write, over the {@link SpecStore} seam.
+ *
+ * The engine here decides *what* the glossary should become and re-validates that against the
+ * glossary as it is *now* — the source may have been hand-edited since the client last read it. The
+ * persistence — which entries change, and the atomic move to applied — belongs to the store. It lives
+ * in `@spectra/core`, beside the seam, so every coordinator applies, marks, and rejects identically
+ * (the same reason `proposeChangeset`/`raiseQuestion` do).
  */
-import { applyOps } from '@spectra/core'
-import type { Diagnostic } from '@spectra/core'
-import type { SpecStore } from '@spectra/core'
-
-// termFileName used to live here; kept re-exported from its new home so importers are unmoved.
-export { termFileName } from './serialize.js'
+import { applyOps } from './changeset.js'
+import type { Diagnostic } from './types.js'
+import type { SpecStore } from './specStore.js'
 
 export type CommitOutcome =
   | { ok: false; status: 404; error: string }
@@ -89,7 +89,7 @@ export async function applyChangeset(
     }
   }
 
-  // The applied ops move to applied/; anything left unselected stays pending, so a cherry-pick
+  // The applied ops move to applied; anything left unselected stays pending, so a cherry-pick
   // never silently discards the ops the human did not accept.
   const appliedOps = indices.map((index) => changeset.ops[index]!)
   const remainingOps = changeset.ops.filter((_, index) => !indices.includes(index))
@@ -114,11 +114,9 @@ export async function applyChangeset(
 }
 
 /**
- * Records that code has been written for an applied changeset.
- *
- * A stopgap: the human presses a button after re-running the implementation pass. The right
- * owner is the coder agent, which knows exactly when a pass finished and which changesets it
- * read — this is the first tool it should get.
+ * Records that code has been written for an applied changeset — the human presses a button after
+ * re-running the implementation pass. (The agent's own `mark_implemented` tool guards this with a
+ * snapshot version; this human path just records it.)
  */
 export async function markImplemented(
   store: SpecStore,
