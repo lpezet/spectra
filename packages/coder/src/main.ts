@@ -11,12 +11,15 @@
  * should not be where anything is kept.
  *
  * This file is now only wiring: read the environment, build the engine, and start a transport. The
- * loop and the HTTP surface live in {@link ./engine.ts} and {@link ./httpTransport.ts}; splitting
- * them is what lets a second transport — a runtime that dials out to a hosted coordinator it cannot
- * be reached from — drive the identical engine.
+ * loop lives in {@link ./engine.ts}; the two transports in {@link ./httpTransport.ts} and
+ * {@link ./attachTransport.ts}. `MODE` picks which:
+ *   - `serve` (default) — an HTTP service a coordinator on the same network dials into. Unchanged.
+ *   - `attach` — dials *out* to a coordinator this runtime cannot be reached from (behind NAT),
+ *     over one WebSocket. Needs `COORDINATOR_URL` and a `DEVICE_TOKEN`.
  */
 import { createEngine } from './engine.js'
 import { serveHttp } from './httpTransport.js'
+import { serveAttach } from './attachTransport.js'
 
 // Which agent this runtime is. `coder` by default (back-compat); `spec` for the spec runtime.
 // It only picks which profile to fetch and which name to log — the behavior is the profile's.
@@ -49,5 +52,26 @@ const ORG = process.env.ORG ?? 'local'
 const PROJECT_ID = process.env.PROJECT_ID ?? 'todo'
 const MCP_URL = `${SERVER_URL}/mcp/orgs/${ORG}/projects/${PROJECT_ID}/${AGENT}`
 
+// serve (default): reached by a coordinator on the same network. attach: dials out to one it cannot
+// be reached from. Kept a plain string so an unknown value fails loudly below rather than silently
+// defaulting.
+const MODE = process.env.MODE ?? 'serve'
+
 const engine = createEngine({ agent: AGENT, appDir: APP_DIR, mcpUrl: MCP_URL })
-serveHttp(engine, { agent: AGENT, port: PORT, appDir: APP_DIR, glossaryUrl: MCP_URL })
+
+if (MODE === 'attach') {
+  const url = process.env.COORDINATOR_URL
+  if (!url) {
+    console.error('[%s] MODE=attach needs COORDINATOR_URL (ws:// or wss://). Exiting.', AGENT)
+    process.exit(1)
+  }
+  // Unset is an error, not an empty string: an unauthenticated attach would bind to nobody, so a
+  // missing token should fail at the coordinator rather than silently connect as no one.
+  const token = process.env.DEVICE_TOKEN ?? ''
+  serveAttach(engine, { agent: AGENT, url, token })
+} else if (MODE === 'serve') {
+  serveHttp(engine, { agent: AGENT, port: PORT, appDir: APP_DIR, glossaryUrl: MCP_URL })
+} else {
+  console.error('[%s] Unknown MODE=%s (expected "serve" or "attach"). Exiting.', AGENT, MODE)
+  process.exit(1)
+}
