@@ -7,6 +7,7 @@
   },
   "workspaces": [
     "packages/core",
+    "packages/agent-tools",
     "packages/server",
     "packages/web",
     "packages/cli"
@@ -18,12 +19,12 @@
     "dev:sandbox": "docker compose up -d --build && npm run dev:web",
     "sandbox:logs": "docker compose logs -f",
     "sandbox:down": "docker compose down",
-    "test": "npm run test -w @spectra/core && npm run test -w @spectra/server && npm run test -w @spectra/web && npm run test -w @spectra/cli",
+    "test": "npm run test -w @spectra/core && npm run test -w @spectra/agent-tools && npm run test -w @spectra/server && npm run test -w @spectra/web && npm run test -w @spectra/cli",
     "test:integration": "bash test/integration/run.sh",
     "test:integration:docker": "docker build -f test/integration/Dockerfile -t spectra-integration . && docker run --rm spectra-integration",
     "test:integration:stack": "bash test/integration/stack.sh",
     "test:install:docker": "docker build -f test/integration/Dockerfile.install -t spectra-install . && docker run --rm spectra-install",
-    "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli"
+    "typecheck": "tsc -p packages/core && tsc -p packages/agent-tools && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
