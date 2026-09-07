@@ -7,7 +7,7 @@ export function createTranscriptStore(context: TranscriptStoreContext): Transcri
   // Echoes the context's dataDir through a session id, so the test can prove it was loaded + handed one.
   return {
     createSession: noop,
-    listSessions: async () => [{ id: `from-plugin:${context.dataDir}`, projectId: 'p', title: '', createdAt: '', updatedAt: '' }],
+    listSessions: async () => [{ id: `from-plugin:${context.dataDir}`, projectId: 'p', ownerId: null, title: '', createdAt: '', updatedAt: '' }],
     append: async () => 0,
     read: async () => [],
   } as unknown as TranscriptStore

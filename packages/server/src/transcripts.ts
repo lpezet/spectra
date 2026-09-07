@@ -41,6 +41,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
   id        TEXT PRIMARY KEY,
   projectId TEXT NOT NULL DEFAULT '',
+  ownerId   TEXT,                          -- the user who owns this conversation; NULL when unattributed
   title     TEXT NOT NULL,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
@@ -95,13 +96,19 @@ export class SqliteTranscriptStore implements TranscriptStore {
     if (!sessionColumns.some((column) => column.name === 'projectId')) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN projectId TEXT NOT NULL DEFAULT ''")
     }
+    // `ownerId` arrived with per-user sessions. Existing rows have no user to attribute to (a
+    // single-user install had no account), so they stay NULL and fall outside every user's narrowed
+    // listing — the same disposable-scratch reasoning as projectId above.
+    if (!sessionColumns.some((column) => column.name === 'ownerId')) {
+      this.db.exec('ALTER TABLE sessions ADD COLUMN ownerId TEXT')
+    }
   }
 
-  async createSession(id: string, projectId: string, title: string, now: string): Promise<Session> {
+  async createSession(id: string, projectId: string, ownerId: string | null, title: string, now: string): Promise<Session> {
     this.db
-      .prepare('INSERT INTO sessions (id, projectId, title, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)')
-      .run(id, projectId, title, now, now)
-    return { id, projectId, title, createdAt: now, updatedAt: now }
+      .prepare('INSERT INTO sessions (id, projectId, ownerId, title, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, projectId, ownerId, title, now, now)
+    return { id, projectId, ownerId, title, createdAt: now, updatedAt: now }
   }
 
   async renameSession(id: string, title: string, now: string): Promise<void> {
@@ -113,10 +120,17 @@ export class SqliteTranscriptStore implements TranscriptStore {
     return row ? (row as unknown as Session) : null
   }
 
-  async listSessions(projectId: string, limit = 50): Promise<Session[]> {
+  async listSessions(projectId: string, ownerId?: string, limit = 50): Promise<Session[]> {
+    // Omitting ownerId lists every session in the project (the single-user path); passing one narrows
+    // to that user's own conversations (the hosted path).
+    if (ownerId === undefined) {
+      return this.db
+        .prepare('SELECT * FROM sessions WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?')
+        .all(projectId, limit) as unknown as Session[]
+    }
     return this.db
-      .prepare('SELECT * FROM sessions WHERE projectId = ? ORDER BY updatedAt DESC LIMIT ?')
-      .all(projectId, limit) as unknown as Session[]
+      .prepare('SELECT * FROM sessions WHERE projectId = ? AND ownerId = ? ORDER BY updatedAt DESC LIMIT ?')
+      .all(projectId, ownerId, limit) as unknown as Session[]
   }
 
   /** Appends one event and returns its id — which doubles as the replay cursor. */

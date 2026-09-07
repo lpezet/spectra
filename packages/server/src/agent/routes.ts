@@ -12,6 +12,7 @@ import { AGENT_NAMES } from './agents.js'
 import type { AgentDefinition, AgentName } from './agents.js'
 import { AgentRunner } from './runner.js'
 import type { Session, TranscriptStore } from '@spectra/core'
+import type { Principal } from '../auth.js'
 
 export function chatRoutes(
   transcripts: TranscriptStore,
@@ -22,6 +23,11 @@ export function chatRoutes(
 
   // The project comes from the mount below the glossary prefix, set on res.locals by its middleware.
   const projectOf = (res: express.Response): string => res.locals.projectId as string
+
+  // The acting user, for per-user session ownership. `undefined` on a single-user install (the local
+  // authorizer stamps no user), which lists every session and owns new ones as null; a hosted
+  // authorizer resolves a real id, so each user sees and creates only their own conversations.
+  const ownerOf = (res: express.Response): string | undefined => (res.locals.principal as Principal | undefined)?.author.user
 
   // A session reached under a different project's prefix is treated as absent: isolation enforced at
   // the edge, so a session id learned from one project cannot be read or mutated through another.
@@ -47,12 +53,12 @@ export function chatRoutes(
   })
 
   router.get('/sessions', async (_req, res) => {
-    res.json({ sessions: await transcripts.listSessions(projectOf(res)) })
+    res.json({ sessions: await transcripts.listSessions(projectOf(res), ownerOf(res)) })
   })
 
   router.post('/sessions', async (req, res) => {
     const title = typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New conversation'
-    const session = await transcripts.createSession(runner.newSessionId(), projectOf(res), title, new Date().toISOString())
+    const session = await transcripts.createSession(runner.newSessionId(), projectOf(res), ownerOf(res) ?? null, title, new Date().toISOString())
     res.status(201).json({ session })
   })
 

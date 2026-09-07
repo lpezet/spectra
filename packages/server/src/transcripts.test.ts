@@ -6,7 +6,7 @@ const PROJECT = 'todo'
 
 async function store() {
   const db = new SqliteTranscriptStore(':memory:')
-  await db.createSession('s1', PROJECT, 'Where should I start?', NOW)
+  await db.createSession('s1', PROJECT, null, 'Where should I start?', NOW)
   return db
 }
 
@@ -22,7 +22,7 @@ describe('TranscriptStore', () => {
 
   it('keeps sessions apart', async () => {
     const db = await store()
-    await db.createSession('s2', PROJECT, 'Other', NOW)
+    await db.createSession('s2', PROJECT, null, 'Other', NOW)
     await db.append('s1', { author: 'human', kind: 'user', text: 'one' }, NOW)
     await db.append('s2', { author: 'human', kind: 'user', text: 'two' }, NOW)
 
@@ -58,7 +58,7 @@ describe('TranscriptStore', () => {
 
   it('searches message text across sessions and ignores tool noise', async () => {
     const db = await store()
-    await db.createSession('s2', PROJECT, 'Other', NOW)
+    await db.createSession('s2', PROJECT, null, 'Other', NOW)
     await db.append('s1', { author: 'spec', kind: 'assistant', text: 'RecurringTask reopens at its next occurrence' }, NOW)
     await db.append('s2', { author: 'human', kind: 'user', text: 'why does deleteProject block?' }, NOW)
     await db.append('s2', { author: 'spec', kind: 'tool_call', text: 'readGlossary RecurringTask' }, NOW)
@@ -87,7 +87,7 @@ describe('TranscriptStore', () => {
 
   it('prunes stale sessions and reports how many went', async () => {
     const db = await store()
-    await db.createSession('s2', PROJECT, 'Recent', '2026-08-05T12:00:00.000Z')
+    await db.createSession('s2', PROJECT, null, 'Recent', '2026-08-05T12:00:00.000Z')
 
     expect(await db.pruneBefore('2026-08-05T11:00:00.000Z')).toBe(1)
     expect((await db.listSessions(PROJECT)).map((session) => session.id)).toEqual(['s2'])
@@ -103,7 +103,7 @@ describe('TranscriptStore', () => {
 
   it('bumps updatedAt on append, so recency ordering reflects activity', async () => {
     const db = await store()
-    await db.createSession('s2', PROJECT, 'Newer', '2026-08-05T11:00:00.000Z')
+    await db.createSession('s2', PROJECT, null, 'Newer', '2026-08-05T11:00:00.000Z')
     await db.append('s1', { author: 'human', kind: 'user', text: 'still going' }, '2026-08-05T12:00:00.000Z')
 
     expect((await db.listSessions(PROJECT)).map((session) => session.id)).toEqual(['s1', 's2'])
@@ -111,11 +111,27 @@ describe('TranscriptStore', () => {
 
   it('lists sessions per project — one DB, isolated by projectId', async () => {
     const db = await store()
-    await db.createSession('s2', 'other-project', 'Elsewhere', NOW)
+    await db.createSession('s2', 'other-project', null, 'Elsewhere', NOW)
 
     expect((await db.listSessions(PROJECT)).map((session) => session.id)).toEqual(['s1'])
     expect((await db.listSessions('other-project')).map((session) => session.id)).toEqual(['s2'])
     expect((await db.getSession('s2'))?.projectId).toBe('other-project')
+  })
+
+  it('owns sessions per user and narrows a listing to one owner', async () => {
+    const db = await store() // s1 is created with a null owner
+    await db.createSession('a1', PROJECT, 'alice', 'Alice one', NOW)
+    await db.createSession('a2', PROJECT, 'alice', 'Alice two', NOW)
+    await db.createSession('b1', PROJECT, 'bob', 'Bob one', NOW)
+
+    expect((await db.getSession('a1'))?.ownerId).toBe('alice')
+    // No owner given → every session in the project, whoever owns it (the single-user path).
+    expect((await db.listSessions(PROJECT)).map((s) => s.id).sort()).toEqual(['a1', 'a2', 'b1', 's1'])
+    // An owner given → only that user's own (the hosted path).
+    expect((await db.listSessions(PROJECT, 'alice')).map((s) => s.id).sort()).toEqual(['a1', 'a2'])
+    expect((await db.listSessions(PROJECT, 'bob')).map((s) => s.id)).toEqual(['b1'])
+    // The null-owned session is nobody's own, so a narrowed listing excludes it.
+    expect(await db.listSessions(PROJECT, 'carol')).toEqual([])
   })
 })
 
