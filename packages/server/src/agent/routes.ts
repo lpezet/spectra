@@ -11,7 +11,7 @@ import express from 'express'
 import { AGENT_NAMES } from './agents.js'
 import type { AgentDefinition, AgentName } from './agents.js'
 import { AgentRunner } from './runner.js'
-import type { Session, TranscriptStore } from '../transcripts.js'
+import type { Session, TranscriptStore } from '@spectra/core'
 
 export function chatRoutes(
   transcripts: TranscriptStore,

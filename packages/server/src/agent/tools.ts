@@ -25,7 +25,7 @@ import { raiseExpectation } from '../expectations.js'
 import type { RaiseRequest } from '../raise.js'
 import type { ProposeRequest } from '../propose.js'
 import type { SpecStore } from '@spectra/core'
-import type { TranscriptStore } from '../transcripts.js'
+import type { TranscriptStore } from '@spectra/core'
 
 /**
  * An op as the *tool* accepts it: one flat shape with an enum tag and optional fields,
