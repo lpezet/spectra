@@ -13,7 +13,7 @@
 import path from 'node:path'
 import type { ProjectInfo } from '@spectra/core'
 import { SPECS_DIR } from '../config.js'
-import type { Author } from '../transcripts.js'
+import type { AuthorKind } from '@spectra/core'
 
 const REPO = path.resolve(SPECS_DIR, '..')
 // The project the in-process (unsandboxed) @coder implements into — its cwd. Configurable via
@@ -21,7 +21,7 @@ const REPO = path.resolve(SPECS_DIR, '..')
 // (The sandboxed @coder uses its own container path instead — APP_DIR in packages/coder/src/main.ts.)
 const APP_DIR = process.env.CODER_DIR ?? path.join(REPO, 'app')
 
-export type AgentName = Extract<Author, 'spec' | 'coder'>
+export type AgentName = Extract<AuthorKind, 'spec' | 'coder'>
 
 export interface AgentDefinition {
   name: AgentName

@@ -13,7 +13,7 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { createSdkMcpServer, query } from '@anthropic-ai/claude-agent-sdk'
-import type { TranscriptStore } from '../transcripts.js'
+import type { TranscriptStore } from '@spectra/core'
 import type { SpecStoreBackend } from '../backend.js'
 import type { AgentProvider } from './agentProvider.js'
 import { CODER_URL, SPEC_URL, probe } from '../sandbox.js'

@@ -20,6 +20,7 @@ import { mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { loadPlugin } from './plugin.js'
+import type { NewEvent, Session, ToolStatus, TranscriptEvent, TranscriptStore } from '@spectra/core'
 
 /**
  * Runtime data — the transcripts DB and the export ledger — does not belong in the source
@@ -32,48 +33,9 @@ const XDG_DATA_HOME = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.loc
 export const DATA_DIR = process.env.DATA_DIR ?? path.join(XDG_DATA_HOME, 'spectra')
 export const TRANSCRIPTS_DB = process.env.TRANSCRIPTS_DB ?? path.join(DATA_DIR, 'transcripts.db')
 
-/**
- * `tool_call` rows carry a status so a run interrupted mid-flight can be reasoned about
- * later — on resume, a call left `started` may or may not have taken effect. Nothing uses
- * that yet; recording it now is what lets restart-resume be added without a migration.
- */
-export type EventKind = 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'error' | 'approval'
-export type ToolStatus = 'started' | 'completed' | 'failed'
-
-/** Who produced an event. `kind` says what it is; this says who said it. */
-export type Author = 'human' | 'spec' | 'coder'
-
-export interface TranscriptEvent {
-  id: number
-  sessionId: string
-  author: Author
-  kind: EventKind
-  /** Plain text, kept searchable. For tool events, a one-line summary. */
-  text: string | null
-  /** Structured detail as JSON — tool input/output, error causes. */
-  payload: unknown
-  toolCallId: string | null
-  status: ToolStatus | null
-  createdAt: string
-}
-
-export interface Session {
-  id: string
-  /** The project this conversation belongs to. Sessions are listed and reached per project. */
-  projectId: string
-  title: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface NewEvent {
-  author: Author
-  kind: EventKind
-  text?: string | null
-  payload?: unknown
-  toolCallId?: string | null
-  status?: ToolStatus | null
-}
+// The transcript seam (TranscriptStore) and its data shapes (Session, TranscriptEvent, NewEvent,
+// EventKind, ToolStatus) now live in @spectra/core — the stable public boundary an out-of-repo store
+// implements. This file keeps the node:sqlite backend, the plugin loader, and the on-disk defaults.
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -99,37 +61,6 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_by_session ON events (sessionId, id);
 CREATE INDEX IF NOT EXISTS events_by_tool_call ON events (toolCallId);
 `
-
-/**
- * The storage seam for transcripts — one interface, so the node:sqlite backend below can be swapped
- * for a networked store when the server is hosted, the same way {@link SpecStore} has two backends.
- * Unlike SpecStore (one instance bound to one project), this stays a single instance keyed by
- * `projectId` per call: it is held by the long-lived, singleton runner, and sessions carry
- * globally-unique ids, so only the operations that *scope* — creating and listing sessions — need
- * the project; the rest resolve a session by its id.
- *
- * Every read and write is async. The node:sqlite backend is synchronous underneath and resolves
- * immediately, but the interface awaits because a networked backend — a store that talks to a
- * database over the wire, the kind a multi-instance deploy needs — cannot answer synchronously, and
- * the interface, not one backend, is the boundary out-of-repo implementations depend on. `close` is
- * the one exception: tearing down a connection has nothing to await for a networked store.
- */
-export interface TranscriptStore {
-  createSession(id: string, projectId: string, title: string, now: string): Promise<Session>
-  renameSession(id: string, title: string, now: string): Promise<void>
-  getSession(id: string): Promise<Session | null>
-  listSessions(projectId: string, limit?: number): Promise<Session[]>
-  append(sessionId: string, event: NewEvent, now: string): Promise<number>
-  settleApproval(approvalId: string, decision: 'allow' | 'deny', note: string | null): Promise<void>
-  readApproval(approvalId: string): Promise<TranscriptEvent | null>
-  settleToolCall(toolCallId: string, status: ToolStatus, output: unknown): Promise<void>
-  readToolCall(toolCallId: string): Promise<TranscriptEvent | null>
-  read(sessionId: string, afterId?: number): Promise<TranscriptEvent[]>
-  search(query: string, limit?: number): Promise<Array<TranscriptEvent & { title: string }>>
-  deleteSession(id: string): Promise<void>
-  pruneBefore(before: string): Promise<number>
-  close(): void
-}
 
 export class SqliteTranscriptStore implements TranscriptStore {
   private readonly db: DatabaseSync

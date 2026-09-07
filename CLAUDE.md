@@ -226,6 +226,7 @@ packages/server/src/specsExport.ts    the snapshot + version (README calls this 
 packages/server/src/commit.ts         the only writer of specs/
 packages/core/src/specStore.ts        the storage seam (interface) — the stable public boundary a
                                       backend implements; lives in core so implementors need no server deps
+packages/core/src/transcriptStore.ts  the transcript seam (interface) — same, for chat history
 packages/server/src/fileSystemSpecStore.ts  FS backend — (root, projectId) → <root>/<project_id>/specs
 packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, projectId), one DB many projects
 packages/server/src/storeFactory.ts   builds a built-in store (fs|sql) from a StoreChoice
