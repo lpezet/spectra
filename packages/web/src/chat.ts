@@ -1,11 +1,16 @@
 /**
  * Chat client. The stream is the source of truth for what has happened; posting a message
  * only kicks the agent off and returns. Everything that comes back — including the echo of
- * what you just sent — arrives over SSE, so one code path renders a live turn and a
+ * what you just sent — arrives over the stream, so one code path renders a live turn and a
  * reload of an old conversation.
  *
  * Every endpoint is project-scoped — a conversation is about one project's glossary — so URLs go
  * through apiPath, the shared project prefix the glossary calls use (configured at startup).
+ *
+ * The *live* half — send, approve, and the stream — is a swappable {@link ChatTransport}. The local
+ * tool's default drives a server-run agent over SSE + POST; a host (e.g. the hosted coordinator) can
+ * install a different one via {@link setChatTransport} without touching the UI. The static calls
+ * (sessions, agents, status) are plain REST both use.
  */
 import { apiPath } from './apiBase.js'
 
@@ -69,64 +74,6 @@ export function listAgents(): Promise<{ agents: Agent[] }> {
   return json(apiPath('/chat/agents'))
 }
 
-export function sendMessage(
-  id: string,
-  text: string,
-  to: string | null,
-): Promise<{ ok: boolean; error?: string }> {
-  return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/messages`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, to }),
-  })
-}
-
-/**
- * Session state without the transcript.
- *
- * Reuses the events endpoint with a cursor past the end, so it returns the flags and an
- * empty list. `unattended` lives in the server's memory, so the browser has to ask — and a
- * server restart correctly reports it back off rather than the UI insisting it is still on.
- */
-export function fetchSessionState(id: string): Promise<{ running: boolean; unattended: boolean }> {
-  return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/events?after=${Number.MAX_SAFE_INTEGER}`))
-}
-
-/**
- * Lets @coder work without a card in this conversation.
- *
- * The server can refuse — it only permits this where there is a reachable sandbox, since
- * without one the card is the only boundary. So the answer comes back rather than being
- * assumed, and the returned `unattended` is what the UI should believe.
- */
-export function setUnattended(
-  sessionId: string,
-  enabled: boolean,
-): Promise<{ ok: boolean; error?: string; unattended: boolean }> {
-  return json(apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/unattended`), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled }),
-  })
-}
-
-/** Answers a pending approval. The agent is blocked until this returns. */
-export function decideApproval(
-  sessionId: string,
-  approvalId: string,
-  decision: 'allow' | 'deny',
-  note?: string,
-): Promise<{ ok: boolean; error?: string }> {
-  return json(
-    apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`),
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision, note }),
-    },
-  )
-}
-
 export interface StreamHandlers {
   onAppend: (event: ChatEvent) => void
   onUpdate: (event: ChatEvent) => void
@@ -136,53 +83,121 @@ export interface StreamHandlers {
 }
 
 /**
- * Opens the stream from `after`. EventSource reconnects on its own, but it would replay
- * from the same cursor, so the cursor advances here as events arrive — a reconnect then
- * resumes rather than duplicating.
+ * The live half of the chat client — everything that differs between the local tool (which drives a
+ * server-run agent over SSE + POST) and a host that reaches an agent another way. Swapped via
+ * {@link setChatTransport}. The static calls above (sessions, agents, status) are plain REST both use.
  */
-export function streamSession(id: string, after: number, handlers: StreamHandlers): () => void {
-  let cursor = after
-  let source: EventSource | null = null
-  let closed = false
-
-  const open = () => {
-    if (closed) return
-    source = new EventSource(apiPath(`/chat/sessions/${encodeURIComponent(id)}/stream?after=${cursor}`))
-
-    source.addEventListener('append', (message) => {
-      const event = JSON.parse((message as MessageEvent<string>).data) as ChatEvent
-      cursor = Math.max(cursor, event.id)
-      handlers.onAppend(event)
-    })
-
-    source.addEventListener('update', (message) => {
-      handlers.onUpdate(JSON.parse((message as MessageEvent<string>).data) as ChatEvent)
-    })
-
-    source.addEventListener('delta', (message) => {
-      handlers.onDelta((JSON.parse((message as MessageEvent<string>).data) as { text: string }).text)
-    })
-
-    source.addEventListener('ready', (message) => {
-      handlers.onReady((JSON.parse((message as MessageEvent<string>).data) as { running: boolean }).running)
-    })
-
-    source.addEventListener('done', () => handlers.onDone())
-
-    source.onerror = () => {
-      // Reopen at the advanced cursor rather than letting EventSource retry the old one.
-      source?.close()
-      if (!closed) setTimeout(open, 1000)
-    }
-  }
-
-  open()
-
-  return () => {
-    closed = true
-    source?.close()
-  }
+export interface ChatTransport {
+  sendMessage(id: string, text: string, to: string | null): Promise<{ ok: boolean; error?: string }>
+  fetchSessionState(id: string): Promise<{ running: boolean; unattended: boolean }>
+  setUnattended(sessionId: string, enabled: boolean): Promise<{ ok: boolean; error?: string; unattended: boolean }>
+  decideApproval(sessionId: string, approvalId: string, decision: 'allow' | 'deny', note?: string): Promise<{ ok: boolean; error?: string }>
+  /** Opens the stream from `after`. Returns an unsubscribe. */
+  streamSession(id: string, after: number, handlers: StreamHandlers): () => void
 }
+
+/** The default transport: SSE for the stream, POST for messages and approvals — the local tool. */
+const httpTransport: ChatTransport = {
+  sendMessage(id, text, to) {
+    return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/messages`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, to }),
+    })
+  },
+
+  /**
+   * Session state without the transcript. Reuses the events endpoint with a cursor past the end, so
+   * it returns the flags and an empty list. `unattended` lives in the server's memory, so the browser
+   * has to ask — and a restart correctly reports it back off rather than the UI insisting it is on.
+   */
+  fetchSessionState(id) {
+    return json(apiPath(`/chat/sessions/${encodeURIComponent(id)}/events?after=${Number.MAX_SAFE_INTEGER}`))
+  },
+
+  setUnattended(sessionId, enabled) {
+    return json(apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/unattended`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+  },
+
+  /** Answers a pending approval. The agent is blocked until this returns. */
+  decideApproval(sessionId, approvalId, decision, note) {
+    return json(
+      apiPath(`/chat/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(approvalId)}`),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, note }),
+      },
+    )
+  },
+
+  /**
+   * EventSource reconnects on its own, but it would replay from the same cursor, so the cursor
+   * advances here as events arrive — a reconnect then resumes rather than duplicating.
+   */
+  streamSession(id, after, handlers) {
+    let cursor = after
+    let source: EventSource | null = null
+    let closed = false
+
+    const open = () => {
+      if (closed) return
+      source = new EventSource(apiPath(`/chat/sessions/${encodeURIComponent(id)}/stream?after=${cursor}`))
+
+      source.addEventListener('append', (message) => {
+        const event = JSON.parse((message as MessageEvent<string>).data) as ChatEvent
+        cursor = Math.max(cursor, event.id)
+        handlers.onAppend(event)
+      })
+
+      source.addEventListener('update', (message) => {
+        handlers.onUpdate(JSON.parse((message as MessageEvent<string>).data) as ChatEvent)
+      })
+
+      source.addEventListener('delta', (message) => {
+        handlers.onDelta((JSON.parse((message as MessageEvent<string>).data) as { text: string }).text)
+      })
+
+      source.addEventListener('ready', (message) => {
+        handlers.onReady((JSON.parse((message as MessageEvent<string>).data) as { running: boolean }).running)
+      })
+
+      source.addEventListener('done', () => handlers.onDone())
+
+      source.onerror = () => {
+        // Reopen at the advanced cursor rather than letting EventSource retry the old one.
+        source?.close()
+        if (!closed) setTimeout(open, 1000)
+      }
+    }
+
+    open()
+
+    return () => {
+      closed = true
+      source?.close()
+    }
+  },
+}
+
+let current: ChatTransport = httpTransport
+
+/** Install a different live transport. A host calls this once, before the chat renders. */
+export function setChatTransport(transport: ChatTransport): void {
+  current = transport
+}
+
+// The public live API delegates to the installed transport, so the UI imports these unchanged.
+export const sendMessage: ChatTransport['sendMessage'] = (id, text, to) => current.sendMessage(id, text, to)
+export const fetchSessionState: ChatTransport['fetchSessionState'] = (id) => current.fetchSessionState(id)
+export const setUnattended: ChatTransport['setUnattended'] = (sessionId, enabled) => current.setUnattended(sessionId, enabled)
+export const decideApproval: ChatTransport['decideApproval'] = (sessionId, approvalId, decision, note) =>
+  current.decideApproval(sessionId, approvalId, decision, note)
+export const streamSession: ChatTransport['streamSession'] = (id, after, handlers) => current.streamSession(id, after, handlers)
 
 export interface Entity {
   name: string
