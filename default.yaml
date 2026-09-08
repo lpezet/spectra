@@ -52,7 +52,7 @@ services:
   coder:
     build:
       <<: *git-context
-      dockerfile: Dockerfile.coder
+      dockerfile: Dockerfile.runtime
     networks:
       - sandbox
     environment:
@@ -73,7 +73,7 @@ services:
   spec:
     build:
       <<: *git-context
-      dockerfile: Dockerfile.coder
+      dockerfile: Dockerfile.runtime
     networks:
       - sandbox
     environment:

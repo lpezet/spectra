@@ -1,8 +1,9 @@
-# The box @coder works in.
+# The box an agent runtime works in — the generic image both @coder and @spec run from
+# (`AGENT` picks which; @spec has no filesystem tools and just needs the cwd to exist).
 #
 # It holds a toolchain and nothing else — no source. `app/` arrives as a mount, so the
 # image does not go stale every time the app changes, and rebuilding is only needed when
-# the toolchain or the agent's own dependencies move.
+# the toolchain or the runtime's own dependencies move.
 #
 # What this is for: @coder has a shell, and a shell escapes every path rule the SDK can
 # express. `cd` goes anywhere and redirection writes anywhere, so the approval card has
@@ -25,10 +26,10 @@ RUN apt-get update \
 # failed — a patch release of the Agent SDK tightened its zod peer and the build broke
 # without a line of this repo changing.
 WORKDIR /agent
-COPY packages/coder/package.json packages/coder/package-lock.json ./
+COPY packages/runtime/package.json packages/runtime/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY packages/coder/ ./
+COPY packages/runtime/ ./
 
 # Never root. A container that runs as root and mounts your source is a smaller
 # improvement over no container than it looks.

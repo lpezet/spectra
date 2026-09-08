@@ -101,7 +101,7 @@ services:
   coder:
     build:
       context: .
-      dockerfile: Dockerfile.coder
+      dockerfile: Dockerfile.runtime
     container_name: tb-coder
 
     volumes:
@@ -165,7 +165,7 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------------------
-  # The runtime for @spec. Same image as @coder (the generic agent runtime, Dockerfile.coder) —
+  # The runtime for @spec. Same image as @coder (the generic agent runtime, Dockerfile.runtime) —
   # AGENT=spec is the only difference. It has no filesystem tools and no mount: it reaches the
   # glossary through the server over MCP, exactly like @coder. On the sandbox network; the server
   # relays @spec turns to it (SPEC_URL above), and it reaches the server as SERVER_URL.
@@ -173,7 +173,7 @@ services:
   spec:
     build:
       context: .
-      dockerfile: Dockerfile.coder
+      dockerfile: Dockerfile.runtime
     container_name: tb-spec
     networks:
       - sandbox

@@ -9,7 +9,7 @@
 # sits on two networks and @coder's sits on one. Express is the only way out, which is what
 # makes proxying the model API through it possible rather than merely tidy.
 #
-# Unlike Dockerfile.coder, source is not baked in — packages/server and packages/core arrive
+# Unlike Dockerfile.runtime, source is not baked in — packages/server and packages/core arrive
 # as mounts so `tsx watch` reloads on save. Dependencies still come from the image, so a
 # rebuild is only needed when package.json moves.
 
