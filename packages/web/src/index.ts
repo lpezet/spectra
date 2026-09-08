@@ -9,3 +9,10 @@
  */
 import './styles.css'
 export { App } from './App.js'
+
+// For a host that drives the agents differently than the local tool: install a live chat transport
+// (see setChatTransport) and address project-scoped calls with these. The static chat/glossary reads
+// still go over plain REST the host serves.
+export { setChatTransport } from './chat.js'
+export type { ChatTransport, StreamHandlers, ChatEvent } from './chat.js'
+export { apiPath, currentProject } from './apiBase.js'
