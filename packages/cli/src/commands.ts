@@ -166,12 +166,186 @@ export function parseArgs(argv: string[]): Parsed {
   return { kind: 'run', component: head, verb: second, dryRun, composeFiles }
 }
 
+// ── `spectra attach` ───────────────────────────────────────────────────────────────────────────
+// A different shape from the rest: it does not drive the local stack, it runs ONLY the two agent
+// runtimes (attach.yaml) and points them at a REMOTE coordinator. Same discipline though — the argv
+// translation and option resolution are pure here; cli.ts does the spawning and env injection.
+
+export const ATTACH_AGENTS = ['coder', 'spec', 'both'] as const
+export type AttachAgent = (typeof ATTACH_AGENTS)[number]
+
+/** The flags a user may pass to `attach`, before defaults and env are applied. All optional here. */
+export interface AttachFlags {
+  coordinator?: string
+  server?: string
+  token?: string
+  org?: string
+  project?: string
+  dir?: string
+}
+
+export type AttachParsed =
+  | { kind: 'attach'; flags: AttachFlags; agent: AttachAgent; dryRun: boolean; composeFiles: string[] }
+  | { kind: 'help' }
+  | { kind: 'error'; message: string }
+
+/** The fully-resolved inputs an attach run needs — flags merged with env and defaults, validated. */
+export interface AttachOptions {
+  coordinator: string
+  server: string
+  token: string
+  org: string
+  project: string
+  dir: string
+  agent: AttachAgent
+}
+
+const ATTACH_VALUE_FLAGS = new Set(['--coordinator', '--server', '--token', '--org', '--project', '--dir', '--agent', '--compose-file'])
+
+/**
+ * Parse the argv tail after `attach`. Collects flags without applying defaults or reading env — that
+ * is {@link resolveAttach}'s job — so this stays a pure, exhaustively-testable tokenizer. Unknown
+ * flags and missing values become an `error`, matching {@link parseArgs}.
+ */
+export function parseAttachArgs(argv: string[]): AttachParsed {
+  const flags: AttachFlags = {}
+  const composeFiles: string[] = []
+  let agent: AttachAgent = 'both'
+  let dryRun = false
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]!
+    if (arg === '-h' || arg === '--help') return { kind: 'help' }
+    if (arg === '--dry-run') {
+      dryRun = true
+      continue
+    }
+    if (!ATTACH_VALUE_FLAGS.has(arg)) return { kind: 'error', message: `Unknown option "${arg}".` }
+    const value = argv[i + 1]
+    if (value === undefined) return { kind: 'error', message: `${arg} needs a value.` }
+    i += 1
+    if (arg === '--compose-file') {
+      composeFiles.push(value)
+    } else if (arg === '--agent') {
+      if (!(ATTACH_AGENTS as readonly string[]).includes(value)) {
+        return { kind: 'error', message: `--agent must be one of: ${ATTACH_AGENTS.join(', ')}.` }
+      }
+      agent = value as AttachAgent
+    } else {
+      flags[arg.slice(2) as keyof AttachFlags] = value
+    }
+  }
+
+  return { kind: 'attach', flags, agent, dryRun, composeFiles }
+}
+
+/** The coordinator's HTTP origin — where the runtime's /mcp tool calls go — from its ws(s) relay URL. */
+export function deriveServerUrl(coordinator: string): string {
+  const url = new URL(coordinator)
+  if (url.protocol === 'wss:') url.protocol = 'https:'
+  else if (url.protocol === 'ws:') url.protocol = 'http:'
+  return url.origin
+}
+
+/**
+ * Merge parsed flags with the environment and defaults, and validate. Kept pure by taking `env` and
+ * `cwd` as arguments rather than reading them. The token and coordinator may come from the
+ * environment (`DEVICE_TOKEN`, `COORDINATOR_URL`) so the panel's printed command can omit the secret
+ * and let a shell/`spectra.env` supply it; org defaults to `local`, dir to the working directory.
+ */
+export function resolveAttach(
+  parsed: Extract<AttachParsed, { kind: 'attach' }>,
+  env: Record<string, string | undefined>,
+  cwd: string,
+): { kind: 'ok'; options: AttachOptions } | { kind: 'error'; message: string } {
+  const { flags } = parsed
+  const coordinator = flags.coordinator ?? env.COORDINATOR_URL
+  if (!coordinator) return { kind: 'error', message: 'attach needs --coordinator (a ws:// or wss:// relay URL).' }
+  let serverFromCoordinator: string
+  try {
+    if (!/^wss?:$/.test(new URL(coordinator).protocol)) throw new Error('scheme')
+    serverFromCoordinator = deriveServerUrl(coordinator)
+  } catch {
+    return { kind: 'error', message: `--coordinator must be a ws:// or wss:// URL, got "${coordinator}".` }
+  }
+
+  const project = flags.project ?? env.PROJECT_ID
+  if (!project) return { kind: 'error', message: 'attach needs --project (the id of the remote project).' }
+
+  const token = flags.token ?? env.DEVICE_TOKEN
+  if (!token) return { kind: 'error', message: 'attach needs a device token: pass --token or set DEVICE_TOKEN.' }
+
+  return {
+    kind: 'ok',
+    options: {
+      coordinator,
+      server: flags.server ?? env.SERVER_URL ?? serverFromCoordinator,
+      token,
+      org: flags.org ?? env.ORG ?? 'local',
+      project,
+      dir: flags.dir ?? cwd,
+      agent: parsed.agent,
+    },
+  }
+}
+
+/**
+ * The environment attach.yaml interpolates. The model credential is NOT here — it comes from the
+ * shared `spectra.env` via `--env-file`, exactly as the stack commands source `ANTHROPIC_API_KEY`.
+ */
+export function attachEnv(options: AttachOptions): Record<string, string> {
+  return {
+    COORDINATOR_URL: options.coordinator,
+    SERVER_URL: options.server,
+    DEVICE_TOKEN: options.token,
+    ORG: options.org,
+    PROJECT_ID: options.project,
+    ATTACH_PROJECT_DIR: options.dir,
+  }
+}
+
+/** The `docker compose` argv for attach: a foreground `up` (no `-d`) of one agent service or both. */
+export function attachComposeArgv(agent: AttachAgent, composeFiles: string[], envFile?: string): string[] {
+  const services = agent === 'both' ? [] : [agent]
+  return [...topLevelFlags(composeFiles, envFile), 'up', ...services]
+}
+
+export const ATTACH_USAGE = `spectra attach — run local agent runtimes against a REMOTE coordinator
+
+Runs the @coder and @spec runtimes in containers (attach.yaml) that dial OUT to a coordinator over
+one WebSocket, so a hosted chat drives the agents on your machine. @coder stays sandboxed; it mounts
+the project directory and calls the model directly (consumer-pays).
+
+Usage:
+  spectra attach --coordinator <ws-url> --project <id> [options]
+
+Required (flag or environment):
+  --coordinator <url>   ws:// or wss:// relay URL         (env COORDINATOR_URL)
+  --project <id>        the remote project's id           (env PROJECT_ID)
+  --token <token>       the device token for this machine (env DEVICE_TOKEN)
+
+Options:
+  --org <slug>          the remote org (default: local)   (env ORG)
+  --server <url>        coordinator origin for tool calls (default: derived from --coordinator)
+  --dir <path>          project @coder implements into    (default: current directory)
+  --agent <which>       coder | spec | both               (default: both)
+  --dry-run             print the docker compose command instead of running it
+  --compose-file <path> override attach.yaml
+  -h, --help            show this help
+
+The model credential (ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN) is read from
+~/.config/spectra/spectra.env, the same file the rest of the CLI uses.
+
+Example:
+  spectra attach --coordinator wss://<host>/api/relay/runtime --org acme --project acme-9f2 --token <token>`
+
 export const USAGE = `spectra — control the Spectra stack (a thin wrapper over docker compose)
 
 Usage:
   spectra init [--name "<name>"] [--domain "<text>"] [options]   (see: spectra init --help)
   spectra <component> <verb> [options]
   spectra up | down | build [component] [options]
+  spectra attach --coordinator <ws-url> --project <id> [options] (see: spectra attach --help)
 
 Components:
   server    the coordinator: API + glossary   (compose service: server)

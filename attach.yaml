@@ -1,0 +1,84 @@
+# `spectra attach` — connect a LOCAL agent runtime to a REMOTE coordinator.
+#
+# Unlike docker-compose.yml (the whole self-hosted stack, on an egress-less `internal` network),
+# this file runs ONLY the two agent runtimes and points them at a coordinator reachable over the
+# internet. It is the "attach" transport: MODE=attach dials one WebSocket OUT to the coordinator
+# (the laptop is behind NAT, so it cannot be dialled into). There is no server, web, or model proxy
+# here — the coordinator is remote, and the runtime calls the model directly (consumer-pays) rather
+# than through a server's /anthropic proxy.
+#
+# Everything is environment-driven so `spectra attach` fills it from flags without editing the file:
+#   COORDINATOR_URL     ws(s)://…/api/relay/runtime  — where the runtime dials out
+#   SERVER_URL          http(s)://…                  — the coordinator's origin, for /mcp tool calls
+#   DEVICE_TOKEN        the runtime's credential (per-machine, revocable) — sent in the hello frame
+#   ORG, PROJECT_ID     the remote project the turns belong to
+#   ATTACH_PROJECT_DIR  the local dir @coder implements into (mounted read-write at /work/project)
+#   ANTHROPIC_API_KEY | CLAUDE_CODE_OAUTH_TOKEN   the model credential (from ~/.config/spectra/spectra.env)
+#
+# @coder keeps its container boundary — a shell with egress but no host access beyond the one mount,
+# locked down (no new privileges, all capabilities dropped). @spec has no filesystem tools and no
+# mount. Both reach the internet (the coordinator + the model API); that egress is the whole point
+# of attach and the one deliberate difference from the sandbox network. Its own compose project name
+# keeps these containers separate from a `spectra up` stack in the same repo.
+
+name: spectra-attach
+
+services:
+  # ---------------------------------------------------------------------------------------
+  # @coder — the sandboxed runtime, dialled out to the remote coordinator.
+  # ---------------------------------------------------------------------------------------
+  coder:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: spectra-attach-coder
+    volumes:
+      # The only mount and the only writable thing — the project @coder implements into. Defaults
+      # to ./app only so a bare `docker compose -f attach.yaml` does not error; `spectra attach`
+      # always sets ATTACH_PROJECT_DIR to the real directory.
+      - ${ATTACH_PROJECT_DIR:-./app}:/work/project
+    environment:
+      - NODE_ENV=production
+      - MODE=attach
+      - AGENT=coder
+      - COORDINATOR_URL=${COORDINATOR_URL}
+      - SERVER_URL=${SERVER_URL}
+      - DEVICE_TOKEN=${DEVICE_TOKEN}
+      - ORG=${ORG:-local}
+      - PROJECT_ID=${PROJECT_ID}
+      # The model credential travels straight through — attach is consumer-pays, so unlike the
+      # sandbox the runtime holds a real key and calls Anthropic directly. Pass whichever is set.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+    mem_limit: 2g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ---------------------------------------------------------------------------------------
+  # @spec — same image, AGENT=spec, no filesystem tools and no mount.
+  # ---------------------------------------------------------------------------------------
+  spec:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: spectra-attach-spec
+    environment:
+      - NODE_ENV=production
+      - MODE=attach
+      - AGENT=spec
+      - COORDINATOR_URL=${COORDINATOR_URL}
+      - SERVER_URL=${SERVER_URL}
+      - DEVICE_TOKEN=${DEVICE_TOKEN}
+      - ORG=${ORG:-local}
+      - PROJECT_ID=${PROJECT_ID}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+    mem_limit: 2g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

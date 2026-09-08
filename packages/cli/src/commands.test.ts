@@ -8,14 +8,25 @@ import { describe, expect, it } from 'vitest'
 import {
   COMPONENTS,
   VERBS,
+  attachComposeArgv,
+  attachEnv,
   composeArgv,
   composeBuildArgv,
   composeStackArgv,
+  deriveServerUrl,
   parseArgs,
+  parseAttachArgs,
+  resolveAttach,
 } from './commands.js'
 
 const BASE = '/repo/docker-compose.yml'
 const OVERRIDE = '/cfg/project.yml'
+const ATTACH = '/repo/attach.yaml'
+
+/** A parsed attach intent, for feeding resolveAttach in tests. */
+function attach(flags: Record<string, string>, agent: 'coder' | 'spec' | 'both' = 'both') {
+  return { kind: 'attach' as const, flags, agent, dryRun: false, composeFiles: [] }
+}
 
 describe('composeArgv (per component)', () => {
   it('maps server -> the server service, with up/down/restart/status/logs', () => {
@@ -151,5 +162,96 @@ describe('--env-file (the shared credential file)', () => {
     expect(composeArgv('server', 'up', [BASE])).not.toContain('--env-file')
     expect(composeStackArgv('down', [BASE])).not.toContain('--env-file')
     expect(composeBuildArgv('coder', [BASE])).not.toContain('--env-file')
+  })
+})
+
+describe('spectra attach', () => {
+  describe('parseAttachArgs', () => {
+    it('collects flags, agent, and compose overrides', () => {
+      const parsed = parseAttachArgs([
+        '--coordinator', 'wss://h/api/relay/runtime', '--project', 'p1', '--org', 'acme',
+        '--token', 't', '--dir', '/w', '--server', 'https://h', '--agent', 'coder',
+        '--compose-file', ATTACH, '--dry-run',
+      ])
+      expect(parsed).toEqual({
+        kind: 'attach',
+        flags: { coordinator: 'wss://h/api/relay/runtime', project: 'p1', org: 'acme', token: 't', dir: '/w', server: 'https://h' },
+        agent: 'coder',
+        dryRun: true,
+        composeFiles: [ATTACH],
+      })
+    })
+
+    it('defaults to both agents and no dry-run', () => {
+      const parsed = parseAttachArgs(['--coordinator', 'wss://h/r', '--project', 'p'])
+      expect(parsed).toMatchObject({ kind: 'attach', agent: 'both', dryRun: false, composeFiles: [] })
+    })
+
+    it('rejects an unknown flag, a missing value, and a bad agent', () => {
+      expect(parseAttachArgs(['--nope'])).toEqual({ kind: 'error', message: 'Unknown option "--nope".' })
+      expect(parseAttachArgs(['--coordinator'])).toEqual({ kind: 'error', message: '--coordinator needs a value.' })
+      expect(parseAttachArgs(['--agent', 'both-of-them'])).toEqual({ kind: 'error', message: '--agent must be one of: coder, spec, both.' })
+    })
+
+    it('treats -h/--help as help', () => {
+      expect(parseAttachArgs(['--help'])).toEqual({ kind: 'help' })
+      expect(parseAttachArgs(['-h'])).toEqual({ kind: 'help' })
+    })
+  })
+
+  describe('deriveServerUrl', () => {
+    it('maps wss->https and ws->http, keeping just the origin', () => {
+      expect(deriveServerUrl('wss://dev.example.com/api/relay/runtime')).toBe('https://dev.example.com')
+      expect(deriveServerUrl('ws://localhost:8787/api/relay/runtime')).toBe('http://localhost:8787')
+    })
+  })
+
+  describe('resolveAttach', () => {
+    const cwd = '/here'
+    it('fills defaults: server from coordinator, org=local, dir=cwd', () => {
+      const r = resolveAttach(attach({ coordinator: 'wss://h/api/relay/runtime', project: 'p', token: 't' }), {}, cwd)
+      expect(r).toEqual({
+        kind: 'ok',
+        options: { coordinator: 'wss://h/api/relay/runtime', server: 'https://h', token: 't', org: 'local', project: 'p', dir: '/here', agent: 'both' },
+      })
+    })
+
+    it('reads coordinator, project, token, org from the environment when flags are absent', () => {
+      const env = { COORDINATOR_URL: 'wss://h/r', PROJECT_ID: 'penv', DEVICE_TOKEN: 'tenv', ORG: 'acme' }
+      const r = resolveAttach(attach({}), env, cwd)
+      expect(r).toMatchObject({ kind: 'ok', options: { project: 'penv', token: 'tenv', org: 'acme' } })
+    })
+
+    it('a flag wins over the environment', () => {
+      const r = resolveAttach(attach({ project: 'flag' }), { PROJECT_ID: 'env', COORDINATOR_URL: 'wss://h/r', DEVICE_TOKEN: 't' }, cwd)
+      expect(r).toMatchObject({ kind: 'ok', options: { project: 'flag' } })
+    })
+
+    it('errors on a missing coordinator, project, or token, and on a non-ws scheme', () => {
+      expect(resolveAttach(attach({ project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
+      expect(resolveAttach(attach({ coordinator: 'wss://h/r', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
+      expect(resolveAttach(attach({ coordinator: 'wss://h/r', project: 'p' }), {}, cwd)).toMatchObject({ kind: 'error' })
+      expect(resolveAttach(attach({ coordinator: 'https://h/r', project: 'p', token: 't' }), {}, cwd)).toMatchObject({ kind: 'error' })
+    })
+  })
+
+  describe('attachEnv + attachComposeArgv', () => {
+    it('maps resolved options to the env attach.yaml interpolates (no model credential)', () => {
+      const { options } = resolveAttach(attach({ coordinator: 'wss://h/api/relay/runtime', project: 'p', token: 't', org: 'acme', dir: '/w' }), {}, '/here') as { options: import('./commands.js').AttachOptions }
+      expect(attachEnv(options)).toEqual({
+        COORDINATOR_URL: 'wss://h/api/relay/runtime',
+        SERVER_URL: 'https://h',
+        DEVICE_TOKEN: 't',
+        ORG: 'acme',
+        PROJECT_ID: 'p',
+        ATTACH_PROJECT_DIR: '/w',
+      })
+    })
+
+    it('runs a foreground up of both services, or one named agent', () => {
+      expect(attachComposeArgv('both', [ATTACH])).toEqual(['-f', ATTACH, 'up'])
+      expect(attachComposeArgv('coder', [ATTACH])).toEqual(['-f', ATTACH, 'up', 'coder'])
+      expect(attachComposeArgv('spec', [ATTACH], '/cfg/spectra.env')).toEqual(['--env-file', '/cfg/spectra.env', '-f', ATTACH, 'up', 'spec'])
+    })
   })
 })
