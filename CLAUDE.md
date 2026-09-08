@@ -56,7 +56,7 @@ standalone-by-construction (its own `node_modules`/`tsconfig`, never an npm work
 ### The consumer project (configurable target — blocker E, part 1 done)
 
 `@coder`'s working directory and only mount is the project it implements into, at
-**`/work/project`** in the container (`APP_DIR` in `packages/coder/src/main.ts`, overridable).
+**`/work/project`** in the container (`APP_DIR` in `packages/runtime/src/main.ts`, overridable).
 An installed run gets the repo mounted there by `spectra init`; this dev `docker-compose.yml`
 has no consumer project, so it mounts a placeholder `./app` at `/work/project` and `@coder` is
 **inert in dev** until a real project is configured (a bare `docker compose up` still creates an
@@ -147,7 +147,7 @@ glossary through `/mcp/<agent>`, holding the literal string `proxied-by-the-spec
 credential, and reaches the server as `SERVER_URL`. (The compose service was renamed `spec`→`server`
 so the `spec` name is free for the @spec runtime; the runner relays each agent to its URL —
 `CODER_URL`/`SPEC_URL` on the server — or runs it in-process when unset. `AGENT` selects which agent a
-runtime is; the image is shared, `Dockerfile.coder`.)
+runtime is; the image is shared, `Dockerfile.runtime`.)
 
 - The `/anthropic` proxy is mounted **before `express.json()`** in `packages/server/src/index.ts`, and
   that ordering is load-bearing — a JSON parser upstream would consume the body stream.
@@ -205,8 +205,8 @@ runtime is; the image is shared, `Dockerfile.coder`.)
 
 ## Where things live
 
-Code lives under `packages/` (`core`, `server`, `web`, `coder`); `core`/`server`/`web` are
-npm workspaces under the `@spectra/*` scope, `coder` is standalone (its own lockfile, the
+Code lives under `packages/` (`core`, `server`, `web`, `runtime`); `core`/`server`/`web` are
+npm workspaces under the `@spectra/*` scope, `runtime` is standalone (its own lockfile, the
 sandbox image builds from it). The engine ships with **no glossary** — the example one lives
 under `examples/todo/specs/`. Neither the glossary nor runtime data defaults into the source
 tree: an unconfigured run reads specs from a gitignored `.dev/specs` and writes data under the
@@ -232,7 +232,7 @@ packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, project
 packages/server/src/storeFactory.ts   builds a built-in store (fs|sql) from a StoreChoice
 packages/server/src/backend.ts        the storage plugin boundary: SPEC_STORE=fs|sql, or a module
                                       specifier the server imports (SpecStoreBackend) — bring-your-own store
-packages/coder/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
+packages/runtime/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
 ~/.local/share/spectra/transcripts.db chat history — XDG data home (dev: .dev/data); prunable, never the record
@@ -246,7 +246,7 @@ in the containerized/installed path; **5174** its API (serves no HTML — a 404 
 is correct), **5177** the coder container. (5175 was the ToDo app's dev server, now on
 `backup/todo-app`.)
 
-The three pieces each have a container: `Dockerfile.spec` (server), `Dockerfile.coder`
+The three pieces each have a container: `Dockerfile.spec` (server), `Dockerfile.runtime`
 (sandbox), `Dockerfile.web` (nginx serving the built UI, proxying `/api` to `spec`). The `web`
 service is behind a compose **profile** so plain `docker compose up` (what `dev:sandbox` runs)
 leaves it out and its 5173 does not collide with host Vite — start it explicitly with

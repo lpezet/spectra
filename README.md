@@ -356,9 +356,9 @@ packages/server/src/        express — spec files, transcripts, and the two age
   glossaryExport.ts         the contract as a file, so app/ can check itself offline
   sandbox.ts                whether the @coder container is up, asked from inside its network
 packages/web/src/           react — browse, search, review, apply, chat
-packages/coder/src/         the sandboxed half of @coder — no history, no writes to specs/
+packages/runtime/src/         the sandboxed half of @coder — no history, no writes to specs/
 Dockerfile.spec             express, on both networks
-Dockerfile.coder            @coder, on the internal one
+Dockerfile.runtime            @coder, on the internal one
 docker-compose.yml          the boundary between them
 docker-compose.open.yml     the explicit escape hatch that removes it
 ```

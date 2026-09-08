@@ -19,7 +19,7 @@ export { AGENT_NAMES } from '@spectra/agent-tools'
 const REPO = path.resolve(SPECS_DIR, '..')
 // The project the in-process (unsandboxed) @coder implements into — its cwd. Configurable via
 // CODER_DIR; the default sits beside the glossary, which is where a bare checkout would keep it.
-// (The sandboxed @coder uses its own container path instead — APP_DIR in packages/coder/src/main.ts.)
+// (The sandboxed @coder uses its own container path instead — APP_DIR in packages/runtime/src/main.ts.)
 const APP_DIR = process.env.CODER_DIR ?? path.join(REPO, 'app')
 
 /** This server's agents: the shared definitions, bound to this host's specs and app directories. */
