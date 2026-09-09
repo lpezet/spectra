@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Offline drift check between a Spectra glossary and the code that implements it.",
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "lpezet",
   "homepage": "https://github.com/lpezet/spectra/tree/main/packages/drift-check",
   "repository": {
