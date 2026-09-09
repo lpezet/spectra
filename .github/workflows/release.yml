@@ -25,8 +25,9 @@ jobs:
           mkdir -p out
           cp packages/cli/dist/cli.mjs out/spectra
           cp default.yaml out/default.yaml
-          ( cd out && sha256sum spectra default.yaml > SHASUMS256.txt )
+          cp attach.default.yaml out/attach.default.yaml
+          ( cd out && sha256sum spectra default.yaml attach.default.yaml > SHASUMS256.txt )
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" out/spectra out/default.yaml out/SHASUMS256.txt --generate-notes
+        run: gh release create "${{ github.ref_name }}" out/spectra out/default.yaml out/attach.default.yaml out/SHASUMS256.txt --generate-notes

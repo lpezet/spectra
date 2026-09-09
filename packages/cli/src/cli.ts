@@ -37,6 +37,17 @@ function repoFile(name: string): string {
 }
 
 /**
+ * The attach compose file. An install has no working tree, so `install.sh` scaffolds the distribution
+ * variant (git build context) to `~/.config/spectra/attach.yaml`; prefer that. A checkout falls back
+ * to the repo's `attach.yaml` (which builds the runtime image from the working tree). Mirrors how
+ * `default.yaml` is resolved for the stack commands.
+ */
+function attachComposeFile(): string {
+  const installed = path.join(configHome(), 'spectra', 'attach.yaml')
+  return existsSync(installed) ? installed : repoFile('attach.yaml')
+}
+
+/**
  * The compose files a command runs against. Explicit `--compose-file` flags win; then
  * SPECTRA_COMPOSE_FILE; then auto-discovery of a linked project (`default.yaml` + its override);
  * then the contributors' `docker-compose.yml`. See discovery.ts for the precedence.
@@ -240,7 +251,7 @@ function runAttach(argv: string[]): Promise<number> | number {
   }
   const { options } = resolved
 
-  const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : [repoFile('attach.yaml')]
+  const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : [attachComposeFile()]
   const credential = credentialFilePath(configHome())
   const envFile = existsSync(credential) ? credential : undefined
   const args = attachComposeArgv(options.agent, composeFiles, envFile)

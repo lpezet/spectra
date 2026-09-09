@@ -289,7 +289,11 @@ coordinator URL, never a specific host. Flags (`--coordinator`, `--project`, `--
 `--server`, `--dir`, `--agent coder|spec|both`) fall back to env (`COORDINATOR_URL`, `PROJECT_ID`,
 `DEVICE_TOKEN`, `ORG`); the model credential rides in from `spectra.env` like the rest. Parsing and
 resolution are pure (`parseAttachArgs`/`resolveAttach`/`attachComposeArgv`); `--dry-run` prints the
-compose command plus the resolved env (token masked).
+compose command plus the resolved env (token masked). Like `docker-compose.yml`/`default.yaml`, attach
+has two files kept in structural sync: `attach.yaml` (contributors', `context: .`) and
+`attach.default.yaml` (distribution, remote git context) — the latter ships as a release asset and
+`install.sh` places it at `~/.config/spectra/attach.yaml`, which `attachComposeFile()` prefers over the
+repo's when present, so the installed CLI's `attach` builds from a pinned release with no checkout.
 
 `spectra login` / `spectra logout` fetch (or drop) the device token `attach` needs, so it can omit
 `--token`. login is a browser loopback flow (`login.ts`): it starts a localhost server, opens the
