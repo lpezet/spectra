@@ -287,6 +287,15 @@ coordinator URL, never a specific host. Flags (`--coordinator`, `--project`, `--
 resolution are pure (`parseAttachArgs`/`resolveAttach`/`attachComposeArgv`); `--dry-run` prints the
 compose command plus the resolved env (token masked).
 
+`spectra login` / `spectra logout` fetch (or drop) the device token `attach` needs, so it can omit
+`--token`. login is a browser loopback flow (`login.ts`): it starts a localhost server, opens the
+browser to the coordinator's `/api/auth/cli/start`, the signed-in user approves, the coordinator
+redirects a one-time **code** back to that localhost server, and the CLI exchanges the code — server
+to server — for a device token (the code, never the token, rides through the browser). Tokens are
+saved `0600` under `~/.config/spectra/credentials.json`, **keyed by coordinator origin** (`credentials.ts`),
+so dev and prod tokens coexist and `attach` reads the right one (flag > `DEVICE_TOKEN` > stored). This
+is cloud-agnostic — the coordinator serves those `/api/auth/cli/*` endpoints; the CLI just names a URL.
+
 `spectra init --name … --domain …` links a repo to a project (`init.ts`, pure `planInit`). It writes
 three things in three places, per the corrected model above: `.spectra/config.json` in the repo (the
 *link* — project id + identity + optional Server URL), the **server-side** glossary's `project.json`
