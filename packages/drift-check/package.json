@@ -1,19 +1,39 @@
 {
   "name": "@spectra/drift-check",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Offline drift check between a Spectra glossary and the code that implements it.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "license": "Apache-2.0",
+  "author": "lpezet",
+  "homepage": "https://github.com/lpezet/spectra/tree/main/packages/drift-check",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lpezet/spectra.git",
+    "directory": "packages/drift-check"
+  },
+  "keywords": ["spectra", "spec-driven", "glossary", "drift-check", "vitest"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "NOTICE"],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "typescript": "^5.7.3",
     "vitest": "^3.0.5"
   }
 }
