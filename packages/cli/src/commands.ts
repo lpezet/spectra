@@ -383,9 +383,12 @@ Usage:
   spectra attach --coordinator <ws-url> --project <id> [options]
 
 Required (flag or environment):
-  --coordinator <url>   ws:// or wss:// relay URL         (env COORDINATOR_URL)
+  --coordinator <url>   ws:// or wss:// relay URL         (env COORDINATOR_URL; optional once logged in)
   --project <id>        the remote project's id           (env PROJECT_ID)
   --token <token>       the device token for this machine (env DEVICE_TOKEN, or run \`spectra login\`)
+
+After \`spectra login\`, both --coordinator and --token are inferred from the saved login (the sole one,
+or pass --coordinator to choose among several), so attach is just: --org … --project … --dir …
 
 Options:
   --org <slug>          the remote org (default: local)   (env ORG)

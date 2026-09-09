@@ -27,7 +27,7 @@ import {
 import { discover, resolveComposeFiles } from './discovery.js'
 import { INIT_USAGE, applyInitPlan, credentialFilePath, ensureCredentialFile, parseInitArgs, planInit } from './init.js'
 import { runLogin, runLogout } from './login.js'
-import { tokenFor } from './credentials.js'
+import { readCredentials, tokenFor } from './credentials.js'
 
 /** Repo-root path resolved relative to this package (packages/cli/src -> repo root). */
 function repoFile(name: string): string {
@@ -139,16 +139,32 @@ function runAttach(argv: string[]): Promise<number> | number {
     return 2
   }
 
-  // Fall back to a token saved by `spectra login` for this coordinator, when none was passed.
-  let lookupEnv: NodeJS.ProcessEnv = process.env
-  const rawCoordinator = parsed.flags.coordinator ?? process.env.COORDINATOR_URL
-  if (rawCoordinator && !process.env.DEVICE_TOKEN) {
-    try {
-      const stored = tokenFor(configHome(), deriveServerUrl(rawCoordinator))
-      if (stored) lookupEnv = { ...process.env, DEVICE_TOKEN: stored }
-    } catch {
-      // A malformed coordinator; resolveAttach reports it below.
+  // Resolve the coordinator: an explicit flag/env wins; otherwise, if `spectra login` saved exactly
+  // one, default to it (so a logged-in user runs `attach --org … --project …` with no --coordinator).
+  // Then inject the coordinator + its stored token into the env resolveAttach reads.
+  let coordinator = parsed.flags.coordinator ?? process.env.COORDINATOR_URL
+  if (!coordinator) {
+    const logins = Object.values(readCredentials(configHome()))
+    if (logins.length === 1) coordinator = logins[0]!.coordinator
+    else if (logins.length > 1) {
+      console.error('Several coordinators are logged in — pass --coordinator to pick one:')
+      for (const c of logins) console.error(`  ${c.coordinator}`)
+      return 2
     }
+  }
+
+  let lookupEnv: NodeJS.ProcessEnv = process.env
+  if (coordinator) {
+    const patch: Record<string, string> = { COORDINATOR_URL: coordinator }
+    if (!process.env.DEVICE_TOKEN) {
+      try {
+        const stored = tokenFor(configHome(), deriveServerUrl(coordinator))
+        if (stored) patch.DEVICE_TOKEN = stored
+      } catch {
+        // A malformed coordinator; resolveAttach reports it below.
+      }
+    }
+    lookupEnv = { ...process.env, ...patch }
   }
 
   const resolved = resolveAttach(parsed, lookupEnv, process.cwd())
