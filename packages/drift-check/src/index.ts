@@ -1,5 +1,5 @@
 /**
- * `@spectra/drift-check` — the offline drift check between a Spectra glossary and the code that
+ * `@abseed/spectra-drift-check` — the offline drift check between a Spectra glossary and the code that
  * implements it, as a small package a consumer project depends on.
  *
  * A project keeps a `specs.snapshot.json` (written by @coder's `export_specs`, committed with the
@@ -9,7 +9,7 @@
  *
  * Usage in a consumer project's test (framework-agnostic core; example in vitest):
  *
- *   import { driftCheck } from '@spectra/drift-check'
+ *   import { driftCheck } from '@abseed/spectra-drift-check'
  *   import { expect, it } from 'vitest'
  *   it('the glossary and the code are in sync', () => {
  *     const { ok, findings } = driftCheck({ srcDir: 'src', snapshotPath: 'specs.snapshot.json' })

@@ -64,7 +64,7 @@ empty `./app` on the host). The in-process (unsandboxed) coder's cwd is `APP_DIR
 `packages/server/src/agent/agents.ts` (`CODER_DIR` env, default `<repo>/app`).
 
 The *drift check* that used to be copied into `app/` (`specs.snapshot.json` + `implements.test.ts`)
-now ships as the **`@spectra/drift-check`** package (`packages/drift-check`): a consumer project adds
+now ships as the **`@abseed/spectra-drift-check`** package (`packages/drift-check`): a consumer project adds
 it as a dev-dependency and writes a one-line test — `driftCheck({ srcDir, snapshotPath })` — against
 its committed `specs.snapshot.json` (which `@coder` writes with `export_specs`). It stays offline and
 standalone (the package reads files, needs no coordinator), which is what lets the check run in a bare
@@ -238,7 +238,7 @@ packages/server/src/backend.ts        the storage plugin boundary: SPEC_STORE=fs
 packages/runtime/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
-packages/drift-check/src/             @spectra/drift-check — the offline glossary↔code drift check a consumer project depends on
+packages/drift-check/src/             @abseed/spectra-drift-check — the offline glossary↔code drift check a consumer project depends on
 ~/.local/share/spectra/transcripts.db chat history — XDG data home (dev: .dev/data); prunable, never the record
 ```
 
