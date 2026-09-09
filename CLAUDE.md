@@ -273,6 +273,20 @@ Each maps to the matching `docker compose` call — component names now match se
 seam `spectra init` uses. The argv→compose translation is a pure function (`commands.ts`), fully
 tested without a docker daemon; `--dry-run` prints the command it would run.
 
+A third shape, `spectra attach`, is the odd one out: it does *not* drive the local stack. It runs
+only the two agent runtimes (`attach.yaml`) pointed at a **remote** coordinator — the hosted, dial-out
+counterpart of `spectra up`. The laptop is behind NAT, so `MODE=attach` dials one WebSocket *out*
+(`COORDINATOR_URL=.../api/relay/runtime`); the coordinator drives the agents on your machine and the
+runtime calls the model directly (consumer-pays), reaching the glossary over `/mcp` at `SERVER_URL`
+(the coordinator's origin, derived from `--coordinator`). `@coder` keeps its container boundary — the
+whole reason attach runs in docker rather than as a bare process — but on an egress-*ful* network,
+the one deliberate difference from the sandbox. It is cloud-agnostic on purpose: it names a
+coordinator URL, never a specific host. Flags (`--coordinator`, `--project`, `--token`, `--org`,
+`--server`, `--dir`, `--agent coder|spec|both`) fall back to env (`COORDINATOR_URL`, `PROJECT_ID`,
+`DEVICE_TOKEN`, `ORG`); the model credential rides in from `spectra.env` like the rest. Parsing and
+resolution are pure (`parseAttachArgs`/`resolveAttach`/`attachComposeArgv`); `--dry-run` prints the
+compose command plus the resolved env (token masked).
+
 `spectra init --name … --domain …` links a repo to a project (`init.ts`, pure `planInit`). It writes
 three things in three places, per the corrected model above: `.spectra/config.json` in the repo (the
 *link* — project id + identity + optional Server URL), the **server-side** glossary's `project.json`

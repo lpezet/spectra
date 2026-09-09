@@ -11,7 +11,18 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { composeArgv, composeBuildArgv, composeStackArgv, parseArgs, USAGE } from './commands.js'
+import {
+  ATTACH_USAGE,
+  attachComposeArgv,
+  attachEnv,
+  composeArgv,
+  composeBuildArgv,
+  composeStackArgv,
+  parseArgs,
+  parseAttachArgs,
+  resolveAttach,
+  USAGE,
+} from './commands.js'
 import { discover, resolveComposeFiles } from './discovery.js'
 import { INIT_USAGE, applyInitPlan, credentialFilePath, ensureCredentialFile, parseInitArgs, planInit } from './init.js'
 
@@ -107,8 +118,51 @@ function runInit(argv: string[]): number {
   return 0
 }
 
+/**
+ * `spectra attach` — run the two agent runtimes (attach.yaml) pointed at a remote coordinator.
+ * Unlike the stack commands this injects the resolved coordinator/token/project into the child's
+ * environment (attach.yaml interpolates them) and runs compose in the foreground, so the agents'
+ * logs stream and Ctrl-C stops them. The model credential still rides in via `--env-file`.
+ */
+function runAttach(argv: string[]): Promise<number> | number {
+  const parsed = parseAttachArgs(argv)
+  if (parsed.kind === 'help') {
+    console.log(ATTACH_USAGE)
+    return 0
+  }
+  if (parsed.kind === 'error') {
+    console.error(parsed.message)
+    console.error('\nRun `spectra attach --help` for usage.')
+    return 2
+  }
+
+  const resolved = resolveAttach(parsed, process.env, process.cwd())
+  if (resolved.kind === 'error') {
+    console.error(resolved.message)
+    console.error('\nRun `spectra attach --help` for usage.')
+    return 2
+  }
+  const { options } = resolved
+
+  const composeFiles = parsed.composeFiles.length > 0 ? parsed.composeFiles : [repoFile('attach.yaml')]
+  const credential = credentialFilePath(configHome())
+  const envFile = existsSync(credential) ? credential : undefined
+  const args = attachComposeArgv(options.agent, composeFiles, envFile)
+  const env = attachEnv(options)
+
+  if (parsed.dryRun) {
+    console.log(['docker', 'compose', ...args].join(' '))
+    // Show what would be injected, with the token masked — this line is safe to paste in a doc.
+    const shown = { ...env, DEVICE_TOKEN: `${options.token.slice(0, 4)}…(${options.token.length} chars)` }
+    for (const [key, value] of Object.entries(shown)) console.log(`  ${key}=${value}`)
+    return 0
+  }
+  return runDockerCompose(args, env)
+}
+
 async function main(): Promise<number> {
   if (process.argv[2] === 'init') return runInit(process.argv.slice(3))
+  if (process.argv[2] === 'attach') return runAttach(process.argv.slice(3))
 
   const parsed = parseArgs(process.argv.slice(2))
 
@@ -146,10 +200,17 @@ async function main(): Promise<number> {
   }
 }
 
-/** Spawn `docker compose <args>`, inheriting stdio so logs/prompts pass straight through. */
-function runDockerCompose(args: string[]): Promise<number> {
+/**
+ * Spawn `docker compose <args>`, inheriting stdio so logs/prompts pass straight through. Extra env
+ * (attach injects the coordinator/token/project here) is layered over the parent's — secrets travel
+ * in the environment, never in argv, so they stay out of `ps` and shell history.
+ */
+function runDockerCompose(args: string[], extraEnv?: Record<string, string>): Promise<number> {
   return new Promise((resolve) => {
-    const child = spawn('docker', ['compose', ...args], { stdio: 'inherit' })
+    const child = spawn('docker', ['compose', ...args], {
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    })
     child.on('error', (error) => {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         console.error('docker not found on PATH. Spectra drives the stack through docker compose — install Docker first.')
