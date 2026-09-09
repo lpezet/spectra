@@ -1,4 +1,4 @@
-# @spectra/drift-check
+# @abseed/spectra-drift-check
 
 The offline drift check between a Spectra glossary and the code that implements it.
 
@@ -22,7 +22,7 @@ that moved, so the test fails loud for structure and review catches the rest.
 Add it as a dev-dependency, then write a one-line test in whatever runner you already use:
 
 ```ts
-import { driftCheck } from '@spectra/drift-check'
+import { driftCheck } from '@abseed/spectra-drift-check'
 import { expect, it } from 'vitest'
 
 it('the glossary and the code are in sync', () => {
