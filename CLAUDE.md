@@ -63,10 +63,13 @@ has no consumer project, so it mounts a placeholder `./app` at `/work/project` a
 empty `./app` on the host). The in-process (unsandboxed) coder's cwd is `APP_DIR` in
 `packages/server/src/agent/agents.ts` (`CODER_DIR` env, default `<repo>/app`).
 
-What remains of **blocker E** is the *drift check* ("drift-check fork") — the `specs.snapshot.json`
-+ `implements.test.ts` that lived in `app/`. `@coder` still reads a snapshot at
-`APP_DIR/specs.snapshot.json` and degrades to "no snapshot" when absent; where that check finally
-lives is tied to the store-version-query direction (a live query may replace the snapshot). The
+The *drift check* that used to be copied into `app/` (`specs.snapshot.json` + `implements.test.ts`)
+now ships as the **`@spectra/drift-check`** package (`packages/drift-check`): a consumer project adds
+it as a dev-dependency and writes a one-line test — `driftCheck({ srcDir, snapshotPath })` — against
+its committed `specs.snapshot.json` (which `@coder` writes with `export_specs`). It stays offline and
+standalone (the package reads files, needs no coordinator), which is what lets the check run in a bare
+copy of the project and inside `@coder`'s sandbox alike. `@coder` still reads a snapshot at
+`APP_DIR/specs.snapshot.json` (reported on `/health`) and degrades to "no snapshot" when absent. The
 rest of the tool (glossary, changesets, `@spec`, MCP, version guard) is unaffected and its tests pass.
 
 The design principle to preserve when that project is wired back: the consumer project stays
@@ -205,8 +208,8 @@ runtime is; the image is shared, `Dockerfile.runtime`.)
 
 ## Where things live
 
-Code lives under `packages/` (`core`, `server`, `web`, `runtime`); `core`/`server`/`web` are
-npm workspaces under the `@spectra/*` scope, `runtime` is standalone (its own lockfile, the
+Code lives under `packages/` (`core`, `agent-tools`, `drift-check`, `server`, `web`, `cli`, `runtime`);
+all but `runtime` are npm workspaces under the `@spectra/*` scope, `runtime` is standalone (its own lockfile, the
 sandbox image builds from it). The engine ships with **no glossary** — the example one lives
 under `examples/todo/specs/`. Neither the glossary nor runtime data defaults into the source
 tree: an unconfigured run reads specs from a gitignored `.dev/specs` and writes data under the
@@ -235,6 +238,7 @@ packages/server/src/backend.ts        the storage plugin boundary: SPEC_STORE=fs
 packages/runtime/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
+packages/drift-check/src/             @spectra/drift-check — the offline glossary↔code drift check a consumer project depends on
 ~/.local/share/spectra/transcripts.db chat history — XDG data home (dev: .dev/data); prunable, never the record
 ```
 
