@@ -18,6 +18,7 @@ import {
   composeArgv,
   composeBuildArgv,
   composeStackArgv,
+  deriveServerUrl,
   parseArgs,
   parseAttachArgs,
   resolveAttach,
@@ -25,6 +26,8 @@ import {
 } from './commands.js'
 import { discover, resolveComposeFiles } from './discovery.js'
 import { INIT_USAGE, applyInitPlan, credentialFilePath, ensureCredentialFile, parseInitArgs, planInit } from './init.js'
+import { runLogin, runLogout } from './login.js'
+import { tokenFor } from './credentials.js'
 
 /** Repo-root path resolved relative to this package (packages/cli/src -> repo root). */
 function repoFile(name: string): string {
@@ -136,7 +139,19 @@ function runAttach(argv: string[]): Promise<number> | number {
     return 2
   }
 
-  const resolved = resolveAttach(parsed, process.env, process.cwd())
+  // Fall back to a token saved by `spectra login` for this coordinator, when none was passed.
+  let lookupEnv: NodeJS.ProcessEnv = process.env
+  const rawCoordinator = parsed.flags.coordinator ?? process.env.COORDINATOR_URL
+  if (rawCoordinator && !process.env.DEVICE_TOKEN) {
+    try {
+      const stored = tokenFor(configHome(), deriveServerUrl(rawCoordinator))
+      if (stored) lookupEnv = { ...process.env, DEVICE_TOKEN: stored }
+    } catch {
+      // A malformed coordinator; resolveAttach reports it below.
+    }
+  }
+
+  const resolved = resolveAttach(parsed, lookupEnv, process.cwd())
   if (resolved.kind === 'error') {
     console.error(resolved.message)
     console.error('\nRun `spectra attach --help` for usage.')
@@ -163,6 +178,8 @@ function runAttach(argv: string[]): Promise<number> | number {
 async function main(): Promise<number> {
   if (process.argv[2] === 'init') return runInit(process.argv.slice(3))
   if (process.argv[2] === 'attach') return runAttach(process.argv.slice(3))
+  if (process.argv[2] === 'login') return runLogin(process.argv.slice(3), configHome())
+  if (process.argv[2] === 'logout') return runLogout(process.argv.slice(3), configHome())
 
   const parsed = parseArgs(process.argv.slice(2))
 

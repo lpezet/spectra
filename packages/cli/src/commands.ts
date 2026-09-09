@@ -310,6 +310,69 @@ export function attachComposeArgv(agent: AttachAgent, composeFiles: string[], en
   return [...topLevelFlags(composeFiles, envFile), 'up', ...services]
 }
 
+// ── `spectra login` / `spectra logout` ───────────────────────────────────────────────────────────
+// Fetch (or drop) the device token for a coordinator via the browser, so `attach` needs no --token.
+// Parsing stays here and pure; the loopback server, browser open, and token exchange live in login.ts.
+
+export type LoginParsed =
+  | { kind: 'login'; coordinator?: string; label?: string }
+  | { kind: 'help' }
+  | { kind: 'error'; message: string }
+
+export type LogoutParsed =
+  | { kind: 'logout'; coordinator?: string }
+  | { kind: 'help' }
+  | { kind: 'error'; message: string }
+
+const LOGIN_VALUE_FLAGS = new Set(['--coordinator', '--label'])
+
+export function parseLoginArgs(argv: string[]): LoginParsed {
+  let coordinator: string | undefined
+  let label: string | undefined
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]!
+    if (arg === '-h' || arg === '--help') return { kind: 'help' }
+    if (!LOGIN_VALUE_FLAGS.has(arg)) return { kind: 'error', message: `Unknown option "${arg}".` }
+    const value = argv[i + 1]
+    if (value === undefined) return { kind: 'error', message: `${arg} needs a value.` }
+    i += 1
+    if (arg === '--coordinator') coordinator = value
+    else label = value
+  }
+  return { kind: 'login', coordinator, label }
+}
+
+export function parseLogoutArgs(argv: string[]): LogoutParsed {
+  let coordinator: string | undefined
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]!
+    if (arg === '-h' || arg === '--help') return { kind: 'help' }
+    if (arg !== '--coordinator') return { kind: 'error', message: `Unknown option "${arg}".` }
+    const value = argv[i + 1]
+    if (value === undefined) return { kind: 'error', message: '--coordinator needs a value.' }
+    i += 1
+    coordinator = value
+  }
+  return { kind: 'logout', coordinator }
+}
+
+export const LOGIN_USAGE = `spectra login — fetch this machine's device token from a coordinator, via the browser
+
+Opens the browser to the coordinator, where you approve this machine; the token comes back over a
+local redirect and is saved under ~/.config/spectra/. After that, \`spectra attach\` needs no --token.
+
+Usage:
+  spectra login  --coordinator <ws-url> [--label "<name>"]
+  spectra logout --coordinator <ws-url>
+
+Options:
+  --coordinator <url>   ws:// or wss:// relay URL of the coordinator   (env COORDINATOR_URL)
+  --label "<name>"      a name for this machine (default: the hostname)
+  -h, --help            show this help
+
+Example:
+  spectra login --coordinator wss://<host>/api/relay/runtime`
+
 export const ATTACH_USAGE = `spectra attach — run local agent runtimes against a REMOTE coordinator
 
 Runs the @coder and @spec runtimes in containers (attach.yaml) that dial OUT to a coordinator over
@@ -322,7 +385,7 @@ Usage:
 Required (flag or environment):
   --coordinator <url>   ws:// or wss:// relay URL         (env COORDINATOR_URL)
   --project <id>        the remote project's id           (env PROJECT_ID)
-  --token <token>       the device token for this machine (env DEVICE_TOKEN)
+  --token <token>       the device token for this machine (env DEVICE_TOKEN, or run \`spectra login\`)
 
 Options:
   --org <slug>          the remote org (default: local)   (env ORG)
@@ -345,6 +408,7 @@ Usage:
   spectra init [--name "<name>"] [--domain "<text>"] [options]   (see: spectra init --help)
   spectra <component> <verb> [options]
   spectra up | down | build [component] [options]
+  spectra login  --coordinator <ws-url> [options]               (see: spectra login --help)
   spectra attach --coordinator <ws-url> --project <id> [options] (see: spectra attach --help)
 
 Components:

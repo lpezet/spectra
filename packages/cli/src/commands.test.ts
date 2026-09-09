@@ -16,6 +16,8 @@ import {
   deriveServerUrl,
   parseArgs,
   parseAttachArgs,
+  parseLoginArgs,
+  parseLogoutArgs,
   resolveAttach,
 } from './commands.js'
 
@@ -253,5 +255,24 @@ describe('spectra attach', () => {
       expect(attachComposeArgv('coder', [ATTACH])).toEqual(['-f', ATTACH, 'up', 'coder'])
       expect(attachComposeArgv('spec', [ATTACH], '/cfg/spectra.env')).toEqual(['--env-file', '/cfg/spectra.env', '-f', ATTACH, 'up', 'spec'])
     })
+  })
+})
+
+describe('spectra login / logout parsing', () => {
+  it('parses login flags', () => {
+    expect(parseLoginArgs(['--coordinator', 'wss://h/r', '--label', 'work laptop'])).toEqual({
+      kind: 'login',
+      coordinator: 'wss://h/r',
+      label: 'work laptop',
+    })
+    expect(parseLoginArgs([])).toEqual({ kind: 'login', coordinator: undefined, label: undefined })
+  })
+
+  it('parses logout, and rejects junk', () => {
+    expect(parseLogoutArgs(['--coordinator', 'wss://h/r'])).toEqual({ kind: 'logout', coordinator: 'wss://h/r' })
+    expect(parseLoginArgs(['--nope'])).toMatchObject({ kind: 'error' })
+    expect(parseLoginArgs(['--coordinator'])).toMatchObject({ kind: 'error' })
+    expect(parseLogoutArgs(['--label', 'x'])).toMatchObject({ kind: 'error' })
+    expect(parseLoginArgs(['-h'])).toEqual({ kind: 'help' })
   })
 })
