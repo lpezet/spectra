@@ -27,19 +27,31 @@ function coordinatorOrigin(coordinator: string | undefined): { origin: string; c
   }
 }
 
-/** Open the OS browser at `url`; best-effort, since we also print the URL as a fallback. */
+/**
+ * Open the OS browser at `url`, best-effort — the printed URL is the fallback. `spawn` reports a
+ * missing opener via an async `'error'` event (not a throw), so each attempt carries an error handler
+ * that moves on to the next candidate; when none exist (a bare WSL/container), it gives up silently.
+ */
 function openBrowser(url: string): void {
-  const [cmd, args] =
+  const candidates: Array<[string, string[]]> =
     process.platform === 'darwin'
-      ? ['open', [url]]
+      ? [['open', [url]]]
       : process.platform === 'win32'
-        ? ['cmd', ['/c', 'start', '', url]]
-        : ['xdg-open', [url]]
-  try {
-    spawn(cmd as string, args as string[], { stdio: 'ignore', detached: true }).unref()
-  } catch {
-    // The printed URL is the fallback.
+        ? [['cmd', ['/c', 'start', '', url]]]
+        : [
+            ['xdg-open', [url]], // most Linux desktops
+            ['wslview', [url]], // WSL → the Windows default browser
+            ['gio', ['open', url]], // GNOME fallback
+          ]
+
+  const attempt = (i: number): void => {
+    if (i >= candidates.length) return // no opener available; the printed URL is the fallback
+    const [cmd, args] = candidates[i]!
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true })
+    child.on('error', () => attempt(i + 1))
+    child.unref()
   }
+  attempt(0)
 }
 
 const DONE_PAGE =
