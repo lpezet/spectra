@@ -21,6 +21,8 @@ import {
   deriveServerUrl,
   parseArgs,
   parseAttachArgs,
+  parseProjectsArgs,
+  PROJECTS_USAGE,
   resolveAttach,
   USAGE,
 } from './commands.js'
@@ -122,6 +124,79 @@ function runInit(argv: string[]): number {
 }
 
 /**
+ * The coordinator a command acts against: an explicit `--coordinator`/`COORDINATOR_URL` wins; else,
+ * if `spectra login` saved exactly one, that; else an error (none, or several to choose among).
+ * Shared by `attach` and `projects` so "you're logged into one place" means the flag is optional.
+ */
+function resolveCoordinator(flag: string | undefined): { coordinator: string } | { error: string } {
+  const chosen = flag ?? process.env.COORDINATOR_URL
+  if (chosen) return { coordinator: chosen }
+  const logins = Object.values(readCredentials(configHome()))
+  if (logins.length === 1) return { coordinator: logins[0]!.coordinator }
+  if (logins.length === 0) return { error: 'No coordinator: pass --coordinator, or run `spectra login` first.' }
+  return { error: `Several coordinators are logged in — pass --coordinator to pick one:\n${logins.map((c) => `  ${c.coordinator}`).join('\n')}` }
+}
+
+/**
+ * `spectra projects` — list the projects reachable on a coordinator, using the device token saved by
+ * `spectra login`. Reads GET /api/cli/projects (device-token authed) and prints org/id + name, so a
+ * viewer no longer needs a DevTools `/api/context` lookup to fill `attach --org … --project …`.
+ */
+async function runProjects(argv: string[]): Promise<number> {
+  const parsed = parseProjectsArgs(argv)
+  if (parsed.kind === 'help') {
+    console.log(PROJECTS_USAGE)
+    return 0
+  }
+  if (parsed.kind === 'error') {
+    console.error(parsed.message)
+    console.error('\nRun `spectra projects --help` for usage.')
+    return 2
+  }
+
+  const coord = resolveCoordinator(parsed.coordinator)
+  if ('error' in coord) {
+    console.error(coord.error)
+    return 2
+  }
+  let origin: string
+  try {
+    origin = deriveServerUrl(coord.coordinator)
+  } catch {
+    console.error(`Invalid coordinator URL: ${coord.coordinator}`)
+    return 2
+  }
+  const token = tokenFor(configHome(), origin)
+  if (!token) {
+    console.error(`Not logged in to ${origin}. Run:  spectra login --coordinator ${coord.coordinator}`)
+    return 1
+  }
+
+  let res: Response
+  try {
+    res = await fetch(`${origin}/api/cli/projects`, { headers: { authorization: `Bearer ${token}` } })
+  } catch {
+    console.error(`Could not reach ${origin}.`)
+    return 1
+  }
+  const body = (await res.json().catch(() => ({}))) as { projects?: Array<{ org: string; id: string; name: string }>; error?: string }
+  if (!res.ok) {
+    console.error(body.error ?? `Could not list projects (${res.status}).`)
+    return 1
+  }
+  const projects = body.projects ?? []
+  if (projects.length === 0) {
+    console.log(`No projects on ${origin} yet — create one in the app.`)
+    return 0
+  }
+
+  console.log(`Projects on ${origin}:`)
+  for (const project of projects) console.log(`  ${project.org}/${project.id}  —  ${project.name}`)
+  console.log('\nAttach with:  spectra attach --org <org> --project <id> --dir <path>')
+  return 0
+}
+
+/**
  * `spectra attach` — run the two agent runtimes (attach.yaml) pointed at a remote coordinator.
  * Unlike the stack commands this injects the resolved coordinator/token/project into the child's
  * environment (attach.yaml interpolates them) and runs compose in the foreground, so the agents'
@@ -139,35 +214,25 @@ function runAttach(argv: string[]): Promise<number> | number {
     return 2
   }
 
-  // Resolve the coordinator: an explicit flag/env wins; otherwise, if `spectra login` saved exactly
-  // one, default to it (so a logged-in user runs `attach --org … --project …` with no --coordinator).
-  // Then inject the coordinator + its stored token into the env resolveAttach reads.
-  let coordinator = parsed.flags.coordinator ?? process.env.COORDINATOR_URL
-  if (!coordinator) {
-    const logins = Object.values(readCredentials(configHome()))
-    if (logins.length === 1) coordinator = logins[0]!.coordinator
-    else if (logins.length > 1) {
-      console.error('Several coordinators are logged in — pass --coordinator to pick one:')
-      for (const c of logins) console.error(`  ${c.coordinator}`)
-      return 2
+  // Resolve the coordinator (flag/env, else the sole saved login) and inject it + its stored token
+  // into the env resolveAttach reads — so a logged-in user runs `attach --org … --project …` bare.
+  const coord = resolveCoordinator(parsed.flags.coordinator)
+  if ('error' in coord) {
+    console.error(coord.error)
+    console.error('\nRun `spectra attach --help` for usage.')
+    return 2
+  }
+  const patch: Record<string, string> = { COORDINATOR_URL: coord.coordinator }
+  if (!process.env.DEVICE_TOKEN) {
+    try {
+      const stored = tokenFor(configHome(), deriveServerUrl(coord.coordinator))
+      if (stored) patch.DEVICE_TOKEN = stored
+    } catch {
+      // A malformed coordinator; resolveAttach reports it below.
     }
   }
 
-  let lookupEnv: NodeJS.ProcessEnv = process.env
-  if (coordinator) {
-    const patch: Record<string, string> = { COORDINATOR_URL: coordinator }
-    if (!process.env.DEVICE_TOKEN) {
-      try {
-        const stored = tokenFor(configHome(), deriveServerUrl(coordinator))
-        if (stored) patch.DEVICE_TOKEN = stored
-      } catch {
-        // A malformed coordinator; resolveAttach reports it below.
-      }
-    }
-    lookupEnv = { ...process.env, ...patch }
-  }
-
-  const resolved = resolveAttach(parsed, lookupEnv, process.cwd())
+  const resolved = resolveAttach(parsed, { ...process.env, ...patch }, process.cwd())
   if (resolved.kind === 'error') {
     console.error(resolved.message)
     console.error('\nRun `spectra attach --help` for usage.')
@@ -196,6 +261,7 @@ async function main(): Promise<number> {
   if (process.argv[2] === 'attach') return runAttach(process.argv.slice(3))
   if (process.argv[2] === 'login') return runLogin(process.argv.slice(3), configHome())
   if (process.argv[2] === 'logout') return runLogout(process.argv.slice(3), configHome())
+  if (process.argv[2] === 'projects') return runProjects(process.argv.slice(3))
 
   const parsed = parseArgs(process.argv.slice(2))
 

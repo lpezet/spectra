@@ -356,6 +356,38 @@ export function parseLogoutArgs(argv: string[]): LogoutParsed {
   return { kind: 'logout', coordinator }
 }
 
+// ── `spectra projects` ───────────────────────────────────────────────────────────────────────────
+
+export type ProjectsParsed =
+  | { kind: 'projects'; coordinator?: string }
+  | { kind: 'help' }
+  | { kind: 'error'; message: string }
+
+export function parseProjectsArgs(argv: string[]): ProjectsParsed {
+  let coordinator: string | undefined
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]!
+    if (arg === '-h' || arg === '--help') return { kind: 'help' }
+    if (arg !== '--coordinator') return { kind: 'error', message: `Unknown option "${arg}".` }
+    const value = argv[i + 1]
+    if (value === undefined) return { kind: 'error', message: '--coordinator needs a value.' }
+    i += 1
+    coordinator = value
+  }
+  return { kind: 'projects', coordinator }
+}
+
+export const PROJECTS_USAGE = `spectra projects — list the projects you can reach on a coordinator
+
+Uses the device token saved by \`spectra login\`. With one login, --coordinator is optional.
+
+Usage:
+  spectra projects [--coordinator <ws-url>]
+
+Options:
+  --coordinator <url>   ws:// or wss:// relay URL   (env COORDINATOR_URL; optional once logged in)
+  -h, --help            show this help`
+
 export const LOGIN_USAGE = `spectra login — fetch this machine's device token from a coordinator, via the browser
 
 Opens the browser to the coordinator, where you approve this machine; the token comes back over a
@@ -412,6 +444,7 @@ Usage:
   spectra <component> <verb> [options]
   spectra up | down | build [component] [options]
   spectra login  --coordinator <ws-url> [options]               (see: spectra login --help)
+  spectra projects [--coordinator <ws-url>]                     (see: spectra projects --help)
   spectra attach --coordinator <ws-url> --project <id> [options] (see: spectra attach --help)
 
 Components:

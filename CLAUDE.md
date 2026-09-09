@@ -300,6 +300,11 @@ saved `0600` under `~/.config/spectra/credentials.json`, **keyed by coordinator 
 so dev and prod tokens coexist and `attach` reads the right one (flag > `DEVICE_TOKEN` > stored). This
 is cloud-agnostic — the coordinator serves those `/api/auth/cli/*` endpoints; the CLI just names a URL.
 
+`spectra projects` lists the projects reachable on a coordinator (device-token authed, `GET
+/api/cli/projects`) so a `--project` id need not be looked up by hand. `attach` and `projects` share
+`resolveCoordinator`: an explicit `--coordinator`/`COORDINATOR_URL` wins, else the sole saved login,
+else an error — so once you're logged into one coordinator, the flag is optional on both.
+
 `spectra init --name … --domain …` links a repo to a project (`init.ts`, pure `planInit`). It writes
 three things in three places, per the corrected model above: `.spectra/config.json` in the repo (the
 *link* — project id + identity + optional Server URL), the **server-side** glossary's `project.json`

@@ -18,6 +18,7 @@ import {
   parseAttachArgs,
   parseLoginArgs,
   parseLogoutArgs,
+  parseProjectsArgs,
   resolveAttach,
 } from './commands.js'
 
@@ -274,5 +275,17 @@ describe('spectra login / logout parsing', () => {
     expect(parseLoginArgs(['--coordinator'])).toMatchObject({ kind: 'error' })
     expect(parseLogoutArgs(['--label', 'x'])).toMatchObject({ kind: 'error' })
     expect(parseLoginArgs(['-h'])).toEqual({ kind: 'help' })
+  })
+})
+
+describe('spectra projects parsing', () => {
+  it('parses an optional --coordinator', () => {
+    expect(parseProjectsArgs([])).toEqual({ kind: 'projects', coordinator: undefined })
+    expect(parseProjectsArgs(['--coordinator', 'wss://h/r'])).toEqual({ kind: 'projects', coordinator: 'wss://h/r' })
+  })
+  it('help and errors', () => {
+    expect(parseProjectsArgs(['-h'])).toEqual({ kind: 'help' })
+    expect(parseProjectsArgs(['--nope'])).toMatchObject({ kind: 'error' })
+    expect(parseProjectsArgs(['--coordinator'])).toMatchObject({ kind: 'error' })
   })
 })
