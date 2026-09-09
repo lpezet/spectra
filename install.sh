@@ -25,6 +25,7 @@ if [ -n "${SPECTRA_ASSETS:-}" ]; then
   echo "Installing from local assets at $SPECTRA_ASSETS"
   cp "$SPECTRA_ASSETS/spectra" "$TMP/spectra"
   cp "$SPECTRA_ASSETS/default.yaml" "$TMP/default.yaml"
+  cp "$SPECTRA_ASSETS/attach.default.yaml" "$TMP/attach.default.yaml"
 else
   command -v curl >/dev/null 2>&1 || { echo "spectra install needs 'curl' on PATH." >&2; exit 1; }
   if [ "$REF" = latest ]; then
@@ -36,6 +37,7 @@ else
   curl -fsSL "$BASE/spectra" -o "$TMP/spectra" \
     || { echo "Could not download the spectra release for '$REF'. Has that release been published?" >&2; exit 1; }
   curl -fsSL "$BASE/default.yaml" -o "$TMP/default.yaml"
+  curl -fsSL "$BASE/attach.default.yaml" -o "$TMP/attach.default.yaml"
   # Verify the checksum when the release publishes one (it does).
   if curl -fsSL "$BASE/SHASUMS256.txt" -o "$TMP/SHASUMS256.txt" 2>/dev/null; then
     ( cd "$TMP" && grep ' spectra$' SHASUMS256.txt | sha256sum -c - >/dev/null ) \
@@ -47,6 +49,8 @@ fi
 mkdir -p "$BIN_DIR" "$CONFIG_DIR"
 install -m 0755 "$TMP/spectra" "$BIN_DIR/spectra"
 cp "$TMP/default.yaml" "$CONFIG_DIR/default.yaml"
+# The distribution attach compose, named plainly so `spectra attach` finds it in the config home.
+cp "$TMP/attach.default.yaml" "$CONFIG_DIR/attach.yaml"
 
 echo
 echo "Installed: $BIN_DIR/spectra"
