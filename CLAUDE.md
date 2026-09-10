@@ -327,7 +327,10 @@ coder code still targets the old `APP_DIR`).
 Distribution (like SAL: build in CI, download prebuilt in the installer):
 - `npm run build -w @abseed/spectra-cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a single
   dependency-free `packages/cli/dist/cli.mjs` that runs on plain `node` (version inlined via a
-  `define`; no `tsx` at runtime). `dist/` is gitignored.
+  `define`; no `tsx` at runtime). `dist/` is gitignored. **The git tag is the source of truth for a
+  release's version**: `release.yml` passes `SPECTRA_VERSION=${tag#v}` to the build, so tag `v0.5.0`
+  ships a bundle reporting `0.5.0` with no `package.json` bump to keep in sync. `packages/cli`'s
+  `version` is only the fallback for a local/dev build. So cutting a release is just `git tag vX && push`.
 - `.github/workflows/release.yml` runs that build on a `v*` tag and attaches the bundle (as
   `spectra`), `default.yaml`, and `SHASUMS256.txt` to the GitHub release.
 - `install.sh` (repo root) **downloads** those release assets (checksum-verified), installs the bin

@@ -13,6 +13,11 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.join(here, '..')
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
 
+// The release is named by its git tag, so the tag is the source of truth for the shipped version:
+// the workflow passes SPECTRA_VERSION (the tag, minus its leading `v`). package.json's version is the
+// fallback for a local/dev build, so `spectra --version` still reports something sensible off a tree.
+const version = process.env.SPECTRA_VERSION || pkg.version
+
 await esbuild.build({
   entryPoints: [path.join(root, 'src', 'cli.ts')],
   bundle: true,
@@ -21,7 +26,7 @@ await esbuild.build({
   target: 'node22',
   outfile: path.join(root, 'dist', 'cli.mjs'),
   banner: { js: '#!/usr/bin/env node' },
-  define: { __SPECTRA_VERSION__: JSON.stringify(pkg.version) },
+  define: { __SPECTRA_VERSION__: JSON.stringify(version) },
 })
 
-console.log(`built packages/cli/dist/cli.mjs (spectra ${pkg.version})`)
+console.log(`built packages/cli/dist/cli.mjs (spectra ${version})`)
