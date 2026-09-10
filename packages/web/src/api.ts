@@ -1,39 +1,50 @@
+/**
+ * The local tool's `GlossaryTransport`: same-origin REST against the API the spec server serves.
+ *
+ * The data contracts now live in `glossaryTransport.ts` (the published seam) and are re-exported here,
+ * so existing imports from `./api.js` keep resolving. This module is just one *implementation* of that
+ * seam — `apiTransport` bundles the calls into the object `useGlossary` (and any host shell) drives.
+ */
 import type {
-  Answer,
-  Changeset,
-  Diagnostic,
-  Expectation,
-  ProjectInfo,
-  Question,
-  SourceProblem,
-  Term,
-} from '@abseed/spectra-core'
+  AnswerOutcome,
+  ChangesetFeed,
+  CheckReport,
+  CommitOutcome,
+  Context,
+  ExpectationDraft,
+  ExpectationFeed,
+  Glossary,
+  GlossaryTransport,
+  Org,
+  ProjectSummary,
+  QuestionFeed,
+  RaiseOutcome,
+  SupersedeOutcome,
+} from './glossaryTransport.js'
 
-// The project prefix lives in apiBase; re-exported so callers still import it from here. fetchContext
-// stays the un-prefixed bootstrap that tells the browser which org/project to configure.
-export { configureProject } from './apiBase.js'
-import { apiPath } from './apiBase.js'
-
-export interface Context {
-  org: string
-  projectId: string
-  project: ProjectInfo
-}
+// The project prefix lives in apiBase; configureProject is re-exported so callers still import it from
+// here. fetchContext stays the un-prefixed bootstrap that tells the browser which org/project to use.
+import { apiPath, configureProject } from './apiBase.js'
+export { configureProject }
+export type {
+  AnswerOutcome,
+  ChangesetFeed,
+  CheckReport,
+  CommitOutcome,
+  Context,
+  ExpectationDraft,
+  ExpectationFeed,
+  Glossary,
+  Org,
+  ProjectSummary,
+  QuestionFeed,
+  RaiseOutcome,
+  SupersedeOutcome,
+} from './glossaryTransport.js'
 
 /** Read once at startup, before any glossary call, to learn which org/project this UI is for. */
 export function fetchContext(): Promise<Context> {
   return get<Context>('/api/context')
-}
-
-export interface Org {
-  id: string
-  name: string
-}
-
-export interface ProjectSummary {
-  id: string
-  name: string
-  domain: string
 }
 
 /** The orgs this caller may pick from — the org selector's source. Un-prefixed, like the context. */
@@ -46,41 +57,12 @@ export function fetchProjects(org: string): Promise<{ projects: ProjectSummary[]
   return get<{ projects: ProjectSummary[] }>(`/api/orgs/${encodeURIComponent(org)}/projects`)
 }
 
-export interface Glossary {
-  terms: Term[]
-  problems: SourceProblem[]
-}
-
-export interface ChangesetFeed {
-  changesets: Changeset[]
-  problems: SourceProblem[]
-  /** Resolved changesets, newest first, from changesets/applied and changesets/rejected. */
-  applied: Changeset[]
-  rejected: Changeset[]
-}
-
-export interface QuestionFeed {
-  questions: Question[]
-  problems: SourceProblem[]
-}
-
-export interface ExpectationFeed {
-  expectations: Expectation[]
-  /** Superseded, kept so a citation of an old id still resolves. */
-  retired: Expectation[]
-  problems: SourceProblem[]
-}
-
 async function get<T>(url: string): Promise<T> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`${url} — ${response.status} ${response.statusText}`)
   }
   return (await response.json()) as T
-}
-
-export function fetchProject(): Promise<ProjectInfo> {
-  return get<ProjectInfo>(apiPath(`/project`))
 }
 
 export function fetchGlossary(): Promise<Glossary> {
@@ -106,18 +88,6 @@ export function fetchQuestions(): Promise<QuestionFeed> {
  */
 export function fetchExpectations(): Promise<ExpectationFeed> {
   return get<ExpectationFeed>(apiPath(`/expectations`))
-}
-
-export interface CommitOutcome {
-  ok: boolean
-  error?: string
-  diagnostics?: Diagnostic[]
-  needsAcknowledgement?: boolean
-  appliedOps?: number
-  remainingOps?: number
-  written?: string[]
-  deleted?: string[]
-  resolvedTo?: string
 }
 
 /** A refused commit (409) is an expected answer, not a transport failure — it comes back as data. */
@@ -154,37 +124,8 @@ export function rejectChangeset(id: string): Promise<CommitOutcome> {
   return post(apiPath(`/changesets/${encodeURIComponent(id)}/reject`), {})
 }
 
-export interface AnswerOutcome extends CommitOutcome {
-  questionId?: string
-  answer?: Answer
-  changesetId?: string
-  changesetFile?: string
-}
-
 export function answerQuestion(id: string, chose: string | null, note: string): Promise<AnswerOutcome> {
   return post(apiPath(`/questions/${encodeURIComponent(id)}/answer`), { chose, note })
-}
-
-export interface RaiseOutcome {
-  ok: boolean
-  error?: string
-  id?: string
-  file?: string
-  expectation?: Expectation
-}
-
-export interface ExpectationDraft {
-  kind: Expectation['kind']
-  terms: string[]
-  given: string
-  expect: string
-}
-
-export interface CheckReport {
-  findings: Array<{ kind: string; subject: string; detail: string; quote?: string }>
-  /** False when the semantic pass did not run — no credential, or it failed. */
-  checked: boolean
-  note?: string
 }
 
 /**
@@ -224,13 +165,6 @@ export function recheckExpectation(id: string): Promise<RaiseOutcome> {
   return post<RaiseOutcome>(apiPath(`/expectations/${encodeURIComponent(id)}/recheck`), {})
 }
 
-export interface SupersedeOutcome {
-  ok: boolean
-  error?: string
-  retired?: string
-  replacement?: Expectation | null
-}
-
 /**
  * Retiring, optionally replacing. `note` is mandatory server-side, because an expectation
  * that stopped applying without a recorded reason is indistinguishable from one somebody
@@ -245,4 +179,27 @@ export function supersedeExpectation(
     note,
     ...(replacement ? { replacement } : {}),
   })
+}
+
+/**
+ * The local tool as a `GlossaryTransport`. This is the object the shell injects into `useGlossary`; a
+ * different host swaps this one object and reuses every flow unchanged.
+ */
+export const apiTransport: GlossaryTransport = {
+  fetchContext,
+  fetchOrgs,
+  fetchProjects,
+  configureProject,
+  fetchGlossary,
+  fetchChangesets,
+  fetchQuestions,
+  fetchExpectations,
+  applyChangeset,
+  markImplemented,
+  rejectChangeset,
+  answerQuestion,
+  checkExpectation,
+  raiseExpectation,
+  recheckExpectation,
+  supersedeExpectation,
 }
