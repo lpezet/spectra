@@ -8,7 +8,7 @@
 # The build stage mirrors Dockerfile.spec: every workspace package.json is copied because
 # `npm ci` verifies the whole lockfile tree and fails on a workspace it cannot see — even one
 # the final image keeps nothing from. Only core and web *source* is copied, since that is all
-# `vite build -w @spectra/web` needs (core is bundled in at build time, not resolved at runtime).
+# `vite build -w @abseed/spectra-web` needs (core is bundled in at build time, not resolved at runtime).
 
 FROM node:22-slim AS build
 WORKDIR /stack
@@ -20,7 +20,7 @@ RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages/core/ packages/core/
 COPY packages/web/ packages/web/
-RUN npm run build -w @spectra/web
+RUN npm run build -w @abseed/spectra-web
 
 # nginx serves the built assets and nothing else. The image carries no source, no node, and
 # no credentials — it is the one piece of the stack that is safe to hand to anyone.

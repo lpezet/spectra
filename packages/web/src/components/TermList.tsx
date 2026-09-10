@@ -1,4 +1,4 @@
-import type { HighlightKind, Term, TermType } from '@spectra/core'
+import type { HighlightKind, Term, TermType } from '@abseed/spectra-core'
 import type { TermStatus } from '../review.js'
 
 const TYPE_ORDER: Record<TermType, number> = {

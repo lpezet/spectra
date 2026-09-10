@@ -5,7 +5,7 @@
  * arguments.
  */
 import { describe, expect, it, vi } from 'vitest'
-import type { Author, Changeset, Question, SpecStore, Term, TranscriptStore } from '@spectra/core'
+import type { Author, Changeset, Question, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
 import { pick, pureTools, qualified, withVersion } from './tools.js'
 
 const term = (name: string): Term => ({ name, type: 'entity', spec: `A ${name}`, parent: null, attributes: [], tags: [] })

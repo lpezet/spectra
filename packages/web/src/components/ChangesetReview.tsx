@@ -1,5 +1,5 @@
-import type { Changeset, Diagnostic } from '@spectra/core'
-import { opKindClass, summarizeOp } from '@spectra/core'
+import type { Changeset, Diagnostic } from '@abseed/spectra-core'
+import { opKindClass, summarizeOp } from '@abseed/spectra-core'
 import type { Review } from '../review.js'
 
 function Diagnostics({ items }: { items: Diagnostic[] }) {

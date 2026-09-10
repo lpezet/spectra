@@ -22,7 +22,7 @@ import { buildSpecStore } from './storeFactory.js'
 import type { StoreChoice } from './storeFactory.js'
 import { listFsProjects } from './fileSystemSpecStore.js'
 import { SqlSpecStore } from './sqlSpecStore.js'
-import type { SpecStore } from '@spectra/core'
+import type { SpecStore } from '@abseed/spectra-core'
 
 /** A project the deployment holds — enough for a picker to list and choose one. */
 export interface ProjectSummary {

@@ -16,7 +16,7 @@ import path from 'node:path'
 import { resolveStoreChoice } from './storeFactory.js'
 import { StoreProvider } from './storeProvider.js'
 import type { ProjectSummary } from './storeProvider.js'
-import type { SpecStore } from '@spectra/core'
+import type { SpecStore } from '@abseed/spectra-core'
 import { loadPlugin } from './plugin.js'
 
 export interface SpecStoreBackend {

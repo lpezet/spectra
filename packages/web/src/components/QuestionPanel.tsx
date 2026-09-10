@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Question, QuestionOption } from '@spectra/core'
-import { summarizeOp } from '@spectra/core'
+import type { Question, QuestionOption } from '@abseed/spectra-core'
+import { summarizeOp } from '@abseed/spectra-core'
 import { FilterPills, toggled } from './FilterPills.js'
 import { TermRef } from './TermRef.js'
 

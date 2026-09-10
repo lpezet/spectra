@@ -10,7 +10,7 @@
 FROM node:22-slim AS build
 WORKDIR /src
 COPY . .
-RUN npm ci && npm run build -w @spectra/cli
+RUN npm ci && npm run build -w @abseed/spectra-cli
 RUN mkdir -p /assets \
   && cp packages/cli/dist/cli.mjs /assets/spectra \
   && cp default.yaml /assets/default.yaml

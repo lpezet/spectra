@@ -4,7 +4,7 @@
  * The engine here decides *what* the glossary should become and re-validates that against the
  * glossary as it is *now* — the source may have been hand-edited since the client last read it. The
  * persistence — which entries change, and the atomic move to applied — belongs to the store. It lives
- * in `@spectra/core`, beside the seam, so every coordinator applies, marks, and rejects identically
+ * in `@abseed/spectra-core`, beside the seam, so every coordinator applies, marks, and rejects identically
  * (the same reason `proposeChangeset`/`raiseQuestion` do).
  */
 import { applyOps } from './changeset.js'

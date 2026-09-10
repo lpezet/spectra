@@ -6,7 +6,7 @@
  * fixed key order, 2-space indent, one line per attribute. Break it and the first applied
  * changeset reformats every file it touches and buries the real change in whitespace.
  */
-import type { Attribute, Changeset, Term } from '@spectra/core'
+import type { Attribute, Changeset, Term } from '@abseed/spectra-core'
 
 /** `RecurringTask` → `recurring-task.json`, matching the seed files. */
 export function termFileName(name: string): string {

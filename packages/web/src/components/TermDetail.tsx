@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Attribute, Backlinks, Coverage, Expectation, Term } from '@spectra/core'
-import { parseValueType } from '@spectra/core'
+import type { Attribute, Backlinks, Coverage, Expectation, Term } from '@abseed/spectra-core'
+import { parseValueType } from '@abseed/spectra-core'
 import type { TermStatus } from '../review.js'
 import { BacklinkPanel } from './BacklinkHighlight.js'
 import { ExpectationFields } from './CoveragePanel.js'

@@ -19,7 +19,7 @@
  * middleware that calls this free of auth-scheme specifics.
  */
 import type { Request } from 'express'
-import type { Author } from '@spectra/core'
+import type { Author } from '@abseed/spectra-core'
 import { loadPlugin } from './plugin.js'
 
 /** A resolved caller: the identity to stamp, what it may reach, and what it may pick from. */

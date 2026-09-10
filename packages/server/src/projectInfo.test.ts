@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Term } from '@spectra/core'
+import type { Term } from '@abseed/spectra-core'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
 import { buildAgents } from './agent/agents.js'
 

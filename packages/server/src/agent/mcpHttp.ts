@@ -29,8 +29,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { AgentName } from './agents.js'
 import type { AgentProvider } from './agentProvider.js'
 import { toolsFor } from './tools.js'
-import type { TranscriptStore } from '@spectra/core'
-import type { SpecStore } from '@spectra/core'
+import type { TranscriptStore } from '@abseed/spectra-core'
+import type { SpecStore } from '@abseed/spectra-core'
 
 /** The name the tools appear under, and so the `mcp__blueprints__` prefix on the far side. */
 const SERVER_NAME = 'blueprints'

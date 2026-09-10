@@ -1,5 +1,5 @@
 {
-  "name": "@spectra/agent-tools",
+  "name": "@abseed/spectra-agent-tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@spectra/core": "*",
+    "@abseed/spectra-core": "*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

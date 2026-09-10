@@ -6,7 +6,7 @@
  * discipline would rest on the system prompt asking it not to. Here it rests on there being no such
  * tool. The agent physically cannot bypass review.
  *
- * WHY this is its own package, not `@spectra/core`: these schemas are consumed by the agent SDK,
+ * WHY this is its own package, not `@abseed/spectra-core`: these schemas are consumed by the agent SDK,
  * which peer-requires zod 4, while core is zod 3. So the tool definitions live here (zod 4, no node
  * builtins, no SDK dependency) where both the open server and the hosted coordinator can import them
  * — the server registers them in-process and over HTTP, the Worker over its fetch-native MCP.
@@ -21,8 +21,8 @@
  * rather than depend on the SDK.
  */
 import { z } from 'zod'
-import { analyzePending, computeBacklinks, computeCoverage, proposeChangeset, raiseQuestion, summarizeOp } from '@spectra/core'
-import type { Author, Changeset, PendingItem, ProposeRequest, Question, RaiseRequest, SpecStore, Term, TranscriptStore } from '@spectra/core'
+import { analyzePending, computeBacklinks, computeCoverage, proposeChangeset, raiseQuestion, summarizeOp } from '@abseed/spectra-core'
+import type { Author, Changeset, PendingItem, ProposeRequest, Question, RaiseRequest, SpecStore, Term, TranscriptStore } from '@abseed/spectra-core'
 
 /** MCP tools answer with content blocks; every tool here returns one JSON or text block. */
 export interface CallResult {

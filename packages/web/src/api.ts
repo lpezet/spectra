@@ -7,7 +7,7 @@ import type {
   Question,
   SourceProblem,
   Term,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 
 // The project prefix lives in apiBase; re-exported so callers still import it from here. fetchContext
 // stays the un-prefixed bootstrap that tells the browser which org/project to configure.

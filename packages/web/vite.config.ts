@@ -9,7 +9,7 @@ export default defineConfig({
       '/api': 'http://localhost:5174',
     },
   },
-  // @spectra/core is TypeScript source in a workspace, not a built package — let Vite
+  // @abseed/spectra-core is TypeScript source in a workspace, not a built package — let Vite
   // transform it directly instead of trying to pre-bundle it.
-  optimizeDeps: { exclude: ['@spectra/core'] },
+  optimizeDeps: { exclude: ['@abseed/spectra-core'] },
 })

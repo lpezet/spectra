@@ -19,7 +19,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
       - run: npm ci
-      - run: npm run build -w @spectra/cli
+      - run: npm run build -w @abseed/spectra-cli
       - name: Assemble release assets
         run: |
           mkdir -p out
