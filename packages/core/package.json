@@ -1,6 +1,6 @@
 {
   "name": "@abseed/spectra-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Spectra engine: glossary types, the changeset grammar, and the storage seams.",
   "private": true,
   "type": "module",
@@ -12,7 +12,12 @@
     "url": "git+https://github.com/lpezet/spectra.git",
     "directory": "packages/core"
   },
-  "keywords": ["spectra", "spec-driven", "glossary", "changeset"],
+  "keywords": [
+    "spectra",
+    "spec-driven",
+    "glossary",
+    "changeset"
+  ],
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -24,10 +29,11 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {
+  "devDependencies": {
+    "vitest": "^3.0.5",
     "zod": "^3.24.1"
   },
-  "devDependencies": {
-    "vitest": "^3.0.5"
+  "peerDependencies": {
+    "zod": "^3.24.1"
   }
 }

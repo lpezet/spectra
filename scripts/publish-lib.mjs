@@ -1,9 +1,9 @@
 // Publish an internally-consumed workspace package to npm without disturbing the monorepo.
 //
-// The problem: these packages point `main` at `src` so the rest of the monorepo (and spectra-cloud)
-// resolve their TypeScript source directly — instant edits, no build step, the dev flow everyone
-// relies on. But an npm consumer needs built JS + types. Rather than flip `main` to `dist` (which
-// would force every internal consumer to build before it could resolve the package), this builds
+// The problem: these packages point `main` at `src` so the rest of the monorepo (and other local
+// consumers) resolve their TypeScript source directly — instant edits, no build step, the dev flow
+// everyone relies on. But an npm consumer needs built JS + types. Rather than flip `main` to `dist`
+// (which would force every internal consumer to build before it could resolve the package), this builds
 // `dist` and publishes a *transformed* package.json from a staging dir — so the checked-in package
 // stays source-first and only the tarball is dist-first.
 //
@@ -62,6 +62,9 @@ const published = {
   exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
   sideEffects: pkg.sideEffects ?? false,
   dependencies: pinned,
+  // Carried as-is: a type-carrying lib (zod schemas cross the boundary) declares zod a peer so the
+  // consumer's single copy is used, rather than nesting its own and breaking type identity.
+  peerDependencies: pkg.peerDependencies,
   publishConfig: { access: 'public' },
 }
 writeFileSync(path.join(stage, 'package.json'), `${JSON.stringify(published, null, 2)}\n`)
