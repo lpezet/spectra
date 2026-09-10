@@ -1,8 +1,8 @@
 /**
  * The local tool's `GlossaryTransport`: same-origin REST against the API the spec server serves.
  *
- * The data contracts now live in `glossaryTransport.ts` (the published seam) and are re-exported here,
- * so existing imports from `./api.js` keep resolving. This module is just one *implementation* of that
+ * The data contracts live in `@abseed/spectra-web-lib` (the reusable seam) and are re-exported here, so
+ * existing imports from `./api.js` keep resolving. This module is just one *implementation* of that
  * seam — `apiTransport` bundles the calls into the object `useGlossary` (and any host shell) drives.
  */
 import type {
@@ -20,11 +20,11 @@ import type {
   QuestionFeed,
   RaiseOutcome,
   SupersedeOutcome,
-} from './glossaryTransport.js'
+} from '@abseed/spectra-web-lib'
 
-// The project prefix lives in apiBase; configureProject is re-exported so callers still import it from
-// here. fetchContext stays the un-prefixed bootstrap that tells the browser which org/project to use.
-import { apiPath, configureProject } from './apiBase.js'
+// The project prefix lives in the lib's apiBase; configureProject is re-exported so callers still import
+// it from here. fetchContext stays the un-prefixed bootstrap that tells the browser which org/project.
+import { apiPath, configureProject } from '@abseed/spectra-web-lib'
 export { configureProject }
 export type {
   AnswerOutcome,
@@ -40,7 +40,7 @@ export type {
   QuestionFeed,
   RaiseOutcome,
   SupersedeOutcome,
-} from './glossaryTransport.js'
+} from '@abseed/spectra-web-lib'
 
 /** Read once at startup, before any glossary call, to learn which org/project this UI is for. */
 export function fetchContext(): Promise<Context> {

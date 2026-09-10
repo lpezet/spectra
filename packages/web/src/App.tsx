@@ -12,20 +12,22 @@ import { useMemo, useState } from 'react'
 import type { Changeset, Expectation, HighlightKind, Term, TermType } from '@abseed/spectra-core'
 import { computeBacklinks, computeCoverage, connectionsFor } from '@abseed/spectra-core'
 import { apiTransport } from './api.js'
-import type { Entity } from './chat.js'
-import { HighlightLegend } from './components/BacklinkHighlight.js'
-import { ChangesetBar } from './components/ChangesetBar.js'
-import { ChangesetReview } from './components/ChangesetReview.js'
-import { ChatPanel } from './components/ChatPanel.js'
-import { CoveragePanel } from './components/CoveragePanel.js'
-import { QuestionPanel } from './components/QuestionPanel.js'
-import type { SupersedeDraft } from './components/TermDetail.js'
-import { ProjectSwitcher } from './components/ProjectSwitcher.js'
-import { SearchBar, filterTerms } from './components/SearchBar.js'
-import { TermDetail } from './components/TermDetail.js'
-import { TermList } from './components/TermList.js'
-import { reviewChangeset } from './review.js'
-import { useGlossary } from './useGlossary.js'
+import {
+  ChangesetBar,
+  ChangesetReview,
+  ChatPanel,
+  CoveragePanel,
+  filterTerms,
+  HighlightLegend,
+  ProjectSwitcher,
+  QuestionPanel,
+  reviewChangeset,
+  SearchBar,
+  TermDetail,
+  TermList,
+  useGlossary,
+} from '@abseed/spectra-web-lib'
+import type { Entity, SupersedeDraft } from '@abseed/spectra-web-lib'
 
 const EMPTY_CONNECTIONS: Map<string, HighlightKind> = new Map()
 const EMPTY_TERMS: Term[] = []

@@ -42,9 +42,17 @@ for (const file of ['README.md', 'LICENSE', 'NOTICE']) {
 }
 
 // 3. The transformed, dist-first package.json — source-only fields stripped, siblings pinned.
+// Each workspace sibling is pinned to *its own* current version, read from its package.json — the
+// packages are versioned independently (web-lib 0.1.0 may depend on core 0.1.2), so a sibling's range
+// must track the sibling, not this package's version. The package name's suffix is its directory.
+const packagesDir = path.dirname(pkgDir)
+const siblingVersion = (name) => {
+  const sibPath = path.join(packagesDir, name.replace('@abseed/spectra-', ''), 'package.json')
+  return existsSync(sibPath) ? JSON.parse(readFileSync(sibPath, 'utf8')).version : pkg.version
+}
 const pinned = Object.fromEntries(
   Object.entries(pkg.dependencies ?? {}).map(([name, range]) =>
-    name.startsWith('@abseed/spectra-') ? [name, `^${pkg.version}`] : [name, range],
+    name.startsWith('@abseed/spectra-') ? [name, `^${siblingVersion(name)}`] : [name, range],
   ),
 )
 const published = {
@@ -66,6 +74,11 @@ const published = {
   // consumer's single copy is used, rather than nesting its own and breaking type identity.
   peerDependencies: pkg.peerDependencies,
   publishConfig: { access: 'public' },
+}
+// A UI library bundles its CSS alongside the JS (vite lib mode emits dist/styles.css). Expose it as a
+// subpath the consumer imports once, matching the source-first `./styles.css` export in dev.
+if (existsSync(path.join(stage, 'dist', 'styles.css'))) {
+  published.exports['./styles.css'] = './dist/styles.css'
 }
 writeFileSync(path.join(stage, 'package.json'), `${JSON.stringify(published, null, 2)}\n`)
 
