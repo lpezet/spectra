@@ -1,5 +1,5 @@
 /** A stand-in transcript-store plugin for resolveTranscriptStore's test — loaded by specifier. */
-import type { TranscriptStore } from '@spectra/core'
+import type { TranscriptStore } from '@abseed/spectra-core'
 import type { TranscriptStoreContext } from './transcripts.js'
 
 export function createTranscriptStore(context: TranscriptStoreContext): TranscriptStore {

@@ -28,8 +28,8 @@ npm run sandbox:down           # docker compose down
 Single test file / single test name (vitest per workspace, so target the workspace first):
 
 ```bash
-npm test -w @spectra/core -- src/changeset.test.ts
-npm test -w @spectra/server -- -t 'refuses when the snapshot is behind'
+npm test -w @abseed/spectra-core -- src/changeset.test.ts
+npm test -w @abseed/spectra-server -- -t 'refuses when the snapshot is behind'
 ```
 
 There is no linter or formatter configured. `npm run typecheck` and the tests are the whole gate.
@@ -209,7 +209,7 @@ runtime is; the image is shared, `Dockerfile.runtime`.)
 ## Where things live
 
 Code lives under `packages/` (`core`, `agent-tools`, `drift-check`, `server`, `web`, `cli`, `runtime`);
-all but `runtime` are npm workspaces under the `@spectra/*` scope, `runtime` is standalone (its own lockfile, the
+all but `runtime` are npm workspaces under the `@abseed/spectra-*` scope, `runtime` is standalone (its own lockfile, the
 sandbox image builds from it). The engine ships with **no glossary** — the example one lives
 under `examples/todo/specs/`. Neither the glossary nor runtime data defaults into the source
 tree: an unconfigured run reads specs from a gitignored `.dev/specs` and writes data under the
@@ -266,7 +266,7 @@ override that `spectra init` writes, layered with `-f default.yaml -f <project>.
 files in structural sync; they differ only in build context and in that the project mounts live in
 the override.
 
-`packages/cli` (`@spectra/cli`) wraps this compose. Two shapes: per-component
+`packages/cli` (`@abseed/spectra-cli`) wraps this compose. Two shapes: per-component
 `spectra <server|spec|coder|web> up|down|restart|status|logs`, and whole-stack `spectra up|down|build [component]`.
 Each maps to the matching `docker compose` call — component names now match services one-to-one
 (`server` the coordinator, `spec`/`coder` the agent runtimes, `web` the UI), and anything touching
@@ -325,7 +325,7 @@ back to the repo's `docker-compose.yml` (the contributors' file). One follow-up 
 coder code still targets the old `APP_DIR`).
 
 Distribution (like SAL: build in CI, download prebuilt in the installer):
-- `npm run build -w @spectra/cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a single
+- `npm run build -w @abseed/spectra-cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a single
   dependency-free `packages/cli/dist/cli.mjs` that runs on plain `node` (version inlined via a
   `define`; no `tsx` at runtime). `dist/` is gitignored.
 - `.github/workflows/release.yml` runs that build on a `v*` tag and attaches the bundle (as
@@ -342,7 +342,7 @@ CLI hands it to compose with `--env-file` when it exists, so the compose files' 
 credential reaches only the `spec` container, never an image. This is the *consumer* path — a contributor
 running `npm run dev` uses the repo-root `.env` (`packages/server/src/env.ts`) instead; do not conflate them.
 
-Run in dev without installing via `npm run spectra -w @spectra/cli -- up`. `npm run
+Run in dev without installing via `npm run spectra -w @abseed/spectra-cli -- up`. `npm run
 test:install:docker` builds the assets once (a builder stage, as CI does) then installs and
 exercises the prebuilt bin. The download path itself needs a published release (push a `v*` tag).
 

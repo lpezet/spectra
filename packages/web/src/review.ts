@@ -1,5 +1,5 @@
-import type { Changeset, Diagnostic, OpEffect, Term } from '@spectra/core'
-import { applyOps } from '@spectra/core'
+import type { Changeset, Diagnostic, OpEffect, Term } from '@abseed/spectra-core'
+import { applyOps } from '@abseed/spectra-core'
 
 export type TermStatus = 'add' | 'remove' | 'modify'
 

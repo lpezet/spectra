@@ -1,9 +1,9 @@
 /**
  * The storage seam for agent-conversation transcripts — the interface only.
  *
- * Like {@link SpecStore}, it lives in `@spectra/core`, the pure package, so an out-of-repo store can
+ * Like {@link SpecStore}, it lives in `@abseed/spectra-core`, the pure package, so an out-of-repo store can
  * implement it without depending on a server's Express/agent machinery: the cloud backs it with D1,
- * the open server with node:sqlite ({@link SqliteTranscriptStore} in `@spectra/server`), and both
+ * the open server with node:sqlite ({@link SqliteTranscriptStore} in `@abseed/spectra-server`), and both
  * satisfy this one contract. The concrete backend, the plugin loader, and the on-disk defaults stay
  * in the server; only the shape an implementor must match is here.
  *

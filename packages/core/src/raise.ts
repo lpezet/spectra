@@ -2,7 +2,7 @@
  * Raising a question — the one write an agent is allowed to make against the glossary, over the
  * {@link SpecStore} seam.
  *
- * Like {@link proposeChangeset}, it lives in `@spectra/core` because it is pure and both the open
+ * Like {@link proposeChangeset}, it lives in `@abseed/spectra-core` because it is pure and both the open
  * server and an out-of-repo backend must raise a question identically — one operation, one meaning.
  *
  * Safe by construction: a question changes no term and applies no op. It is a request for a decision,

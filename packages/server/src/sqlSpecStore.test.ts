@@ -10,7 +10,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import type { Answer, Changeset, Expectation, Question, Term } from '@spectra/core'
+import type { Answer, Changeset, Expectation, Question, Term } from '@abseed/spectra-core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SqlSpecStore } from './sqlSpecStore.js'
 

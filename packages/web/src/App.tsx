@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Changeset, Expectation, HighlightKind, ProjectInfo, SourceProblem, Term, TermType } from '@spectra/core'
-import { computeBacklinks, computeCoverage, connectionsFor } from '@spectra/core'
+import type { Changeset, Expectation, HighlightKind, ProjectInfo, SourceProblem, Term, TermType } from '@abseed/spectra-core'
+import { computeBacklinks, computeCoverage, connectionsFor } from '@abseed/spectra-core'
 import type { ChangesetFeed, ExpectationFeed, Glossary, Org, ProjectSummary, QuestionFeed } from './api.js'
 import {
   answerQuestion,

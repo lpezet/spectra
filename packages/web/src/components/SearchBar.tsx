@@ -1,5 +1,5 @@
-import type { Term, TermType } from '@spectra/core'
-import { TERM_TYPES } from '@spectra/core'
+import type { Term, TermType } from '@abseed/spectra-core'
+import { TERM_TYPES } from '@abseed/spectra-core'
 
 /** Substring match over name and spec text — the spec text is searchable on purpose, since
  *  "which functions mention protection?" is the question this tool exists to answer. */

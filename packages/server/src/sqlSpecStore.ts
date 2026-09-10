@@ -33,7 +33,7 @@ import {
   parseProjectInfo,
   parseQuestion,
   parseTerm,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 import type {
   Answer,
   Changeset,
@@ -41,7 +41,7 @@ import type {
   ProjectInfo,
   Question,
   SourceProblem,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 import type {
   CommitApplication,
   CommitResult,
@@ -52,7 +52,7 @@ import type {
   QuestionFeed,
   SpecStore,
   StoredAt,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 
 /** Same neutral default as the FS impl — an unconfigured glossary must not borrow another's name. */
 const FALLBACK_PROJECT_INFO: ProjectInfo = {

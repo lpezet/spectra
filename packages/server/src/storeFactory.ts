@@ -15,7 +15,7 @@
  */
 import path from 'node:path'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
-import type { SpecStore } from '@spectra/core'
+import type { SpecStore } from '@abseed/spectra-core'
 import { SqlSpecStore } from './sqlSpecStore.js'
 
 export type Backend = 'fs' | 'sql'

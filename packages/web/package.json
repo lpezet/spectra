@@ -1,5 +1,5 @@
 {
-  "name": "@spectra/web",
+  "name": "@abseed/spectra-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@spectra/core": "*",
+    "@abseed/spectra-core": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

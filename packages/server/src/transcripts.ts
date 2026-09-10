@@ -20,7 +20,7 @@ import { mkdirSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { loadPlugin } from './plugin.js'
-import type { NewEvent, Session, ToolStatus, TranscriptEvent, TranscriptStore } from '@spectra/core'
+import type { NewEvent, Session, ToolStatus, TranscriptEvent, TranscriptStore } from '@abseed/spectra-core'
 
 /**
  * Runtime data — the transcripts DB and the export ledger — does not belong in the source
@@ -34,7 +34,7 @@ export const DATA_DIR = process.env.DATA_DIR ?? path.join(XDG_DATA_HOME, 'spectr
 export const TRANSCRIPTS_DB = process.env.TRANSCRIPTS_DB ?? path.join(DATA_DIR, 'transcripts.db')
 
 // The transcript seam (TranscriptStore) and its data shapes (Session, TranscriptEvent, NewEvent,
-// EventKind, ToolStatus) now live in @spectra/core — the stable public boundary an out-of-repo store
+// EventKind, ToolStatus) now live in @abseed/spectra-core — the stable public boundary an out-of-repo store
 // implements. This file keeps the node:sqlite backend, the plugin loader, and the on-disk defaults.
 
 const SCHEMA = `

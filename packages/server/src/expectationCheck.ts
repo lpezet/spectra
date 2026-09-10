@@ -1,7 +1,7 @@
 /**
  * The half of the check that needs to understand what the words mean.
  *
- * `checkDraft` in @spectra/core catches what can be decided by looking — an unknown term, a
+ * `checkDraft` in @abseed/spectra-core catches what can be decided by looking — an unknown term, a
  * duplicate. Whether a draft *contradicts* a spec cannot be: e-011 said "re-enabled any
  * recurring tasks present in project" and unarchiveProject says "Does not re-enable any
  * RecurringTask that archiving ended". No amount of token overlap separates that from
@@ -25,8 +25,8 @@
  * down something you noticed.
  */
 import { query } from '@anthropic-ai/claude-agent-sdk'
-import { checkDraft, materialFor } from '@spectra/core'
-import type { Expectation, ExpectationDraft, Finding, Term } from '@spectra/core'
+import { checkDraft, materialFor } from '@abseed/spectra-core'
+import type { Expectation, ExpectationDraft, Finding, Term } from '@abseed/spectra-core'
 import { AgentRunner } from './agent/runner.js'
 
 export interface CheckReport {

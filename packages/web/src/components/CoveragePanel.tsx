@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Coverage, CoveragePair, Expectation } from '@spectra/core'
+import type { Coverage, CoveragePair, Expectation } from '@abseed/spectra-core'
 import type { CheckReport } from '../api.js'
 import { checkExpectation } from '../api.js'
 import { FilterPills, toggled } from './FilterPills.js'

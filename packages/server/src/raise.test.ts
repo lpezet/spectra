@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { FileSystemSpecStore } from './fileSystemSpecStore.js'
-import type { Author } from '@spectra/core'
-import { raiseQuestion } from '@spectra/core'
+import type { Author } from '@abseed/spectra-core'
+import { raiseQuestion } from '@abseed/spectra-core'
 
 const BY: Author = { kind: 'human' }
 

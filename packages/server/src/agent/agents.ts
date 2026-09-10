@@ -2,19 +2,19 @@
  * The two agent definitions, bound to this host's filesystem.
  *
  * The definitions themselves — who `@spec` and `@coder` are, their prompts and tool lists — live in
- * `@spectra/agent-tools` so both coordinators (this server and the hosted Worker) serve the same
+ * `@abseed/spectra-agent-tools` so both coordinators (this server and the hosted Worker) serve the same
  * single source. This module supplies the one thing that is host-specific: the filesystem paths those
  * definitions reference — the glossary dir and @coder's working dir — and re-exports the roster so
  * every caller keeps importing agents from here.
  */
 import path from 'node:path'
-import type { ProjectInfo } from '@spectra/core'
-import { buildAgents as buildAgentsFor } from '@spectra/agent-tools'
-import type { AgentDefinition, AgentName } from '@spectra/agent-tools'
+import type { ProjectInfo } from '@abseed/spectra-core'
+import { buildAgents as buildAgentsFor } from '@abseed/spectra-agent-tools'
+import type { AgentDefinition, AgentName } from '@abseed/spectra-agent-tools'
 import { SPECS_DIR } from '../config.js'
 
 export type { AgentDefinition, AgentName }
-export { AGENT_NAMES } from '@spectra/agent-tools'
+export { AGENT_NAMES } from '@abseed/spectra-agent-tools'
 
 const REPO = path.resolve(SPECS_DIR, '..')
 // The project the in-process (unsandboxed) @coder implements into — its cwd. Configurable via

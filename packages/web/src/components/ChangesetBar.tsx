@@ -13,8 +13,8 @@
  */
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Changeset } from '@spectra/core'
-import { summarizeOp } from '@spectra/core'
+import type { Changeset } from '@abseed/spectra-core'
+import { summarizeOp } from '@abseed/spectra-core'
 import { FilterPills, toggled } from './FilterPills.js'
 
 interface ChangesetBarProps {

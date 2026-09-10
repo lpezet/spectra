@@ -27,10 +27,10 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import type { Expectation, Term } from '@spectra/core'
+import type { Expectation, Term } from '@abseed/spectra-core'
 import { CODER_URL } from './sandbox.js'
 import { SPECS_DIR } from './config.js'
-import type { SpecStore } from '@spectra/core'
+import type { SpecStore } from '@abseed/spectra-core'
 import { DATA_DIR } from './transcripts.js'
 
 /** Where the last export is remembered. Not in specs/ — it records no decision. */

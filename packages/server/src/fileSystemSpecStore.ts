@@ -20,7 +20,7 @@ import {
   parseProjectInfo,
   parseQuestion,
   parseTerm,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 import type {
   Answer,
   Changeset,
@@ -29,7 +29,7 @@ import type {
   Question,
   SourceProblem,
   Term,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 import { slug, uniquePath, writeAtomic } from './files.js'
 import { serializeChangeset, serializeTerm, termFileName } from './serialize.js'
 import type {
@@ -42,7 +42,7 @@ import type {
   QuestionFeed,
   SpecStore,
   StoredAt,
-} from '@spectra/core'
+} from '@abseed/spectra-core'
 
 /**
  * What `projectInfo()` returns when `specs/project.json` is absent or will not parse. Neutral on

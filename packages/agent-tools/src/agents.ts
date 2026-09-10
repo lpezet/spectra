@@ -6,14 +6,14 @@
  * and with the glossary path explicitly denied — it implements what the glossary says and cannot
  * quietly rewrite the glossary to match what it built.
  *
- * WHY this lives in `@spectra/agent-tools` and not the server: the definitions are the single source
+ * WHY this lives in `@abseed/spectra-agent-tools` and not the server: the definitions are the single source
  * of who `@spec` and `@coder` are, and a runtime fetches them from the coordinator rather than
  * carrying its own copy (the copy an attacker in the box could edit). Both coordinators — the open
  * server and the hosted Worker — must serve the *same* definitions, so they live beside the tools.
  * The only host-specific parts are the two filesystem paths the definitions reference (the glossary
  * dir and @coder's working dir); those are passed in, so this stays free of node builtins.
  */
-import type { AuthorKind, ProjectInfo } from '@spectra/core'
+import type { AuthorKind, ProjectInfo } from '@abseed/spectra-core'
 
 export type AgentName = Extract<AuthorKind, 'spec' | 'coder'>
 

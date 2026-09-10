@@ -1,4 +1,4 @@
-import type { Backlinks, Reference } from '@spectra/core'
+import type { Backlinks, Reference } from '@abseed/spectra-core'
 import { TermRef } from './TermRef.js'
 
 const LEGEND: Array<[string, string]> = [

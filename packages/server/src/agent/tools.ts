@@ -1,8 +1,8 @@
 /**
- * The server's tool surface: the pure tools from `@spectra/agent-tools`, plus the three that can
+ * The server's tool surface: the pure tools from `@abseed/spectra-agent-tools`, plus the three that can
  * only run on the host, composed into the set an agent actually gets.
  *
- * The pure tools (reads, propose_changeset, raise_question) moved into `@spectra/agent-tools` so the
+ * The pure tools (reads, propose_changeset, raise_question) moved into `@abseed/spectra-agent-tools` so the
  * hosted coordinator can serve them too. The three here stay because each reaches something a Worker
  * has not got: `raise_expectation` runs a model-backed check (the agent SDK), and `mark_implemented`
  * / `export_specs` read and write the committed specs snapshot on disk. They are defined in the same
@@ -13,18 +13,18 @@
  * injected (`withVersion`): here it is read from the filesystem snapshot via `currentSnapshot`.
  */
 import { z } from 'zod'
-import { defineTool, pick, pureTools, qualified, say, withVersion } from '@spectra/agent-tools'
-import type { ToolDef } from '@spectra/agent-tools'
-import type { Author, SpecStore, TranscriptStore } from '@spectra/core'
-import { markImplemented } from '@spectra/core'
+import { defineTool, pick, pureTools, qualified, say, withVersion } from '@abseed/spectra-agent-tools'
+import type { ToolDef } from '@abseed/spectra-agent-tools'
+import type { Author, SpecStore, TranscriptStore } from '@abseed/spectra-core'
+import { markImplemented } from '@abseed/spectra-core'
 import { checkExpectation } from '../expectationCheck.js'
 import { currentSnapshot, deployedVersion, recordExport } from '../specsExport.js'
-import { raiseExpectation } from '@spectra/core'
+import { raiseExpectation } from '@abseed/spectra-core'
 
 export { qualified }
 
 /**
- * The three host-coupled tools. Kept out of `@spectra/agent-tools` because each depends on something
+ * The three host-coupled tools. Kept out of `@abseed/spectra-agent-tools` because each depends on something
  * a Worker does not have — a model call, or the filesystem snapshot.
  */
 function hostTools(store: SpecStore, author: Author): ToolDef[] {
