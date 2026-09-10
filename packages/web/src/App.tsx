@@ -233,6 +233,7 @@ export function App() {
         known={known}
         onSelectTerm={setSelected}
         onRaise={raise}
+        onCheck={apiTransport.checkExpectation}
         busy={busy}
       />
 
@@ -298,6 +299,7 @@ export function App() {
               coverage={coverage}
               onSupersede={(id: string, draft: SupersedeDraft) => supersede(id, draft)}
               onRecheck={recheck}
+              onCheck={apiTransport.checkExpectation}
               busy={busy}
             />
           ) : (

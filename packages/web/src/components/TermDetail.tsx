@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Attribute, Backlinks, Coverage, Expectation, Term } from '@abseed/spectra-core'
 import { parseValueType } from '@abseed/spectra-core'
+import type { CheckReport, ExpectationDraft } from '../glossaryTransport.js'
 import type { TermStatus } from '../review.js'
 import { BacklinkPanel } from './BacklinkHighlight.js'
 import { ExpectationFields } from './CoveragePanel.js'
@@ -81,6 +82,7 @@ interface TermDetailProps {
   coverage: Coverage
   onSupersede: (id: string, draft: SupersedeDraft) => void
   onRecheck: (id: string) => void
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   busy: boolean
 }
 
@@ -95,6 +97,7 @@ export function TermDetail({
   coverage,
   onSupersede,
   onRecheck,
+  onCheck,
   busy,
 }: TermDetailProps) {
   const ancestors = ancestorsOf(term, termsByName)
@@ -233,6 +236,7 @@ export function TermDetail({
         onSelect={onSelect}
         onSupersede={onSupersede}
         onRecheck={onRecheck}
+        onCheck={onCheck}
         busy={busy}
       />
 
@@ -256,6 +260,7 @@ function ExpectationSection({
   onSelect,
   onSupersede,
   onRecheck,
+  onCheck,
   busy,
 }: {
   term: Term
@@ -265,6 +270,7 @@ function ExpectationSection({
   onSelect: (name: string) => void
   onSupersede: (id: string, draft: SupersedeDraft) => void
   onRecheck: (id: string) => void
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   busy: boolean
 }) {
   const [openId, setOpenId] = useState<string | null>(null)
@@ -347,6 +353,7 @@ function ExpectationSection({
                 <SupersedeForm
                   expectation={expectation}
                   busy={busy}
+                  onCheck={onCheck}
                   onSubmit={(draft) => {
                     onSupersede(expectation.id, draft)
                     setOpenId(null)
@@ -394,10 +401,12 @@ function ExpectationSection({
 function SupersedeForm({
   expectation,
   busy,
+  onCheck,
   onSubmit,
 }: {
   expectation: Expectation
   busy: boolean
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   onSubmit: (draft: SupersedeDraft) => void
 }) {
   const [note, setNote] = useState('')
@@ -431,6 +440,7 @@ function SupersedeForm({
           kind={expectation.kind}
           superseding={expectation.id}
           submitLabel="Supersede"
+          onCheck={onCheck}
           busy={busy || note.trim() === ''}
           initialGiven={expectation.given}
           initialExpect={expectation.expect}
