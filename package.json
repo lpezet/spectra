@@ -25,7 +25,8 @@
     "test:integration:docker": "docker build -f test/integration/Dockerfile -t spectra-integration . && docker run --rm spectra-integration",
     "test:integration:stack": "bash test/integration/stack.sh",
     "test:install:docker": "docker build -f test/integration/Dockerfile.install -t spectra-install . && docker run --rm spectra-install",
-    "typecheck": "tsc -p packages/core && tsc -p packages/agent-tools && tsc -p packages/drift-check && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli"
+    "typecheck": "tsc -p packages/core && tsc -p packages/agent-tools && tsc -p packages/drift-check && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli",
+    "publish:lib": "node scripts/publish-lib.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
