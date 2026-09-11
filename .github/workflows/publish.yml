@@ -1,0 +1,64 @@
+# Publish a workspace package to npm from a tag — so a shared-library change ships without the
+# manual "npm publish on my laptop" step (and its OTP prompt). CI does NOT use an OTP: it
+# authenticates with an npm **Automation** token (secret `NPM_TOKEN`), which is exempt from the 2FA
+# prompt that an interactive publish requires. (Upgrade path below: swap the token for OIDC trusted
+# publishing, which needs no long-lived secret.)
+#
+# One tag = one package, so the independently-versioned packages publish independently:
+#
+#   # bump packages/web-lib/package.json to 0.1.2 first, then:
+#   git tag web-lib-v0.1.2 && git push origin web-lib-v0.1.2
+#
+# The tag's version must match that package.json's `version` (the job fails loudly otherwise). If a
+# package's bump also bumped an `@abseed/spectra-*` sibling it depends on, publish the sibling first —
+# publish-lib.mjs pins each sibling to that sibling's *published* version.
+name: publish
+
+on:
+  push:
+    tags:
+      - 'core-v*'
+      - 'agent-tools-v*'
+      - 'drift-check-v*'
+      - 'web-lib-v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Present so the publish can be upgraded to OIDC provenance without editing permissions later.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          # Writes an .npmrc that reads NODE_AUTH_TOKEN, so `npm publish` authenticates headless.
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      # The tag names the package and the version: `web-lib-v0.1.2` → packages/web-lib @ 0.1.2. Refuse
+      # to publish unless the checked-in version matches, so a stray tag can't publish the wrong build.
+      - name: Resolve package from tag
+        id: pkg
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          name="${tag%-v*}"
+          version="${tag##*-v}"
+          dir="packages/${name}"
+          if [ ! -f "$dir/package.json" ]; then
+            echo "::error::No package at $dir for tag $tag."
+            exit 1
+          fi
+          have="$(node -p "require('./$dir/package.json').version")"
+          if [ "$have" != "$version" ]; then
+            echo "::error::Tag $tag says $version but $dir/package.json is $have — bump the version to match the tag."
+            exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+      # publish-lib.mjs builds dist, stages a transformed (dist-first, non-private, siblings-pinned)
+      # package.json, and runs `npm publish`. No --otp: the Automation token below covers auth.
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/publish-lib.mjs "${{ steps.pkg.outputs.dir }}"
