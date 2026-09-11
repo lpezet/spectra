@@ -11,6 +11,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Answer, Changeset, Expectation, Question, Term } from '@abseed/spectra-core'
+import { glossaryVersion } from '@abseed/spectra-core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SqlSpecStore } from './sqlSpecStore.js'
 
@@ -152,6 +153,7 @@ describe('SqlSpecStore commitApplication', () => {
       remainingOps: [],
       appliedAt: '2026-01-01T00:00:00.000Z',
     })
+    if ('conflict' in result) throw new Error('unexpected conflict')
     expect(result.written).toEqual(['Widget'])
     const feed = await store.readChangesets()
     expect(feed.changesets).toEqual([]) // no remaining ops → pending gone
@@ -181,6 +183,56 @@ describe('SqlSpecStore commitApplication', () => {
     const feed = await store.readChangesets()
     expect(feed.changesets.map((c) => c.id)).toEqual(['chat-002']) // remainder stays pending
     expect(feed.applied.map((c) => c.id).sort()).toEqual(['chat-001', 'chat-002'])
+  })
+})
+
+describe('SqlSpecStore commitApplication — optimistic concurrency (baseVersion CAS, GH #93)', () => {
+  it('commits when baseVersion matches the current glossary', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    const base = glossaryVersion((await store.readTerms()).terms) // the empty glossary's version
+    const result = await store.commitApplication({
+      changesetId: 'chat-001',
+      nextTerms: [term('Widget')],
+      appliedOps: [],
+      remainingOps: [],
+      appliedAt: 't',
+      baseVersion: base,
+    })
+    expect('conflict' in result).toBe(false)
+    expect((await store.readTerms()).terms.map((t) => t.name)).toEqual(['Widget'])
+  })
+
+  it('refuses, and writes nothing, when the glossary moved past baseVersion', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    const staleBase = glossaryVersion((await store.readTerms()).terms) // version of the EMPTY glossary
+    await store.commitApplication({ changesetId: 'chat-001', nextTerms: [term('Widget')], appliedOps: [], remainingOps: [], appliedAt: 't1' })
+
+    // A second apply computed against the now-stale base must be refused.
+    await store.addChangeset(changeset('chat-002'))
+    const result = await store.commitApplication({
+      changesetId: 'chat-002',
+      nextTerms: [term('Widget'), term('Gadget')],
+      appliedOps: [],
+      remainingOps: [],
+      appliedAt: 't2',
+      baseVersion: staleBase,
+    })
+    expect('conflict' in result).toBe(true)
+    if ('conflict' in result) expect(result.currentVersion).toBe(glossaryVersion((await store.readTerms()).terms))
+    // Nothing landed: Gadget absent, chat-002 still pending.
+    expect((await store.readTerms()).terms.map((t) => t.name)).toEqual(['Widget'])
+    expect((await store.readChangesets()).changesets.map((c) => c.id)).toEqual(['chat-002'])
+  })
+
+  it('interleaved applies against the same base: the first wins, the second conflicts', async () => {
+    await store.addChangeset(changeset('chat-001'))
+    await store.addChangeset(changeset('chat-002'))
+    const base = glossaryVersion((await store.readTerms()).terms)
+    const first = await store.commitApplication({ changesetId: 'chat-001', nextTerms: [term('A')], appliedOps: [], remainingOps: [], appliedAt: 't1', baseVersion: base })
+    const second = await store.commitApplication({ changesetId: 'chat-002', nextTerms: [term('B')], appliedOps: [], remainingOps: [], appliedAt: 't2', baseVersion: base })
+    expect('conflict' in first).toBe(false)
+    expect('conflict' in second).toBe(true)
+    expect((await store.readTerms()).terms.map((t) => t.name)).toEqual(['A']) // B was refused
   })
 })
 

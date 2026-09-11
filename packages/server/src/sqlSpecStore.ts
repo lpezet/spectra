@@ -28,6 +28,7 @@
  */
 import { DatabaseSync } from 'node:sqlite'
 import {
+  glossaryVersion,
   parseChangeset,
   parseExpectation,
   parseProjectInfo,
@@ -41,9 +42,11 @@ import type {
   ProjectInfo,
   Question,
   SourceProblem,
+  Term,
 } from '@abseed/spectra-core'
 import type {
   CommitApplication,
+  CommitConflict,
   CommitResult,
   ExpectationFeed,
   Glossary,
@@ -343,7 +346,7 @@ export class SqlSpecStore implements SpecStore {
   // ── State transitions ────────────────────────────────────────────────────────────────
 
   /** Atomic: reconcile terms to the post-image and move the changeset pending → applied. */
-  async commitApplication(application: CommitApplication): Promise<CommitResult> {
+  async commitApplication(application: CommitApplication): Promise<CommitResult | CommitConflict> {
     return this.tx(() => {
       const written: string[] = []
       const deleted: string[] = []
@@ -351,6 +354,14 @@ export class SqlSpecStore implements SpecStore {
       const existing = new Map<string, string>()
       for (const row of this.db.prepare('SELECT name, json FROM terms WHERE project_id = ?').all(this.projectId) as unknown as Array<{ name: string; json: string }>) {
         existing.set(row.name, row.json)
+      }
+
+      // Optimistic concurrency (GH #93): compare-and-swap on the glossary version, inside the same
+      // transaction as the write, so the check and the write are atomic — no window for a concurrent
+      // apply to slip between. Returning here commits an empty (no-op) transaction; nothing is written.
+      if (application.baseVersion !== undefined) {
+        const currentVersion = glossaryVersion([...existing.values()].map((json) => JSON.parse(json) as Term))
+        if (currentVersion !== application.baseVersion) return { conflict: true, currentVersion }
       }
 
       const upsert = this.db.prepare(

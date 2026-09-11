@@ -8,6 +8,7 @@
  * (the same reason `proposeChangeset`/`raiseQuestion` do).
  */
 import { applyOps } from './changeset.js'
+import { glossaryVersion } from './version.js'
 import type { Diagnostic } from './types.js'
 import type { SpecStore } from './specStore.js'
 
@@ -22,6 +23,17 @@ export type CommitOutcome =
       needsAcknowledgement: boolean
     }
   | {
+      // The glossary moved out from under this changeset — reviewed against, or applied against, a
+      // version that is no longer current (GH #93). `currentVersion` is where it is now; the client
+      // re-reviews against that. Distinct from the diagnostics 409: nothing is wrong with the ops,
+      // the world changed.
+      ok: false
+      status: 409
+      error: string
+      staleVersion: true
+      currentVersion: string
+    }
+  | {
       ok: true
       appliedOps: number
       remainingOps: number
@@ -34,6 +46,12 @@ export type CommitOutcome =
 export interface ApplyRequest {
   opIndices: number[]
   acknowledgeWarnings?: boolean
+  /**
+   * Optimistic concurrency (GH #93): the {@link glossaryVersion} the reviewer saw. When supplied and
+   * the glossary has moved since, the apply is refused with a `staleVersion` 409 before any write —
+   * "re-review." Omit it to keep the prior behaviour (validate-against-live and apply).
+   */
+  expectedVersion?: string
 }
 
 export async function applyChangeset(
@@ -54,6 +72,20 @@ export async function applyChangeset(
   }
 
   const { terms: before } = await store.readTerms()
+
+  // Optimistic concurrency (GH #93). The version of the glossary this apply is computing against.
+  // If the caller told us what they reviewed against and it has moved, refuse now — before any
+  // validation or write — so the human re-reviews against what is actually there.
+  const baseVersion = glossaryVersion(before)
+  if (request.expectedVersion !== undefined && request.expectedVersion !== baseVersion) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'The glossary changed since this changeset was reviewed. Re-review before applying.',
+      staleVersion: true,
+      currentVersion: baseVersion,
+    }
+  }
 
   // Re-run the same validation the UI ran, against the glossary as it is *now*.
   const result = applyOps(
@@ -94,13 +126,28 @@ export async function applyChangeset(
   const appliedOps = indices.map((index) => changeset.ops[index]!)
   const remainingOps = changeset.ops.filter((_, index) => !indices.includes(index))
 
-  const { written, deleted, resolvedTo } = await store.commitApplication({
+  const committed = await store.commitApplication({
     changesetId: id,
     nextTerms: result.terms,
     appliedOps,
     remainingOps,
     appliedAt: new Date().toISOString(),
+    baseVersion,
   })
+
+  // The compare-and-swap failed: another write landed between our read and our commit. Nothing was
+  // written. Same "re-review" signal as a stale review — the glossary moved under us.
+  if ('conflict' in committed) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'The glossary changed while this changeset was being applied. Re-review before applying.',
+      staleVersion: true,
+      currentVersion: committed.currentVersion,
+    }
+  }
+
+  const { written, deleted, resolvedTo } = committed
 
   return {
     ok: true,
