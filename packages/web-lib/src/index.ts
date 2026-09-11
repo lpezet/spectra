@@ -55,6 +55,13 @@ export type {
 export { setChatTransport } from './chat.js'
 export type { ChatTransport, StreamHandlers, ChatEvent, Entity } from './chat.js'
 
+// Speech pieces a host needs to build its own voice picker: the per-agent choice shape and its
+// defaults (the `tb.voices` localStorage contract the ChatPanel reads), the remote-voice type, and
+// the ordering/grouping helpers. A host that offers its own picker reuses these so its stored shape
+// cannot drift from the one ChatPanel plays.
+export { DEFAULT_VOICES, rankVoices, voicesByCategory, withDefaultVoices } from './speech.js'
+export type { VoiceChoice, RemoteVoice } from './speech.js'
+
 // The project-scoping prefix every same-origin call goes through — a host serving REST configures it
 // once at startup, like the local tool does.
 export { apiPath, configureProject, currentProject } from './apiBase.js'
