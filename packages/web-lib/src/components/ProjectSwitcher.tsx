@@ -6,7 +6,7 @@
  * A single option is shown but not worth choosing, so its select is disabled — the local
  * single-project install reads as "here is where you are", never "pick the only thing there is".
  */
-import type { Org, ProjectSummary } from '../api.js'
+import type { Org, ProjectSummary } from '../glossaryTransport.js'
 
 export function ProjectSwitcher(props: {
   orgs: Org[]

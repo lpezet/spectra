@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import type { Coverage, CoveragePair, Expectation } from '@abseed/spectra-core'
-import type { CheckReport } from '../api.js'
-import { checkExpectation } from '../api.js'
+import type { CheckReport, ExpectationDraft } from '../glossaryTransport.js'
 import { FilterPills, toggled } from './FilterPills.js'
 import { TermRef } from './TermRef.js'
 
@@ -11,6 +10,8 @@ interface CoveragePanelProps {
   known: Set<string>
   onSelectTerm: (name: string) => void
   onRaise: (draft: { terms: string[]; given: string; expect: string }, contested: CheckReport['findings']) => void
+  /** Reads a draft against the glossary, writing nothing — supplied by the shell's transport. */
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   busy: boolean
 }
 
@@ -37,6 +38,7 @@ export function CoveragePanel({
   known,
   onSelectTerm,
   onRaise,
+  onCheck,
   busy,
 }: CoveragePanelProps) {
   const [filters, setFilters] = useState<ReadonlySet<string>>(DEFAULT_FILTERS)
@@ -118,6 +120,7 @@ export function CoveragePanel({
                 onSelectTerm={onSelectTerm}
                 writing={writingFor === key}
                 onToggleWrite={() => setWritingFor(writingFor === key ? null : key)}
+                onCheck={onCheck}
                 onRaise={(given, expect, contested) => {
                   onRaise({ terms: [pair.entity, pair.action], given, expect }, contested)
                   setWritingFor(null)
@@ -150,6 +153,7 @@ function PairRow({
   onSelectTerm,
   writing,
   onToggleWrite,
+  onCheck,
   onRaise,
   busy,
 }: {
@@ -159,6 +163,7 @@ function PairRow({
   onSelectTerm: (name: string) => void
   writing: boolean
   onToggleWrite: () => void
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   onRaise: (given: string, expect: string, contested: CheckReport['findings']) => void
   busy: boolean
 }) {
@@ -205,6 +210,7 @@ function PairRow({
         <ExpectationFields
           terms={[pair.entity, pair.action]}
           submitLabel="Raise it"
+          onCheck={onCheck}
           onSubmit={onRaise}
           busy={busy}
         />
@@ -233,6 +239,7 @@ export function ExpectationFields({
   terms,
   kind = 'functional',
   submitLabel,
+  onCheck,
   onSubmit,
   busy,
   initialGiven = '',
@@ -242,6 +249,8 @@ export function ExpectationFields({
   terms: string[]
   kind?: Expectation['kind']
   submitLabel: string
+  /** Reads the draft against the glossary, writing nothing — supplied by the shell's transport. */
+  onCheck: (draft: ExpectationDraft, superseding?: string) => Promise<CheckReport>
   onSubmit: (given: string, expect: string, contested: CheckReport['findings']) => void
   busy: boolean
   initialGiven?: string
@@ -266,7 +275,7 @@ export function ExpectationFields({
     setChecking(true)
     try {
       setReport(
-        await checkExpectation({ kind, terms, given: given.trim(), expect: expect.trim() }, superseding),
+        await onCheck({ kind, terms, given: given.trim(), expect: expect.trim() }, superseding),
       )
     } catch (cause) {
       setReport({ findings: [], checked: false, note: (cause as Error).message })

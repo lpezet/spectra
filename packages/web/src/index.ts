@@ -7,12 +7,12 @@
  * effect, so an embedder gets the styled UI from one import. `App` self-bootstraps against the
  * same-origin `/api`, so the host needs only to serve that API and mount `<App />`.
  */
-import './styles.css'
+import '@abseed/spectra-web-lib/styles.css'
 export { App } from './App.js'
 
 // For a host that drives the agents differently than the local tool: install a live chat transport
 // (see setChatTransport) and address project-scoped calls with these. The static chat/glossary reads
-// still go over plain REST the host serves.
-export { setChatTransport } from './chat.js'
-export type { ChatTransport, StreamHandlers, ChatEvent } from './chat.js'
-export { apiPath, currentProject } from './apiBase.js'
+// still go over plain REST the host serves. These now live in @abseed/spectra-web-lib and are
+// re-exported here so an embedder of this app's `App` still reaches them from one package.
+export { setChatTransport, apiPath, currentProject } from '@abseed/spectra-web-lib'
+export type { ChatTransport, StreamHandlers, ChatEvent } from '@abseed/spectra-web-lib'

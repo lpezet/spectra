@@ -10,6 +10,7 @@
     "packages/agent-tools",
     "packages/drift-check",
     "packages/server",
+    "packages/web-lib",
     "packages/web",
     "packages/cli"
   ],
@@ -20,12 +21,12 @@
     "dev:sandbox": "docker compose up -d --build && npm run dev:web",
     "sandbox:logs": "docker compose logs -f",
     "sandbox:down": "docker compose down",
-    "test": "npm run test -w @abseed/spectra-core && npm run test -w @abseed/spectra-agent-tools && npm run test -w @abseed/spectra-drift-check && npm run test -w @abseed/spectra-server && npm run test -w @abseed/spectra-web && npm run test -w @abseed/spectra-cli",
+    "test": "npm run test -w @abseed/spectra-core && npm run test -w @abseed/spectra-agent-tools && npm run test -w @abseed/spectra-drift-check && npm run test -w @abseed/spectra-server && npm run test -w @abseed/spectra-web-lib && npm run test -w @abseed/spectra-web && npm run test -w @abseed/spectra-cli",
     "test:integration": "bash test/integration/run.sh",
     "test:integration:docker": "docker build -f test/integration/Dockerfile -t spectra-integration . && docker run --rm spectra-integration",
     "test:integration:stack": "bash test/integration/stack.sh",
     "test:install:docker": "docker build -f test/integration/Dockerfile.install -t spectra-install . && docker run --rm spectra-install",
-    "typecheck": "tsc -p packages/core && tsc -p packages/agent-tools && tsc -p packages/drift-check && tsc -p packages/server && tsc -p packages/web && tsc -p packages/cli",
+    "typecheck": "tsc -p packages/core && tsc -p packages/agent-tools && tsc -p packages/drift-check && tsc -p packages/server && tsc -p packages/web-lib && tsc -p packages/web && tsc -p packages/cli",
     "publish:lib": "node scripts/publish-lib.mjs"
   },
   "devDependencies": {
