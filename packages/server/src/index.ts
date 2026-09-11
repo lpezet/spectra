@@ -261,8 +261,13 @@ app.get('/api/sandbox', async (_req, res, next) => {
  * the vendor, and a UI that cannot paint its voice picker until a third party answers is a UI
  * that hangs for a feature nobody switched on yet. The browser asks, and treats an empty list
  * exactly as it treats a machine with one system voice.
+ *
+ * Lives under the project prefix like every other UI call (the browser reaches it through the same
+ * `apiPath`), rather than as a bare top-level route. A self-hosted key is a single process-wide
+ * credential and ignores which project asked — but keeping speech beside the other project calls is
+ * what lets a deployment that scopes credentials per project resolve the right one from the URL.
  */
-app.get('/api/speech', async (_req, res, next) => {
+glossary.get('/speech', async (_req, res, next) => {
   try {
     if (!speechKey()) {
       res.json({ configured: false, voices: [], defaults: {}, model: speechModel })
@@ -289,7 +294,7 @@ app.get('/api/speech', async (_req, res, next) => {
  * outside: a spent quota should send the browser back to its local voice for good, while a
  * rate limit should cost it one sentence. 200 is audio; anything else is a reason.
  */
-app.post('/api/speech', async (req, res, next) => {
+glossary.post('/speech', async (req, res, next) => {
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
     const voiceId = typeof req.body?.voiceId === 'string' ? req.body.voiceId : ''
