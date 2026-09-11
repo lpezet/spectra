@@ -16,6 +16,7 @@
  * arrive, because with @coder running unattended a failed run is the one thing you need to
  * know about while you are not looking at the screen.
  */
+import { apiPath } from './apiBase.js'
 import { parseBlocks } from './markdown.js'
 import type { Block, Token } from './markdown.js'
 
@@ -276,7 +277,7 @@ export interface RemoteVoices {
 
 export async function fetchRemoteVoices(): Promise<RemoteVoices> {
   try {
-    const response = await fetch('/api/speech')
+    const response = await fetch(apiPath('/speech'))
     if (!response.ok) return { configured: false, voices: [], defaults: {} }
     const body = (await response.json()) as Partial<RemoteVoices>
     return {
@@ -337,7 +338,7 @@ function speakLocally(text: string, options: SpeakOptions): void {
 }
 
 async function speakRemotely(text: string, options: SpeakOptions, mine: number): Promise<void> {
-  const response = await fetch('/api/speech', {
+  const response = await fetch(apiPath('/speech'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, voiceId: options.remoteId }),
