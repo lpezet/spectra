@@ -116,9 +116,9 @@ services:
       # files. What this costs: the implements: drift check can no longer see the glossary and
       # now skips, loudly, which is the check that has to move to the spec tool.
       #
-      # This dev file has no consumer project to point at (blocker E), so ./app is a placeholder
-      # host dir mounted at the coder's target /work/project — @coder is inert here until a real
-      # project is configured. An installed run gets the repo mounted here by `spectra init`.
+      # This contributors' dev file bundles no consumer project, so ./app is a placeholder host
+      # dir mounted at the coder's target /work/project — @coder is inert here until you put a
+      # project there. An installed run gets the chosen repo mounted here by `spectra init --dir`.
       - ./app:/work/project
 
     # One network, and it has no route out. A shell with no egress cannot exfiltrate the
