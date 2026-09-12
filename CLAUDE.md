@@ -53,7 +53,7 @@ incl. `app/`), because Spectra ships as the tool and the *consumer project it im
 a separate thing* — kept elsewhere, or external. The removal was clean because `app/` was
 standalone-by-construction (its own `node_modules`/`tsconfig`, never an npm workspace).
 
-### The consumer project (configurable target — blocker E, part 1 done)
+### The consumer project (the target @coder implements into)
 
 `@coder`'s working directory and only mount is the project it implements into, at
 **`/work/project`** in the container (`APP_DIR` in `packages/runtime/src/main.ts`, overridable).
@@ -106,7 +106,8 @@ set of rules, so the preview cannot disagree with the result.
 The *protocol* below lives in the tool (`packages/server/src/specsExport.ts`, `GET /api/specs/version`,
 `mark_implemented`) and is unaffected by the app removal. The two concrete files it names —
 `specs.snapshot.json` and `implements.test.ts` — lived in the sidelined `app/` (still on
-`backup/todo-app`) and move with the consumer project when it is wired back (blocker E). The
+`backup/todo-app`) and live in whatever consumer project `@coder` implements into — the one you
+supply at `spectra init` time via `--dir`, not something bundled in the tool. The
 snapshot fallback path (`packages/server/src/specsExport.ts`, `APP_SNAPSHOT`) now points at an absent
 file and degrades to "no readable snapshot" rather than crashing. Read the rest as describing
 how the guard works against *whatever* project holds the snapshot.
@@ -235,7 +236,7 @@ packages/server/src/sqlSpecStore.ts   SQL backend (node:sqlite) — (db, project
 packages/server/src/storeFactory.ts   builds a built-in store (fs|sql) from a StoreChoice
 packages/server/src/backend.ts        the storage plugin boundary: SPEC_STORE=fs|sql, or a module
                                       specifier the server imports (SpecStoreBackend) — bring-your-own store
-packages/runtime/src/main.ts            the sandboxed half of @coder (target project unconfigured — blocker E)
+packages/runtime/src/main.ts            the sandboxed half of @coder (implements into /work/project, mounted by `spectra init --dir`)
 packages/cli/src/commands.ts          the CLI grammar: argv -> docker compose argv (pure, tested)
 packages/cli/src/cli.ts               the CLI entry — resolves the compose file, shells out to docker
 packages/drift-check/src/             @abseed/spectra-drift-check — the offline glossary↔code drift check a consumer project depends on
@@ -320,9 +321,10 @@ Projects are keyed by **id**, not folder path. `--name`/`--domain` default to th
 Compose-file resolution (`discovery.ts`, pure `resolveComposeFiles`) then makes `spectra up` inside an
 inited repo need no `-f`: explicit `--compose-file` flags win, else `SPECTRA_COMPOSE_FILE`, else it
 walks up for `.spectra/config.json` and layers `default.yaml` + that project's override, else falls
-back to the repo's `docker-compose.yml` (the contributors' file). One follow-up remains on this path:
-@coder's container actually *using* `/work/project` (the rest of blocker E — the mount is wired, the
-coder code still targets the old `APP_DIR`).
+back to the repo's `docker-compose.yml` (the contributors' file). The sandboxed `@coder` implements
+into `/work/project` (`APP_DIR` in `packages/runtime/src/main.ts`), which `spectra init --dir` mounts
+the chosen repo at; the in-process (unsandboxed) coder used by plain `npm run dev` takes its cwd from
+`CODER_DIR` instead (`packages/server/src/agent/agents.ts`).
 
 Distribution (like SAL: build in CI, download prebuilt in the installer):
 - `npm run build -w @abseed/spectra-cli` (`scripts/build.mjs`) esbuild-bundles the CLI to a single
@@ -351,4 +353,4 @@ exercises the prebuilt bin. The download path itself needs a published release (
 
 Re-running the implementation pass is not a command. It is a directed ask: point at
 `specs/terms/` and update the consumer project to match, using the `// implements:` markers to
-target it — inert until that project is configured (blocker E).
+target it — against whatever project you point `@coder` at (`spectra init --dir`).

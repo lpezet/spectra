@@ -12,6 +12,7 @@ it at, not content baked into the tool.
 engine with no `SPECS_DIR` and it operates on an empty glossary instead.
 
 The *consumer app* written from these specs (the actual ToDo app, its `specs.snapshot.json`
-and the `implements` drift check) lived in `app/` and is currently on the `backup/todo-app`
-branch. When it is wired back (blocker E), it belongs beside this glossary as
-`examples/todo/app/` — a standalone project the sandboxed `@coder` targets.
+and the `implements` drift check) lived in `app/` and is now on the `backup/todo-app` branch.
+That app is the kind of thing `@coder` implements into: a *standalone* project you supply at
+`spectra init` time via `--dir` (mounted at `/work/project`), deliberately not bundled with the
+tool. It stays on that branch as a worked example you can point `@coder` at if you want one.
