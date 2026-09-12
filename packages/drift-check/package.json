@@ -1,6 +1,6 @@
 {
   "name": "@abseed/spectra-drift-check",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Offline drift check between a Spectra glossary and the code that implements it.",
   "type": "module",
   "license": "Apache-2.0",

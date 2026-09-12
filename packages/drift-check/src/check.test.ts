@@ -7,13 +7,18 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { checkDrift, driftCheck } from './check.js'
-import { readMarkers } from './implements.js'
-import type { Marker, Snapshot } from './implements.js'
+import { readMarkers, readVerifyMarkers } from './implements.js'
+import type { Marker, Snapshot, VerifyMarker } from './implements.js'
 
 const marker = (file: string, terms: string[], malformed: string[] = []): Marker => ({ file, line: 1, terms, malformed })
-const snapshot = (terms: Array<{ name: string; type: string }>): Snapshot => ({
+const vmarker = (file: string, ids: string[], malformed: string[] = []): VerifyMarker => ({ file, line: 1, ids, malformed })
+const snapshot = (
+  terms: Array<{ name: string; type: string }>,
+  expectations: Array<{ id: string; kind: string }> = [],
+): Snapshot => ({
   version: 'v1',
   terms: terms.map((t) => ({ ...t, hash: 'h' })),
+  expectations: expectations.map((e) => ({ ...e, hash: 'h' })),
 })
 
 describe('checkDrift', () => {
@@ -53,6 +58,48 @@ describe('checkDrift', () => {
   })
 })
 
+describe('checkDrift · expectations (verifies)', () => {
+  const clean = { markers: [marker('task.ts', ['Task'])], snap: snapshot([{ name: 'Task', type: 'entity' }]) }
+
+  it('is clean when every functional expectation has a verifies marker', () => {
+    const snap = snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-001', kind: 'functional' }])
+    const findings = checkDrift(clean.markers, snap, [vmarker('task.test.ts', ['e-001'])])
+    expect(findings).toEqual([])
+  })
+
+  it('flags a functional expectation nothing verifies', () => {
+    const snap = snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-001', kind: 'functional' }])
+    const findings = checkDrift(clean.markers, snap, [])
+    expect(findings.some((f) => f.kind === 'unverified-expectation' && f.message.includes('e-001'))).toBe(true)
+  })
+
+  it('does not flag a non-functional expectation (checked by driving a build, not a test)', () => {
+    const snap = snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-009', kind: 'non-functional' }])
+    const findings = checkDrift(clean.markers, snap, [])
+    expect(findings.some((f) => f.kind === 'unverified-expectation')).toBe(false)
+  })
+
+  it('flags a verifies marker naming an expectation the glossary does not have', () => {
+    const snap = snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-001', kind: 'functional' }])
+    const findings = checkDrift(clean.markers, snap, [vmarker('task.test.ts', ['e-001', 'e-999'])])
+    expect(findings.some((f) => f.kind === 'unknown-expectation' && f.message.includes('e-999'))).toBe(true)
+    expect(findings.some((f) => f.kind === 'unverified-expectation')).toBe(false) // e-001 is verified
+  })
+
+  it('flags a malformed verifies marker', () => {
+    const snap = snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-001', kind: 'functional' }])
+    const findings = checkDrift(clean.markers, snap, [vmarker('task.test.ts', ['e-001'], ['not an id'])])
+    expect(findings.some((f) => f.kind === 'malformed-marker' && f.message.includes('not an id'))).toBe(true)
+  })
+
+  it('treats a snapshot exported before expectations existed as having none', () => {
+    const snap: Snapshot = { version: 'v1', terms: [{ name: 'Task', type: 'entity', hash: 'h' }] } // no `expectations`
+    // A verifies marker then names something unknown, and there is nothing to be unverified.
+    const findings = checkDrift(clean.markers, snap, [vmarker('task.test.ts', ['e-001'])])
+    expect(findings.map((f) => f.kind)).toEqual(['unknown-expectation'])
+  })
+})
+
 describe('readMarkers + driftCheck on files', () => {
   let dir: string
   beforeEach(() => {
@@ -87,5 +134,37 @@ describe('readMarkers + driftCheck on files', () => {
 
     writeFileSync(snapPath, JSON.stringify(snapshot([{ name: 'Task', type: 'entity' }])))
     expect(driftCheck({ srcDir: src, snapshotPath: snapPath })).toEqual({ ok: true, findings: [] })
+  })
+
+  it('reads verifies markers from test files (unlike implements), and passes them to the check', () => {
+    const src = path.join(dir, 'src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(path.join(src, 'task.test.ts'), '// verifies: e-001, e-002\nit("x", () => {})\n')
+    writeFileSync(path.join(src, 'other.ts'), '// verifies: e-003\n')
+    writeFileSync(path.join(src, 'bad.test.ts'), '// verifies: not an id\n')
+
+    const ids = readVerifyMarkers(src).flatMap((m) => m.ids)
+    expect(ids).toContain('e-001') // from a .test.ts — read, not skipped
+    expect(ids).toContain('e-002')
+    expect(ids).toContain('e-003')
+    expect(readVerifyMarkers(src).some((m) => m.malformed.length > 0)).toBe(true)
+  })
+
+  it('driftCheck end-to-end: a functional expectation verified by a test in the tree is clean, unverified otherwise', () => {
+    const src = path.join(dir, 'src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(path.join(src, 'task.ts'), '// implements: Task\n')
+    const snapPath = path.join(dir, 'specs.snapshot.json')
+    writeFileSync(snapPath, JSON.stringify(snapshot([{ name: 'Task', type: 'entity' }], [{ id: 'e-001', kind: 'functional' }])))
+
+    // No verifying test yet → the functional expectation is flagged.
+    let result = driftCheck({ srcDir: src, snapshotPath: snapPath })
+    expect(result.ok).toBe(false)
+    expect(result.findings.some((f) => f.kind === 'unverified-expectation' && f.message.includes('e-001'))).toBe(true)
+
+    // Add the verifying test → clean.
+    writeFileSync(path.join(src, 'task.test.ts'), '// verifies: e-001\nit("completeTask …", () => {})\n')
+    result = driftCheck({ srcDir: src, snapshotPath: snapPath })
+    expect(result).toEqual({ ok: true, findings: [] })
   })
 })

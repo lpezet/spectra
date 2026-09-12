@@ -1,14 +1,23 @@
 /**
- * Reading the `// implements:` markers and the committed glossary snapshot.
+ * Reading the `// implements:` and `// verifies:` markers and the committed glossary snapshot.
  *
- * The markers are the only link from a term back to the code responsible for it, and a comment
- * nothing checks is a comment that rots. This makes them parseable so a test can fail when the
- * glossary and the code drift apart — a term with no implementer, or a marker naming a term that no
- * longer exists.
+ * The markers are the only link from a term (or an expectation) back to the code responsible for it,
+ * and a comment nothing checks is a comment that rots. This makes them parseable so a test can fail
+ * when the glossary and the code drift apart — a term with no implementer, or a marker naming a term
+ * that no longer exists.
  *
- * The grammar is deliberately strict: `// implements:` followed by comma-separated bare identifiers
- * and nothing else. Trailing prose would have to be guessed at, so anything that is not an identifier
- * is reported rather than skipped. Put the prose on the next line.
+ * Two marker kinds, and their differences are deliberate:
+ *
+ * - **`// implements: <Term>`** links code to a term. Terms are implemented by *production* code, so
+ *   these are read from source and `.test.ts` files are skipped. Grammar: comma-separated bare
+ *   identifiers (`Task`, `createTask`).
+ * - **`// verifies: <expectation-id>`** links a *test* to the expectation it exercises (GH #96). These
+ *   live in test files by nature, so the scan *includes* `.test.ts`. Expectation ids are hyphenated
+ *   (`e-001`), which the identifier grammar forbids — so they get their own id grammar.
+ *
+ * Either grammar is strict: comma-separated tokens and nothing else. Trailing prose would have to be
+ * guessed at, so anything that is not a valid token is reported rather than skipped. Put the prose on
+ * the next line.
  *
  * (Ported from the reference `app/` on the `backup/todo-app` branch, now a package a consumer project
  * depends on so the check ships with Spectra rather than being copied per project.)
@@ -16,8 +25,9 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
-const MARKER = /^\s*(?:\/\/|\*)\s*implements:\s*(.*)$/
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
+/** An expectation id like `e-001` — a lowercase-ish prefix, a hyphen, then digits. */
+const EXPECTATION_ID = /^[A-Za-z]+-\d+$/
 const SOURCE = /\.tsx?$/
 
 export interface Marker {
@@ -29,28 +39,50 @@ export interface Marker {
   malformed: string[]
 }
 
-function sourceFiles(dir: string, root = dir): string[] {
+export interface VerifyMarker {
+  /** Path relative to the scanned root. */
+  file: string
+  line: number
+  /** Expectation ids this test claims to verify. */
+  ids: string[]
+  /** Entries that are not expectation ids — reported instead of silently ignored. */
+  malformed: string[]
+}
+
+function sourceFiles(dir: string, includeTests: boolean, root = dir): string[] {
   const found: string[] = []
   for (const entry of readdirSync(dir).sort()) {
     const full = path.join(dir, entry)
     if (statSync(full).isDirectory()) {
-      found.push(...sourceFiles(full, root))
-    } else if (SOURCE.test(entry) && !entry.endsWith('.test.ts')) {
+      found.push(...sourceFiles(full, includeTests, root))
+    } else if (SOURCE.test(entry) && (includeTests || !entry.endsWith('.test.ts'))) {
       found.push(path.relative(root, full))
     }
   }
   return found
 }
 
-/** Every `// implements:` marker under `root`, with the terms it names and any malformed entries. */
-export function readMarkers(root: string): Marker[] {
-  const markers: Marker[] = []
+interface RawMarker {
+  file: string
+  line: number
+  entries: string[]
+  malformed: string[]
+}
 
-  for (const file of sourceFiles(root)) {
+/**
+ * Every `<keyword>:` marker under `root`, split into valid entries and malformed ones. Shared by
+ * both marker kinds so the file-walk and the comment grammar (`//` or a `*` JSDoc continuation) live
+ * in one place; the caller supplies what a valid entry looks like and whether tests are scanned.
+ */
+function collect(root: string, keyword: string, valid: RegExp, includeTests: boolean): RawMarker[] {
+  const line = new RegExp(String.raw`^\s*(?:\/\/|\*)\s*${keyword}:\s*(.*)$`)
+  const markers: RawMarker[] = []
+
+  for (const file of sourceFiles(root, includeTests)) {
     const lines = readFileSync(path.join(root, file), 'utf8').split('\n')
 
-    lines.forEach((line, index) => {
-      const match = MARKER.exec(line)
+    lines.forEach((text, index) => {
+      const match = line.exec(text)
       if (!match) return
 
       const entries = match[1]!
@@ -61,13 +93,37 @@ export function readMarkers(root: string): Marker[] {
       markers.push({
         file,
         line: index + 1,
-        terms: entries.filter((entry) => IDENTIFIER.test(entry)),
-        malformed: entries.filter((entry) => !IDENTIFIER.test(entry)),
+        entries: entries.filter((entry) => valid.test(entry)),
+        malformed: entries.filter((entry) => !valid.test(entry)),
       })
     })
   }
 
   return markers
+}
+
+/** Every `// implements:` marker under `root`, with the terms it names and any malformed entries. */
+export function readMarkers(root: string): Marker[] {
+  return collect(root, 'implements', IDENTIFIER, false).map((m) => ({
+    file: m.file,
+    line: m.line,
+    terms: m.entries,
+    malformed: m.malformed,
+  }))
+}
+
+/**
+ * Every `// verifies:` marker under `root`, with the expectation ids it names and any malformed
+ * entries. Unlike {@link readMarkers}, this scans `.test.ts` files too — the verifying test is the
+ * thing being marked.
+ */
+export function readVerifyMarkers(root: string): VerifyMarker[] {
+  return collect(root, 'verifies', EXPECTATION_ID, true).map((m) => ({
+    file: m.file,
+    line: m.line,
+    ids: m.entries,
+    malformed: m.malformed,
+  }))
 }
 
 export interface TermRecord {
