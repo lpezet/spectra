@@ -8,7 +8,7 @@
 # generated automatically as a result.
 #
 # ONE-TIME SETUP (per package, on npmjs.com → the package → Settings → Trusted Publisher):
-#   Provider: GitHub Actions · Repository: lpezet/spectra · Workflow: publish.yml
+#   Provider: GitHub Actions · Repository: ABSeedAI/spectra · Workflow: publish.yml
 # Do this for @abseed/spectra-core, -agent-tools, -drift-check, -web-lib (they already exist on npm).
 # No repo secret is needed.
 #
