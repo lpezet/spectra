@@ -32,9 +32,17 @@
  *     truth today (hand-edited files) but an API backend can return partial data too. What
  *     does NOT survive is "re-read from disk every call" — that is an FS detail.
  *
- * Not in scope: `data/transcripts.db` (chat history, its own store) and the version guard /
- * `app/specs.snapshot.json` (tabled — a `version()` method belongs here eventually, once the
- * snapshot is reworked into a queryable authority; deliberately left out of this first slice).
+ * Optimistic concurrency (GH #93): a changeset is computed against the glossary as the reviewer saw
+ * it, but applied later — possibly after someone else applied first. `commitApplication` takes an
+ * optional `baseVersion` (a {@link glossaryVersion} token) and compare-and-swaps on it: the write
+ * lands only if the glossary is still at that version, else it returns a {@link CommitConflict} and
+ * writes nothing. Absent `baseVersion` keeps the old last-write-wins behaviour, so existing callers
+ * and single-writer deployments are unaffected. The token is derived from the terms (not a stored
+ * `version()` method), so it always matches the terms a caller just read.
+ *
+ * Not in scope: `data/transcripts.db` (chat history, its own store) and the offline snapshot /
+ * `specs.snapshot.json` version guard (that is `specsSnapshot`, terms + expectations, for the
+ * mark_implemented drift check — a different token for a different job).
  */
 import type {
   Answer,
@@ -106,6 +114,12 @@ export interface CommitApplication {
   remainingOps: Op[]
   /** Caller's clock, so this stays testable. */
   appliedAt: string
+  /**
+   * Optimistic-concurrency guard (GH #93): the {@link glossaryVersion} the caller computed `nextTerms`
+   * against. When present, the store writes only if the glossary is still at this version, else it
+   * returns a {@link CommitConflict}. Absent = last-write-wins (the prior behaviour).
+   */
+  baseVersion?: string
 }
 
 /** What changed, in the store's own terms (filenames for FS, opaque strings for SQL). */
@@ -114,6 +128,17 @@ export interface CommitResult {
   deleted: string[]
   /** Where the applied record now lives — the old relative-path `resolvedTo`, kept verbatim. */
   resolvedTo: string
+}
+
+/**
+ * A refused commit: the glossary moved past `baseVersion` between the caller reading it and the
+ * write, so nothing was written. `currentVersion` is where it is now — a fact for the caller to
+ * compare, never a verdict (the same shape as {@link MutationResult}'s conflict). Only ever returned
+ * when the caller supplied a `baseVersion`.
+ */
+export interface CommitConflict {
+  conflict: true
+  currentVersion: string
 }
 
 /**
@@ -163,8 +188,12 @@ export interface SpecStore {
   addQuestion(question: Question): Promise<StoredAt>
   addExpectation(expectation: Expectation): Promise<StoredAt> // enters live
 
-  /** Atomic: reconcile terms to the post-image and move the changeset pending → applied. */
-  commitApplication(application: CommitApplication): Promise<CommitResult>
+  /**
+   * Atomic: reconcile terms to the post-image and move the changeset pending → applied. When
+   * `application.baseVersion` is set, compare-and-swap on it — return a {@link CommitConflict}
+   * (writing nothing) if the glossary has moved since. See GH #93.
+   */
+  commitApplication(application: CommitApplication): Promise<CommitResult | CommitConflict>
   /** Move a pending changeset to rejected. Returns where it landed, or null if none matched. */
   rejectChangeset(id: string): Promise<string | null>
   /** Record code written against an applied changeset. Where it lives, or null if none matched. */

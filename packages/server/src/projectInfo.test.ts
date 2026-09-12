@@ -79,6 +79,7 @@ describe('FileSystemSpecStore.commitApplication against an empty store', () => {
       remainingOps: [],
       appliedAt: '2026-01-01T00:00:00.000Z',
     })
+    if ('conflict' in result) throw new Error('unexpected conflict')
     expect(result.written).toContain('widget.json')
     const glossary = await store.readTerms()
     expect(glossary.terms.map((t) => t.name)).toContain('Widget')

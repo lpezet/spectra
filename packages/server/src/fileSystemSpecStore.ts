@@ -15,6 +15,7 @@
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  glossaryVersion,
   parseChangeset,
   parseExpectation,
   parseProjectInfo,
@@ -34,6 +35,7 @@ import { slug, uniquePath, writeAtomic } from './files.js'
 import { serializeChangeset, serializeTerm, termFileName } from './serialize.js'
 import type {
   CommitApplication,
+  CommitConflict,
   CommitResult,
   ExpectationFeed,
   Glossary,
@@ -501,8 +503,18 @@ export class FileSystemSpecStore implements SpecStore {
 
   // ── State transitions ────────────────────────────────────────────────────────────────
 
-  async commitApplication(application: CommitApplication): Promise<CommitResult> {
+  async commitApplication(application: CommitApplication): Promise<CommitResult | CommitConflict> {
     const { entries } = await this.readTermEntries()
+
+    // Optimistic concurrency (GH #93): refuse if the glossary moved past what `nextTerms` was
+    // computed against. Best-effort on the filesystem — a single process, no cross-request lock — so
+    // it closes the common window (a concurrent apply, or a hand-edit between read and commit) rather
+    // than serializing; a multi-writer deployment serializes writes for the hard guarantee.
+    if (application.baseVersion !== undefined) {
+      const currentVersion = glossaryVersion(entries.map((entry) => entry.term))
+      if (currentVersion !== application.baseVersion) return { conflict: true, currentVersion }
+    }
+
     const fileByName = new Map(entries.map((entry) => [entry.term.name, entry.file]))
     const written: string[] = []
     const deleted: string[] = []
