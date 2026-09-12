@@ -198,6 +198,10 @@ runtime is; the image is shared, `Dockerfile.runtime`.)
   makes a spec change traceable to the code that needs updating.
 - **`// implements: termName`** — comma-separated bare identifiers, nothing else. Trailing
   prose fails `implements.test.ts`; put it on the next line.
+- **`// verifies: e-nnn`** — on the *test* that exercises an expectation; comma-separated
+  expectation ids, prose on the next line. The counterpart of `// implements:` for expectations:
+  the drift check (`@abseed/spectra-drift-check`) flags a functional expectation no test verifies,
+  and a marker naming an expectation the glossary dropped. Non-functional expectations need none.
 - Term filenames are kebab-cased from the term name (`RecurringTask` → `recurring-task.json`),
   via `termFileName` in `commit.ts`.
 - **Questions, not findings.** If something an implementation pass discovers cannot be phrased
