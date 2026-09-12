@@ -260,7 +260,7 @@ export function App() {
               acknowledged={acknowledged}
               onAcknowledge={setAcknowledged}
               onApply={() =>
-                commit(() => apiTransport.applyChangeset(changeset.id, [...selectedOps], acknowledged), closeReview)
+                commit(() => apiTransport.applyChangeset(changeset.id, [...selectedOps], acknowledged, glossary.version), closeReview)
               }
               onReject={() => commit(() => apiTransport.rejectChangeset(changeset.id), closeReview)}
               busy={busy}

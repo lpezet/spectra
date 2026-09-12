@@ -43,6 +43,13 @@ export interface ProjectSummary {
 export interface Glossary {
   terms: Term[]
   problems: SourceProblem[]
+  /**
+   * A content token for the glossary (optimistic concurrency). A host that supplies it can pass it
+   * back as `applyChangeset`'s `expectedVersion`, so a changeset reviewed against a since-moved
+   * glossary is refused (`CommitOutcome.staleVersion`) rather than clobbering. Absent when the backend
+   * does not report one — the guard is simply not engaged.
+   */
+  version?: string
 }
 
 export interface ChangesetFeed {
@@ -70,6 +77,13 @@ export interface CommitOutcome {
   error?: string
   diagnostics?: Diagnostic[]
   needsAcknowledgement?: boolean
+  /**
+   * The glossary moved since this changeset was reviewed (optimistic concurrency): nothing was
+   * written, and the review should be redone against the current glossary. `currentVersion` is where
+   * it is now. Distinct from a diagnostics refusal — the ops are fine, the world changed.
+   */
+  staleVersion?: boolean
+  currentVersion?: string
   appliedOps?: number
   remainingOps?: number
   written?: string[]
@@ -131,7 +145,11 @@ export interface GlossaryTransport {
   fetchQuestions(): Promise<QuestionFeed>
   fetchExpectations(): Promise<ExpectationFeed>
 
-  applyChangeset(id: string, opIndices: number[], acknowledgeWarnings: boolean): Promise<CommitOutcome>
+  /**
+   * `expectedVersion` (optional) is the {@link Glossary.version} the change was reviewed against; when
+   * it no longer matches, the backend refuses with `CommitOutcome.staleVersion` and writes nothing.
+   */
+  applyChangeset(id: string, opIndices: number[], acknowledgeWarnings: boolean, expectedVersion?: string): Promise<CommitOutcome>
   markImplemented(id: string): Promise<CommitOutcome>
   rejectChangeset(id: string): Promise<CommitOutcome>
 
