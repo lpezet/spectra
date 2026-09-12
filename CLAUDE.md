@@ -344,6 +344,13 @@ Distribution (like SAL: build in CI, download prebuilt in the installer):
   prefers the installed `default.yaml`. It never clones or builds; `SPECTRA_ASSETS=<dir>` installs
   from local prebuilt assets instead of downloading (the test path).
 
+The npm **libraries** (`@abseed/spectra-core`, `-agent-tools`, `-drift-check`, `-web-lib`) publish on
+a separate tag-driven flow — one tag per package, `<name>-v<version>` — via `publish.yml` (Trusted
+Publishing/OIDC, no token). The tag's version must match `packages/<name>/package.json` or the job
+fails, so the recipe is bump-and-merge, then tag. `npm run release:lib -- <name>` is the guarded
+helper: it reads the version, checks you are on a clean, in-sync `main`, and dry-runs unless given
+`--push`. See the "Releasing" section in `README.md`.
+
 The **consumer's credential** goes in `~/.config/spectra/spectra.env` (one shared file, not per-project;
 `spectra init` scaffolds it 0600 with the two credential lines commented and never overwrites it). The
 CLI hands it to compose with `--env-file` when it exists, so the compose files' `${ANTHROPIC_API_KEY}` /

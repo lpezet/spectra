@@ -390,6 +390,34 @@ in-memory term arrays with no filesystem access. The web app uses it to *preview
 changeset would do and flag problems live as you toggle ops; the server uses the identical
 code to *commit*. One set of rules, so the preview cannot disagree with the result.
 
+## Releasing
+
+Everything ships by pushing a git **tag** — there is no manual `npm publish`, and no token to
+hold. Two independent flows:
+
+**The CLI** (`@abseed/spectra-cli`, as a GitHub release with prebuilt assets): push `vX.Y.Z`.
+`.github/workflows/release.yml` builds the bundle — the tag is the version, so no `package.json`
+bump is needed — and attaches it. See the Distribution notes in `CLAUDE.md`.
+
+**The libraries** (`@abseed/spectra-core`, `-agent-tools`, `-drift-check`, `-web-lib`, to npm):
+each is versioned independently, so **one tag = one package**, named `<name>-v<version>`.
+`.github/workflows/publish.yml` publishes via npm Trusted Publishing (OIDC — no `NPM_TOKEN`,
+provenance attached automatically) and **refuses the tag unless `packages/<name>/package.json` is
+already at that version**. So the recipe is always: bump the version in a PR, merge it, then tag.
+
+Use the guarded helper rather than tagging by hand — it reads the version from the package, and
+checks you are on `main`, clean, and in sync with `origin/main` before it will tag (the ways you
+could otherwise publish the wrong commit). It is a **dry run** until you pass `--push`:
+
+```bash
+npm run release:lib -- drift-check           # prints the tag it would create; does nothing
+npm run release:lib -- drift-check --push    # creates the annotated tag and pushes it → CI publishes
+```
+
+The manual equivalent, if you prefer, is just `git tag -a <name>-v<version> -m "…" && git push
+origin <name>-v<version>`. Either way, publishing a new version updates nothing already installed:
+a consumer picks it up only when it bumps its `@abseed/spectra-*` dependency.
+
 ## Data model
 
 A **Term** is the atomic unit — roughly a class. `type` is `entity`, `event`, `function`
