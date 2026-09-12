@@ -19,7 +19,7 @@ observability layer).
 Spectra runs as a small set of Docker services, driven by a `spectra` CLI. Install the CLI:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ABSeedAI/spectra/main/install.sh | bash
 # curl -fsSL .../install.sh | bash -s v0.1.1        # pin a specific release
 ```
 

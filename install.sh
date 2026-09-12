@@ -4,7 +4,7 @@
 # No clone, no build: it just fetches the prebuilt `spectra` (like SAL's installer). You need
 # `node` on PATH to *run* it, and Docker to run the stack — but not to install.
 #
-#   curl -fsSL https://raw.githubusercontent.com/lpezet/spectra/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/ABSeedAI/spectra/main/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s v0.1.1        # pin a specific release (default: latest)
 #
 # Env: SPECTRA_REF (release tag or "latest", or the first arg), SPECTRA_PREFIX (default ~/.local),
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REF="${SPECTRA_REF:-${1:-latest}}"
-REPO="lpezet/spectra"
+REPO="ABSeedAI/spectra"
 PREFIX="${SPECTRA_PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/spectra"

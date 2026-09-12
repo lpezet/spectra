@@ -19,7 +19,7 @@
 # context (remote git vs local `.`) and in that the project mounts live in the override here.
 
 x-git-context: &git-context
-  context: "https://github.com/lpezet/spectra.git#${SPECTRA_REF:-main}"
+  context: "https://github.com/ABSeedAI/spectra.git#${SPECTRA_REF:-main}"
 
 services:
   # The coordinator: glossary API, transcripts, the credential, the model/MCP surface, and the only

@@ -13,7 +13,7 @@
 name: spectra-attach
 
 x-git-context: &git-context
-  context: "https://github.com/lpezet/spectra.git#${SPECTRA_REF:-main}"
+  context: "https://github.com/ABSeedAI/spectra.git#${SPECTRA_REF:-main}"
 
 services:
   # @coder — the sandboxed runtime, dialled out to the remote coordinator.

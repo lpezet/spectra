@@ -5,10 +5,10 @@
   "type": "module",
   "license": "Apache-2.0",
   "author": "lpezet",
-  "homepage": "https://github.com/lpezet/spectra/tree/main/packages/drift-check",
+  "homepage": "https://github.com/ABSeedAI/spectra/tree/main/packages/drift-check",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lpezet/spectra.git",
+    "url": "git+https://github.com/ABSeedAI/spectra.git",
     "directory": "packages/drift-check"
   },
   "keywords": ["spectra", "spec-driven", "glossary", "drift-check", "vitest"],

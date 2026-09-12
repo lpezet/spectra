@@ -6,10 +6,10 @@
   "type": "module",
   "license": "Apache-2.0",
   "author": "Luke Pezet",
-  "homepage": "https://github.com/lpezet/spectra/tree/main/packages/web-lib",
+  "homepage": "https://github.com/ABSeedAI/spectra/tree/main/packages/web-lib",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lpezet/spectra.git",
+    "url": "git+https://github.com/ABSeedAI/spectra.git",
     "directory": "packages/web-lib"
   },
   "keywords": [
