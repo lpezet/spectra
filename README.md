@@ -278,6 +278,24 @@ the terms that moved:
 
 The test cannot see it; review can.
 
+**The same shape covers expectations.** The snapshot also carries the glossary's *expectations* —
+the normative "given X, expect Y" statements — as `{ id, kind, hash }`, on the same lossy-on-purpose
+terms: an id and a hash of the wording, never the wording itself.
+
+```json
+"expectations": [{ "id": "e-001", "kind": "functional", "hash": "a1b2c3d4e5f60718" }]
+```
+
+A term is implemented by production code and marks itself `// implements: Task`; a *functional*
+expectation is verified by a test, which marks itself `// verifies: e-001`. The check is then
+symmetric — a functional expectation no test names goes red the way an entity no code implements
+does, a `verifies:` naming an expectation the glossary dropped is caught the way a stale
+`implements:` is, and the per-expectation hash makes a *reworded* expectation surface in `git diff`
+just as a rewritten term's does. Non-functional expectations (latency, accessibility) are exempt:
+they are properties of a running build, checked by driving it, not by a test phrased in glossary
+vocabulary. `// verifies:` markers live in the test files — the one place the drift check reads
+`.test.ts` rather than skipping it.
+
 ### Versions, the way git does it
 
 A snapshot nobody refreshed passes happily while the specs move on — green tests, wrong
