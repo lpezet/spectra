@@ -147,6 +147,13 @@ export function useGlossary(transport: GlossaryTransport) {
       try {
         const outcome = await action()
         if (!outcome.ok) {
+          // The glossary moved since this was reviewed (optimistic concurrency): nothing was written.
+          // Reload so the view shows the current state, and say why — the review has to be redone.
+          if (outcome.staleVersion) {
+            setNotice({ tone: 'bad', message: 'The glossary changed since you opened this — reloaded to the current state. Re-check the change before applying.' })
+            await load()
+            return
+          }
           setNotice({ tone: 'bad', message: outcome.error ?? 'The change was refused.' })
           return
         }

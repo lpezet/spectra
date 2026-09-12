@@ -3,6 +3,7 @@ import express from 'express'
 import { anthropicProxy } from './anthropicProxy.js'
 import { answerQuestion } from '@abseed/spectra-core'
 import { applyChangeset, markImplemented, rejectChangeset } from '@abseed/spectra-core'
+import { glossaryVersion } from '@abseed/spectra-core'
 import { chatRoutes } from './agent/routes.js'
 import { mcpRoutes } from './agent/mcpHttp.js'
 import { AgentRunner } from './agent/runner.js'
@@ -172,7 +173,10 @@ glossary.get('/project', async (_req, res, next) => {
 
 glossary.get('/terms', async (_req, res, next) => {
   try {
-    res.json(await storeOf(res).readTerms())
+    // `version` is the glossary's content token (GH #93): the UI records it and passes it back as
+    // `expectedVersion` when applying, so a change reviewed against a since-moved glossary is refused.
+    const glossary = await storeOf(res).readTerms()
+    res.json({ ...glossary, version: glossaryVersion(glossary.terms) })
   } catch (error) {
     next(error)
   }
@@ -188,7 +192,7 @@ glossary.get('/changesets', async (_req, res, next) => {
 
 glossary.post('/changesets/:id/apply', async (req, res, next) => {
   try {
-    const body = req.body as { opIndices?: unknown; acknowledgeWarnings?: unknown }
+    const body = req.body as { opIndices?: unknown; acknowledgeWarnings?: unknown; expectedVersion?: unknown }
     if (!Array.isArray(body?.opIndices)) {
       res.status(400).json({ error: 'Expected { opIndices: number[] }.' })
       return
@@ -197,6 +201,8 @@ glossary.post('/changesets/:id/apply', async (req, res, next) => {
     const outcome = await applyChangeset(storeOf(res), req.params.id, {
       opIndices: body.opIndices as number[],
       acknowledgeWarnings: body.acknowledgeWarnings === true,
+      // Optimistic concurrency (GH #93): the version the UI reviewed against, if it sent one.
+      expectedVersion: typeof body.expectedVersion === 'string' ? body.expectedVersion : undefined,
     })
     res.status(outcome.ok ? 200 : outcome.status).json(outcome)
   } catch (error) {

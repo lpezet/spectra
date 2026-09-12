@@ -108,10 +108,12 @@ export function applyChangeset(
   id: string,
   opIndices: number[],
   acknowledgeWarnings: boolean,
+  expectedVersion?: string,
 ): Promise<CommitOutcome> {
   return post(apiPath(`/changesets/${encodeURIComponent(id)}/apply`), {
     opIndices,
     acknowledgeWarnings,
+    ...(expectedVersion !== undefined ? { expectedVersion } : {}),
   })
 }
 
